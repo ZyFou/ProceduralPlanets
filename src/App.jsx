@@ -81,13 +81,17 @@ export default function App() {
   const Panel = PANELS.find((p) => p.id === activePanel)?.component;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-orb" />
-          Procedural Planets
+    <div className={`app${activePanel ? ' side-drawer-open' : ''}`}>
+      <header id="topbar">
+        <div className="tb-group tb-brand">
+          <svg className="logo" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
+            <path d="M4.2 14.1c-1.2-.8-1.8-1.7-1.5-2.6.6-1.8 5.2-2 10.3-.5s8.8 4.2 8.2 6c-.3.9-1.5 1.4-3.3 1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M19.8 9.9c1.2.8 1.8 1.7 1.5 2.6-.6 1.8-5.2 2-10.3.5S2.2 8.8 2.8 7c.3-.9 1.5-1.4 3.3-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <span className="app-name">Procedural Planets</span>
         </div>
-        <div className="topbar-right">
+        <div className="tb-group tb-right">
           <label className="seed-box">
             <span>Seed</span>
             <input
@@ -120,18 +124,33 @@ export default function App() {
           ))}
         </nav>
 
-        {Panel && (
-          <aside className="side-panel">
-            <div className="panel-header">{PANELS.find((p) => p.id === activePanel).label}</div>
-            <div className="panel-body">
-              <Panel params={params} onParam={onParam} onPreset={onPreset} />
-            </div>
-          </aside>
-        )}
-
         <div className="viewport-wrap">
           <canvas id="viewport" ref={canvasRef} />
         </div>
+
+        {Panel && (
+          <aside className="side-drawer open">
+            <div className="side-panel">
+              <div className="side-panel-header">
+                <div className="side-panel-title">{PANELS.find((p) => p.id === activePanel).label}</div>
+                <button
+                  type="button"
+                  className="side-panel-close"
+                  onClick={() => setActivePanel(null)}
+                  aria-label="Close panel"
+                  title="Close panel"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden>
+                    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+              <div className="side-panel-content">
+                <Panel params={params} onParam={onParam} onPreset={onPreset} />
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
 
       <footer className="statusbar">

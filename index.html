@@ -15,19 +15,23 @@
     transition: opacity .45s ease; pointer-events: none;
   }
   #boot-splash.hide { opacity: 0; }
-  .bs-orb {
-    width: 46px; height: 46px; border-radius: 50%;
-    background: radial-gradient(circle at 34% 30%, #67d1ff 0%, #2a6fd6 45%, #0c1d3a 100%);
-    box-shadow: 0 0 34px rgba(64, 140, 255, .35);
-    animation: bs-pulse 1.6s ease-in-out infinite;
+  .bs-logo {
+    width: 36px;
+    height: 36px;
+    color: #2563eb;
+    animation: bs-fade 1.4s ease-in-out infinite;
   }
   .bs-title { font-size: 13px; letter-spacing: .22em; text-transform: uppercase; }
-  @keyframes bs-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  @keyframes bs-fade { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
 </style>
 </head>
 <body>
   <div id="boot-splash">
-    <div class="bs-orb"></div>
+    <svg class="bs-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"></circle>
+      <path d="M4.2 14.1c-1.2-.8-1.8-1.7-1.5-2.6.6-1.8 5.2-2 10.3-.5s8.8 4.2 8.2 6c-.3.9-1.5 1.4-3.3 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+      <path d="M19.8 9.9c1.2.8 1.8 1.7 1.5 2.6-.6 1.8-5.2 2-10.3.5S2.2 8.8 2.8 7c.3-.9 1.5-1.4 3.3-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+    </svg>
     <div class="bs-title">Procedural Planets</div>
   </div>
   <div id="root"></div>
