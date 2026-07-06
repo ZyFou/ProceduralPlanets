@@ -267,6 +267,10 @@ uniform vec3 uColFoam;
 varying vec3 vDir;
 varying vec3 vWorldPos;
 
+float sat(float x) {
+  return clamp(x, 0.0, 1.0);
+}
+
 void main() {
   vec3 dir = normalize(vDir);
 
@@ -281,33 +285,58 @@ void main() {
   vec3 t1 = normalize(cross(ref, up));
   vec3 t2 = cross(up, t1);
   float t = uTime * uWaveSpeed;
-  vec3 wp = dir * uWaveScale + uSeedOffset;
-  float r0 = vnoise3(wp + t * 0.31);
-  float rX = vnoise3(wp + t1 * 0.35 + t * 0.31);
-  float rZ = vnoise3(wp + t2 * 0.35 + t * 0.31);
-  vec3 n = normalize(up - t1 * (rX - r0) * 1.6 - t2 * (rZ - r0) * 1.6);
+  vec3 wp = dir * uWaveScale + uSeedOffset * 0.23;
+  float r0 = vnoise3(wp * 0.72 + t * 0.18);
+  float rX = vnoise3(wp * 0.72 + t1 * 0.45 + t * 0.18);
+  float rZ = vnoise3(wp * 0.72 + t2 * 0.45 + t * 0.18);
+  float normalStrength = mix(0.45, 1.05, sat(depth / max(sea * 0.55, 1e-4)));
+  vec3 n = normalize(up - t1 * (rX - r0) * normalStrength - t2 * (rZ - r0) * normalStrength);
 
-  // depth bands (cartoon): shallow teal ring -> deep blue, hard steps
+  // Depth color: transparent cyan shelves roll into a broad, calm deep basin.
   float grade = clamp(depth / max(sea * 0.85, 1e-4), 0.0, 1.0);
-  vec3 col = uColShallow;
-  col = mix(col, mix(uColShallow, uColDeep, 0.55), smoothstep(0.10, 0.16, grade));
-  col = mix(col, uColDeep, smoothstep(0.30, 0.40, grade));
+  float shelf = smoothstep(0.04, 0.24, grade);
+  float basin = smoothstep(0.30, 0.72, grade);
+  vec3 shallowCol = mix(uColShallow * 1.12, uColFoam, 0.10);
+  vec3 midCol = mix(uColShallow, uColDeep, 0.50);
+  vec3 deepCol = uColDeep * vec3(0.80, 0.94, 1.12);
+  vec3 col = mix(shallowCol, midCol, shelf);
+  col = mix(col, deepCol, basin);
 
-  // hard foam ring at the shoreline, wobbled so it dashes like a drawing
-  float foamJit = (vnoise3(dir * uWaveScale * 3.1 + t * 0.6) - 0.5) * 0.35;
-  float foamEdge = uFoamWidth * (0.55 + foamJit);
-  float foam = 1.0 - smoothstep(foamEdge * 0.6, foamEdge, depth / max(sea, 1e-4));
-  col = mix(col, uColFoam, clamp(foam, 0.0, 1.0) * 0.9);
+  // Low-frequency basin variation avoids the old polka-dot water texture.
+  float basinTone = vnoise3(dir * 5.2 + uSeedOffset * 0.11);
+  col *= mix(0.94, 1.07, basinTone) - basin * 0.03;
 
-  // toon lighting + hard specular blob
+  // Subtle surface tone only; avoid visible all-over wave strokes.
+  vec2 surf = vec2(dot(wp, t1), dot(wp, t2));
+  float wobble = vnoise3(dir * 7.0 + uSeedOffset * 0.17 + t * 0.10) * 6.28318;
+  float surfaceTone = vnoise3(vec3(surf * 0.20, wobble * 0.025) + t * 0.04);
+  col *= mix(0.985, 1.025, surfaceTone) * mix(1.02, 1.0, basin);
+
+  // Cleaner coastal foam: a bright inner rim plus broken outer surf.
+  float coastDepth = depth / max(sea, 1e-4);
+  float foamEdge = max(uFoamWidth, 0.001);
+  float foamNoise = vnoise3(dir * uWaveScale * 2.15 + uSeedOffset * 0.31 + t * 0.45);
+  float foamBreak = smoothstep(0.36, 0.70, foamNoise);
+  float innerFoam = 1.0 - smoothstep(foamEdge * 0.06, foamEdge * 0.28, coastDepth);
+  float outerFoam = (1.0 - smoothstep(foamEdge * 0.22, foamEdge, coastDepth)) *
+                    smoothstep(foamEdge * 0.08, foamEdge * 0.34, coastDepth) *
+                    foamBreak;
+  float foam = sat(max(innerFoam, outerFoam));
+  col = mix(col, uColFoam, foam * 0.92);
+
+  // Toon lighting + controlled water glints.
   float diff = toonShade(max(dot(n, uSunDir), 0.0));
   col *= uAmbient + diff * uSunIntensity;
   vec3 viewDir = normalize(cameraPosition - vWorldPos);
-  float spec = pow(max(dot(reflect(-uSunDir, n), viewDir), 0.0), 60.0);
-  col += vec3(1.0) * smoothstep(0.35, 0.45, spec) * uWaterSpec;
-
   float fres = pow(1.0 - max(dot(viewDir, up), 0.0), 3.0);
-  float alpha = clamp(uWaterOpacity * (0.75 + grade * 0.35) + fres * 0.12 + foam * 0.2, 0.0, 0.97);
+  vec3 halfDir = normalize(uSunDir + viewDir);
+  float spec = pow(max(dot(n, halfDir), 0.0), 96.0);
+  float glintMask = smoothstep(0.08, 0.45, foam + fres * 0.35);
+  col += uColFoam * smoothstep(0.22, 0.72, spec) * glintMask * uWaterSpec;
+  col = mix(col, uColFoam, fres * 0.10);
+
+  float alpha = clamp(uWaterOpacity * mix(0.52, 0.94, smoothstep(0.04, 0.62, grade)) +
+                      fres * 0.13 + foam * 0.24, 0.0, 0.96);
 
   gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), alpha);
 }

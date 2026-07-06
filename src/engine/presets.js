@@ -36,22 +36,22 @@ export const DEFAULT_PARAMS = {
   polarCaps: 0.55,         // 0..1 strength of latitude snow
 
   // palette (RGB 0..1)
-  colDeep:    [0.055, 0.180, 0.360],
-  colShallow: [0.100, 0.620, 0.640],
+  colDeep:    [0.030, 0.135, 0.330],
+  colShallow: [0.070, 0.560, 0.680],
   colSand:    [0.870, 0.780, 0.540],
   colGrass:   [0.330, 0.620, 0.270],
   colForest:  [0.130, 0.400, 0.190],
   colRock:    [0.480, 0.420, 0.370],
   colSnow:    [0.950, 0.960, 0.980],
-  colFoam:    [0.920, 0.960, 0.960],
+  colFoam:    [0.900, 0.985, 0.970],
 
   // water
   waterEnabled: true,
-  waterOpacity: 0.82,
-  foamWidth: 0.16,         // fraction of heightScale near the shore
-  waveScale: 26.0,
+  waterOpacity: 0.78,
+  foamWidth: 0.13,         // fraction of heightScale near the shore
+  waveScale: 32.0,
   waveSpeed: 0.7,
-  waterSpec: 0.6,
+  waterSpec: 0.75,
 
   // clouds
   cloudsEnabled: true,
