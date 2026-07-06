@@ -20,6 +20,9 @@ const ICONS = {
   perf: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M4 19 V11 M9 19 V5 M14 19 v-9 M19 19 V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
   ),
+  export: (
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v11M8 10l4 4 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 18h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+  ),
 };
 
 export default function App() {
@@ -77,6 +80,10 @@ export default function App() {
     a.download = `planet-${params.seed}.png`;
     a.click();
   }, [params.seed]);
+
+  const onExport = useCallback(async (options, onProgress) => {
+    await engineRef.current?.exportPlanet(options, onProgress);
+  }, []);
 
   const Panel = PANELS.find((p) => p.id === activePanel)?.component;
 
@@ -146,7 +153,13 @@ export default function App() {
                 </button>
               </div>
               <div className="side-panel-content">
-                <Panel params={params} onParam={onParam} onPreset={onPreset} />
+                <Panel
+                  params={params}
+                  onParam={onParam}
+                  onPreset={onPreset}
+                  onExport={onExport}
+                  onScreenshot={onScreenshot}
+                />
               </div>
             </div>
           </aside>

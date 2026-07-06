@@ -6,6 +6,7 @@ import {
   createWaterMaterial, createCloudMaterial, createAtmosphereMaterial, createStarMaterial,
 } from './materials.js';
 import { PlanetWorld } from './PlanetWorld.js';
+import { PlanetExporter } from './PlanetExporter.js';
 
 // ============================================================================
 // Engine — owns renderer / scene / camera / loop and the parameter store.
@@ -238,6 +239,18 @@ export class Engine {
     this.renderer.setSize(prevSize.x, prevSize.y, false);
     this._resize();
     return url;
+  }
+
+  async exportPlanet(options = {}, onProgress = () => {}) {
+    const wasRunning = !this._disposed;
+    if (wasRunning) this.renderer.setAnimationLoop(null);
+    try {
+      this.renderOnce();
+      await PlanetExporter.export(this.renderer, this.params, this.uniforms, options, onProgress);
+    } finally {
+      if (wasRunning && !this._disposed) this.renderer.setAnimationLoop(() => this._tick());
+      this._resize();
+    }
   }
 
   /** One manual frame — used by automated verification when rAF is frozen. */

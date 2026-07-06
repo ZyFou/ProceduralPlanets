@@ -1,4 +1,5 @@
-import { Slider, Toggle, ColorRow, Section } from './controls.jsx';
+import { useState } from 'react';
+import { Slider, Toggle, ColorRow, Section, SelectRow } from './controls.jsx';
 import { PLANET_PRESETS } from '../engine/presets.js';
 
 // One component per side-panel tab. Each receives (params, onParam) and, for
@@ -132,10 +133,99 @@ export function PerformancePanel({ params: p, onParam }) {
   );
 }
 
+const FORMAT_OPTIONS = [
+  { value: 'glb', label: 'GLB / GLTF' },
+  { value: 'obj', label: 'OBJ + textures' },
+];
+
+const RES_OPTIONS = [
+  { value: '64', label: '64 x 64' },
+  { value: '128', label: '128 x 128 (Recommended)' },
+  { value: '256', label: '256 x 256' },
+  { value: '512', label: '512 x 512' },
+];
+
+const TEX_OPTIONS = [
+  { value: '512', label: '512 x 512' },
+  { value: '1024', label: '1024 x 1024' },
+  { value: '2048', label: '2048 x 2048 (Crisp)' },
+  { value: '4096', label: '4096 x 4096 (UHD)' },
+];
+
+export function ExportPanel({ onExport, onScreenshot }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [opt, setOpt] = useState({
+    format: 'glb',
+    includeMesh: true,
+    meshRes: '128',
+    bakeColor: true,
+    bakeLighting: false,
+    texRes: '1024',
+    exportWater: false,
+    exportPreset: true,
+  });
+  const set = (key, value) => setOpt((prev) => ({ ...prev, [key]: value }));
+
+  const doExport = async () => {
+    setBusy(true);
+    setStatus('Preparing export...');
+    try {
+      await onExport(opt, setStatus);
+      setStatus('Export complete');
+    } catch (err) {
+      console.error(err);
+      setStatus('Export failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Section title="Quick export">
+        <div className="export-actions">
+          <button type="button" className="action-btn primary" onClick={doExport} disabled={busy}>
+            {busy ? 'Exporting...' : 'Export Planet'}
+          </button>
+          <button type="button" className="action-btn" onClick={onScreenshot} disabled={busy}>
+            Screenshot
+          </button>
+        </div>
+        {status && <div className="export-status">{status}</div>}
+      </Section>
+
+      <Section title="Format & resolution">
+        <SelectRow label="Format" value={opt.format} options={FORMAT_OPTIONS} onChange={(v) => set('format', v)} />
+        <Toggle label="Include Planet Mesh" value={opt.includeMesh} onChange={(v) => set('includeMesh', v)} />
+        {opt.includeMesh && (
+          <SelectRow label="Mesh Resolution" value={opt.meshRes} options={RES_OPTIONS} onChange={(v) => set('meshRes', v)} />
+        )}
+      </Section>
+
+      <Section title="Texture baking">
+        <Toggle label="Bake Color Texture" value={opt.bakeColor} onChange={(v) => set('bakeColor', v)} />
+        {opt.bakeColor && (
+          <>
+            <Toggle label="Bake Lighting into Color" value={opt.bakeLighting} onChange={(v) => set('bakeLighting', v)} />
+            <SelectRow label="Texture Size" value={opt.texRes} options={TEX_OPTIONS} onChange={(v) => set('texRes', v)} />
+          </>
+        )}
+      </Section>
+
+      <Section title="Additional assets" defaultOpen={false}>
+        <Toggle label="Include Water Shell" value={opt.exportWater} onChange={(v) => set('exportWater', v)} />
+        <Toggle label="Export Preset (JSON)" value={opt.exportPreset} onChange={(v) => set('exportPreset', v)} />
+      </Section>
+    </>
+  );
+}
+
 export const PANELS = [
   { id: 'terrain', label: 'Terrain', component: TerrainPanel },
   { id: 'style', label: 'Style', component: StylePanel },
   { id: 'water', label: 'Water', component: WaterPanel },
   { id: 'clouds', label: 'Clouds', component: CloudsPanel },
   { id: 'perf', label: 'Perf', component: PerformancePanel },
+  { id: 'export', label: 'Export', component: ExportPanel },
 ];

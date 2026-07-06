@@ -59,6 +59,19 @@ export function Toggle({ label, value, onChange, title }) {
   );
 }
 
+export function SelectRow({ label, value, options, onChange, title }) {
+  return (
+    <label className="select-row" title={title}>
+      <span className="ctl-label">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 const toHex = (rgb) => '#' + rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('');
 const fromHex = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 
