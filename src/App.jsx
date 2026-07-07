@@ -8,6 +8,9 @@ const ICONS = {
   terrain: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M3 17 L9 7 L13 12 L16 9 L21 17 Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
   ),
+  biomes: (
+    <svg viewBox="0 0 24 24" fill="none"><path d="M6 19 C6 10 11 5 19 5 C19 13 14 18 6 19 Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M6 19 C9 14 12 11 16 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+  ),
   style: (
     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" /><path d="M12 4a8 8 0 0 1 0 16" fill="currentColor" opacity="0.35" /></svg>
   ),

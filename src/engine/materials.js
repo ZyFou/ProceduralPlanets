@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
+import { TOON_GLSL, SURFACE_GLSL, CLOUD_FIELD_GLSL, CLOUD_SHADOW_GLSL } from './surfaceGLSL.js';
 import { seedToOffset } from './presets.js';
 
 // ============================================================================
@@ -38,6 +39,17 @@ export function createSharedUniforms(p) {
     uSnowLine:      { value: p.snowLine },
     uPolarCaps:     { value: p.polarCaps },
 
+    uBiomeAmount:   { value: p.biomeAmount },
+    uTempBias:      { value: p.tempBias },
+    uMoistScale:    { value: p.moistureScale },
+    uBioTundra:     { value: v3(p.bioTundra) },
+    uBioSteppe:     { value: v3(p.bioSteppe) },
+    uBioTaiga:      { value: v3(p.bioTaiga) },
+    uBioShrub:      { value: v3(p.bioShrub) },
+    uBioDesert:     { value: v3(p.bioDesert) },
+    uBioSavanna:    { value: v3(p.bioSavanna) },
+    uBioJungle:     { value: v3(p.bioJungle) },
+
     uColDeep:    { value: v3(p.colDeep) },
     uColShallow: { value: v3(p.colShallow) },
     uColSand:    { value: v3(p.colSand) },
@@ -61,6 +73,8 @@ export function createSharedUniforms(p) {
     uCloudSpeed:    { value: p.cloudSpeed },
     uCloudColor:    { value: v3(p.cloudColor) },
     uCloudShadow:   { value: v3(p.cloudShadow) },
+    uCloudPuff:     { value: p.cloudPuff },
+    uCloudShadowStr:{ value: p.cloudsEnabled ? p.cloudShadowStrength : 0 },
 
     uAtmoColor:    { value: v3(p.atmoColor) },
     uAtmoStrength: { value: p.atmoStrength },
@@ -76,6 +90,10 @@ export const UNIFORM_MAP = {
   sunIntensity: 'uSunIntensity', ambient: 'uAmbient',
   toonBands: 'uToonBands', toonSoftness: 'uToonSoftness', bandSoftness: 'uBandSoftness',
   snowLine: 'uSnowLine', polarCaps: 'uPolarCaps',
+  biomeAmount: 'uBiomeAmount', tempBias: 'uTempBias', moistureScale: 'uMoistScale',
+  bioTundra: 'uBioTundra', bioSteppe: 'uBioSteppe', bioTaiga: 'uBioTaiga',
+  bioShrub: 'uBioShrub', bioDesert: 'uBioDesert', bioSavanna: 'uBioSavanna',
+  bioJungle: 'uBioJungle',
   colDeep: 'uColDeep', colShallow: 'uColShallow', colSand: 'uColSand',
   colGrass: 'uColGrass', colForest: 'uColForest', colRock: 'uColRock',
   colSnow: 'uColSnow', colFoam: 'uColFoam',
@@ -85,28 +103,10 @@ export const UNIFORM_MAP = {
   cloudDensity: 'uCloudDensity', cloudScale: 'uCloudScale',
   cloudDetail: 'uCloudDetail', cloudSpeed: 'uCloudSpeed',
   cloudColor: 'uCloudColor', cloudShadow: 'uCloudShadow',
+  cloudPuff: 'uCloudPuff',
+  // cloudShadowStrength is gated by cloudsEnabled — handled in Engine.setParam
   atmoColor: 'uAtmoColor', atmoStrength: 'uAtmoStrength',
 };
-
-const TOON_GLSL = /* glsl */ `
-uniform float uToonEnabled;
-uniform float uToonBands;
-uniform float uToonSoftness;
-uniform float uSunIntensity;
-uniform float uAmbient;
-uniform vec3  uSunDir;
-
-// Quantize a diffuse term into hard cartoon bands.
-float toonShade(float diff) {
-  if (uToonEnabled < 0.5) return diff;
-  float bands = max(uToonBands, 1.0);
-  float x = diff * bands;
-  float f = floor(x);
-  float soft = max(uToonSoftness, 0.001) * bands;
-  float edge = smoothstep(0.5 - soft, 0.5 + soft, x - f);
-  return clamp((f + edge) / bands, 0.0, 1.0);
-}
-`;
 
 // ---------------------------------------------------------------------------
 // Terrain
@@ -146,75 +146,23 @@ precision highp float;
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
 ${TOON_GLSL}
-
-uniform float uBandSoftness;
-uniform float uSnowLine;
-uniform float uPolarCaps;
-uniform vec3 uColDeep;
-uniform vec3 uColShallow;
-uniform vec3 uColSand;
-uniform vec3 uColGrass;
-uniform vec3 uColForest;
-uniform vec3 uColRock;
-uniform vec3 uColSnow;
+${SURFACE_GLSL}
+${CLOUD_FIELD_GLSL}
+${CLOUD_SHADOW_GLSL}
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
 
-// hard-ish band helper: cartoon transitions with a controllable soft width
-float band(float edge, float v) {
-  return smoothstep(edge - uBandSoftness, edge + uBandSoftness, v);
-}
-
 void main() {
   vec3 dir = normalize(vDir);
 
-  // analytic normal from finite differences on the height field
-  vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-  vec3 t1 = normalize(cross(ref, dir));
-  vec3 t2 = cross(dir, t1);
-  float eps = 0.0012;
-  float hC = height01(dir);
-  float hA = height01(normalize(dir + t1 * eps));
-  float hB = height01(normalize(dir + t2 * eps));
-  vec3 pC = dir * (uRadius + hC * uHeightScale);
-  vec3 pA = normalize(dir + t1 * eps) * (uRadius + hA * uHeightScale);
-  vec3 pB = normalize(dir + t2 * eps) * (uRadius + hB * uHeightScale);
-  vec3 n = normalize(cross(pA - pC, pB - pC));
-  if (dot(n, dir) < 0.0) n = -n;
+  float h, slope;
+  vec3 n = terrainNormal(dir, h, slope);
+  vec3 col = surfaceColor(dir, h, slope);
 
-  float slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
-  float h = hC;
-
-  // latitude "temperature": poles get caps, with a wobble so the cap edge
-  // isn't a perfect circle
-  float lat = abs(dir.y) + (vnoise3(dir * 6.0 + uSeedOffset) - 0.5) * 0.14;
-  float polar = smoothstep(0.78, 0.92, lat) * uPolarCaps;
-
-  // palette bands from height (cartoon: hard transitions)
-  float sea = uSeaLevel;
-  vec3 col;
-  if (h < sea) {
-    // seabed: sand near shore -> deep floor
-    float depth = clamp((sea - h) / max(sea, 1e-4), 0.0, 1.0);
-    vec3 floorCol = mix(uColSand * 0.72, uColDeep * 0.55, band(0.28, depth));
-    col = floorCol;
-  } else {
-    float rel = (h - sea) / max(1.0 - sea, 1e-4);   // 0..1 above sea
-    col = uColSand;
-    col = mix(col, uColGrass,  band(0.05, rel));
-    col = mix(col, uColForest, band(0.32, rel));
-    col = mix(col, uColRock,   band(0.62, rel));
-    col = mix(col, uColSnow,   band(uSnowLine, rel + (1.0 - slope) * 0.02));
-    // steep slopes read as rock regardless of altitude
-    col = mix(col, uColRock, band(0.42, slope) * (1.0 - band(uSnowLine, rel)));
-  }
-  // polar caps override everything above water
-  col = mix(col, uColSnow, polar * step(sea, h));
-
-  // toon lighting
+  // toon lighting, dimmed under the drifting cloud shadows
   float diff = toonShade(max(dot(n, uSunDir), 0.0));
-  float light = uAmbient + diff * uSunIntensity;
+  float light = uAmbient + diff * uSunIntensity * (1.0 - cloudShadow(dir));
   col *= light;
 
   gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
@@ -253,16 +201,15 @@ precision highp float;
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
 ${TOON_GLSL}
+${SURFACE_GLSL}
+${CLOUD_FIELD_GLSL}
+${CLOUD_SHADOW_GLSL}
 
 uniform float uWaterOpacity;
 uniform float uFoamWidth;
 uniform float uWaveScale;
 uniform float uWaveSpeed;
 uniform float uWaterSpec;
-uniform float uBandSoftness;
-uniform vec3 uColDeep;
-uniform vec3 uColShallow;
-uniform vec3 uColFoam;
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
@@ -279,66 +226,76 @@ void main() {
   float depth = sea - terrainH;               // in height01 fraction units
   if (depth <= 0.001) discard;
 
-  // animated ripple normal (triplanar value noise on the shell)
+  float t = uTime * uWaveSpeed;
   vec3 up = dir;
   vec3 ref = abs(up.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
   vec3 t1 = normalize(cross(ref, up));
   vec3 t2 = cross(up, t1);
-  float t = uTime * uWaveSpeed;
   vec3 wp = dir * uWaveScale + uSeedOffset * 0.23;
+
+  // ---- hard depth bands: flat color steps with noise-wobbled borders, the
+  // cartoon equivalent of a bathymetric map
+  float grade = sat(depth / max(sea * 0.85, 1e-4));
+  float wob = (vnoise3(dir * uWaveScale * 0.4 + uSeedOffset) - 0.5) * 0.10;
+  float g = grade + wob;
+  vec3 shallowCol = mix(uColShallow, uColFoam, 0.08);
+  vec3 midCol = mix(uColShallow, uColDeep, 0.55);
+  vec3 abyssCol = uColDeep * vec3(0.55, 0.68, 0.85);
+  vec3 col = shallowCol;
+  col = mix(col, midCol, band(0.14, g));
+  col = mix(col, uColDeep, band(0.42, g));
+  col = mix(col, abyssCol, band(0.75, g));
+
+  // ---- stylized wave pattern: thin bright contours drifting on the surface,
+  // strongest over the shelves, calm over the deep basins
+  float n1 = vnoise3(wp * 0.9 + vec3(t * 0.45, t * 0.31, -t * 0.38));
+  float n2 = vnoise3(wp * 1.7 - vec3(t * 0.36, t * 0.44, t * 0.27));
+  float pat = n1 * 0.62 + n2 * 0.38;
+  float contour = smoothstep(0.55, 0.57, pat) * (1.0 - smoothstep(0.60, 0.62, pat));
+  float patFade = 1.0 - band(0.55, g) * 0.85;
+  col = mix(col, uColFoam, contour * 0.22 * patFade);
+
+  // ---- coast foam: a solid rim hugging the shore plus broken surf lines
+  // that keep rolling in toward the coast
+  float coast = depth / max(sea, 1e-4);
+  float fw = max(uFoamWidth, 0.001);
+  float fn = vnoise3(dir * uWaveScale * 2.6 + uSeedOffset * 0.31 + t * 0.5);
+  float rim = 1.0 - smoothstep(fw * 0.08, fw * 0.30, coast + (fn - 0.5) * fw * 0.35);
+  float surfPhase = fract(coast / fw * 1.25 - t * 0.22 + (fn - 0.5) * 0.30);
+  float surfLine = smoothstep(0.82, 0.90, surfPhase) * (1.0 - smoothstep(0.94, 1.0, surfPhase));
+  float surfFade = (1.0 - smoothstep(fw * 0.35, fw * 1.15, coast)) *
+                   smoothstep(fw * 0.05, fw * 0.25, coast);
+  float surfMask = smoothstep(0.35, 0.55, fn);
+  float foam = sat(rim + surfLine * surfFade * surfMask);
+  col = mix(col, uColFoam, foam * 0.95);
+
+  // ---- ripple normal for lighting and glints
   float r0 = vnoise3(wp * 0.72 + t * 0.18);
   float rX = vnoise3(wp * 0.72 + t1 * 0.45 + t * 0.18);
   float rZ = vnoise3(wp * 0.72 + t2 * 0.45 + t * 0.18);
-  float normalStrength = mix(0.45, 1.05, sat(depth / max(sea * 0.55, 1e-4)));
-  vec3 n = normalize(up - t1 * (rX - r0) * normalStrength - t2 * (rZ - r0) * normalStrength);
+  vec3 n = normalize(up - (t1 * (rX - r0) + t2 * (rZ - r0)) * 0.8);
 
-  // Depth color: transparent cyan shelves roll into a broad, calm deep basin.
-  float grade = clamp(depth / max(sea * 0.85, 1e-4), 0.0, 1.0);
-  float shelf = smoothstep(0.04, 0.24, grade);
-  float basin = smoothstep(0.30, 0.72, grade);
-  vec3 shallowCol = mix(uColShallow * 1.12, uColFoam, 0.10);
-  vec3 midCol = mix(uColShallow, uColDeep, 0.50);
-  vec3 deepCol = uColDeep * vec3(0.80, 0.94, 1.12);
-  vec3 col = mix(shallowCol, midCol, shelf);
-  col = mix(col, deepCol, basin);
-
-  // Low-frequency basin variation avoids the old polka-dot water texture.
-  float basinTone = vnoise3(dir * 5.2 + uSeedOffset * 0.11);
-  col *= mix(0.94, 1.07, basinTone) - basin * 0.03;
-
-  // Subtle surface tone only; avoid visible all-over wave strokes.
-  vec2 surf = vec2(dot(wp, t1), dot(wp, t2));
-  float wobble = vnoise3(dir * 7.0 + uSeedOffset * 0.17 + t * 0.10) * 6.28318;
-  float surfaceTone = vnoise3(vec3(surf * 0.20, wobble * 0.025) + t * 0.04);
-  col *= mix(0.985, 1.025, surfaceTone) * mix(1.02, 1.0, basin);
-
-  // Cleaner coastal foam: a bright inner rim plus broken outer surf.
-  float coastDepth = depth / max(sea, 1e-4);
-  float foamEdge = max(uFoamWidth, 0.001);
-  float foamNoise = vnoise3(dir * uWaveScale * 2.15 + uSeedOffset * 0.31 + t * 0.45);
-  float foamBreak = smoothstep(0.36, 0.70, foamNoise);
-  float innerFoam = 1.0 - smoothstep(foamEdge * 0.06, foamEdge * 0.28, coastDepth);
-  float outerFoam = (1.0 - smoothstep(foamEdge * 0.22, foamEdge, coastDepth)) *
-                    smoothstep(foamEdge * 0.08, foamEdge * 0.34, coastDepth) *
-                    foamBreak;
-  float foam = sat(max(innerFoam, outerFoam));
-  col = mix(col, uColFoam, foam * 0.92);
-
-  // Toon lighting + controlled water glints.
+  // ---- toon lighting, dimmed under cloud shadows
+  float shadow = cloudShadow(dir);
   float diff = toonShade(max(dot(n, uSunDir), 0.0));
-  col *= uAmbient + diff * uSunIntensity;
+  col *= uAmbient + diff * uSunIntensity * (1.0 - shadow * 0.8);
+
+  // ---- hard toon glints + sparse sun sparkles
   vec3 viewDir = normalize(cameraPosition - vWorldPos);
-  float fres = pow(1.0 - max(dot(viewDir, up), 0.0), 3.0);
   vec3 halfDir = normalize(uSunDir + viewDir);
-  float spec = pow(max(dot(n, halfDir), 0.0), 96.0);
-  float glintMask = smoothstep(0.08, 0.45, foam + fres * 0.35);
-  col += uColFoam * smoothstep(0.22, 0.72, spec) * glintMask * uWaterSpec;
-  col = mix(col, uColFoam, fres * 0.10);
+  float spec = pow(max(dot(n, halfDir), 0.0), 110.0);
+  float glint = smoothstep(0.28, 0.34, spec);
+  float sunAmt = smoothstep(0.15, 0.6, max(dot(up, uSunDir), 0.0));
+  float sparkle = smoothstep(0.90, 0.94, vnoise3(wp * 7.0 + t * 1.4)) * sunAmt * (1.0 - foam);
+  col += uColFoam * (glint * 0.7 + sparkle * 0.5) * uWaterSpec * (1.0 - shadow);
 
-  float alpha = clamp(uWaterOpacity * mix(0.52, 0.94, smoothstep(0.04, 0.62, grade)) +
-                      fres * 0.13 + foam * 0.24, 0.0, 0.96);
+  // ---- fresnel horizon lift keeps the limb bright and readable
+  float fres = pow(1.0 - max(dot(viewDir, up), 0.0), 3.0);
+  col = mix(col, uColShallow * 1.15, fres * 0.18);
 
-  gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), alpha);
+  float alpha = sat(uWaterOpacity * mix(0.50, 0.95, band(0.20, g)) +
+                    fres * 0.12 + foam * 0.30);
+  gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), min(alpha, 0.97));
 }
 `;
 
@@ -355,17 +312,32 @@ export function createWaterMaterial(shared, octaves) {
 }
 
 // ---------------------------------------------------------------------------
-// Clouds — cartoon shell. One noise evaluation per pixel with a HARD coverage
-// threshold: solid puffy shapes, no wispy raymarch. Two frequencies give the
-// silhouettes their billows; lighting is toon-banded like the terrain.
+// Clouds — cartoon cumulus, not a flat shell. The vertex shader displaces the
+// sphere outward where the coverage field is dense, so clouds have real puffy
+// silhouettes against space. The fragment keeps the HARD coverage threshold,
+// shades each puff from the density gradient (rounded toon look) and draws a
+// darker "ink" band just inside the silhouette. No raymarch — still cheap.
 // ---------------------------------------------------------------------------
 
 const CLOUD_VERTEX = /* glsl */ `
+${NOISE_UNIFORMS_GLSL}
+${NOISE_FUNCTIONS_GLSL}
+${CLOUD_FIELD_GLSL}
+
+uniform float uCloudPuff;
+
 varying vec3 vDir;
 varying vec3 vWorldPos;
+
 void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vDir = normalize(position);
+  vec3 dir = normalize(position);
+  // puff the shell outward where clouds are; bottoms stay on the sphere so
+  // the layer reads like flat-based cumulus
+  float base = cloudBase(dir);
+  float cut = 1.0 - uCloudCoverage;
+  float puff = smoothstep(cut - 0.12, cut + 0.35, base);
+  vec4 wp = modelMatrix * vec4(position * (1.0 + puff * uCloudPuff * 0.05), 1.0);
+  vDir = dir;
   vWorldPos = wp.xyz;
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
@@ -377,13 +349,11 @@ precision highp float;
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
 ${TOON_GLSL}
+${CLOUD_FIELD_GLSL}
 
-uniform float uCloudCoverage;
 uniform float uCloudSoftness;
 uniform float uCloudDensity;
-uniform float uCloudScale;
 uniform float uCloudDetail;
-uniform float uCloudSpeed;
 uniform vec3 uCloudColor;
 uniform vec3 uCloudShadow;
 
@@ -392,28 +362,35 @@ varying vec3 vWorldPos;
 
 void main() {
   vec3 dir = normalize(vDir);
-  float t = uTime * uCloudSpeed * 0.02;
-
-  // slow rotation drift around the poles axis
-  float ca = cos(t), sa = sin(t);
-  vec3 d = vec3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-
-  vec3 p = d * uCloudScale + uSeedOffset * 0.37;
-  float base = fbm(p + vec3(0.0, t * 2.1, 0.0));
-  float detail = vnoise3(p * 3.7 + t * 4.0);
+  float base = cloudBase(dir);
+  float detail = vnoise3(cloudDomain(dir) * 3.7 + uTime * uCloudSpeed * 0.08);
   float shape = base + (detail - 0.5) * uCloudDetail * 0.4;
 
   // HARD threshold: this is the cartoon look. Coverage moves the cut line,
   // softness controls the (thin) edge gradient.
   float cut = 1.0 - uCloudCoverage;
-  float alpha = smoothstep(cut, cut + max(uCloudSoftness, 0.005), shape);
+  float edgeSoft = max(uCloudSoftness, 0.005);
+  float alpha = smoothstep(cut, cut + edgeSoft, shape);
   if (alpha < 0.01) discard;
 
-  // toon lighting on the shell normal, plus a fake "puff" gradient: thicker
-  // cloud (shape >> cut) reads brighter in its core
-  float diff = toonShade(max(dot(dir, uSunDir), 0.0));
+  // rounded shading: bend the shell normal by the density gradient so every
+  // puff gets its own lit and shaded side, then quantize with the toon ramp
+  vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 t1 = normalize(cross(ref, dir));
+  vec3 t2 = cross(dir, t1);
+  float e = 0.02;
+  float gx = cloudBase(normalize(dir + t1 * e)) - base;
+  float gy = cloudBase(normalize(dir + t2 * e)) - base;
+  vec3 n = normalize(dir - (t1 * gx + t2 * gy) * 9.0);
+
+  float diff = toonShade(max(dot(n, uSunDir), 0.0));
   float core = smoothstep(cut, cut + 0.35, shape);
-  vec3 col = mix(uCloudShadow, uCloudColor, clamp(diff * (0.55 + core * 0.45) + 0.25, 0.0, 1.0));
+  float lum = clamp(uAmbient * 0.5 + diff * (0.70 + core * 0.35), 0.0, 1.0);
+  vec3 col = mix(uCloudShadow, uCloudColor, lum);
+
+  // cartoon "ink" band just inside the silhouette
+  float inner = smoothstep(cut + edgeSoft * 1.2, cut + edgeSoft * 3.0, shape);
+  col = mix(uCloudShadow * 0.9, col, 0.4 + 0.6 * inner);
 
   gl_FragColor = vec4(col, alpha * uCloudDensity);
 }

@@ -35,6 +35,19 @@ export const DEFAULT_PARAMS = {
   snowLine: 0.72,          // 0..1 height fraction where snow starts
   polarCaps: 0.55,         // 0..1 strength of latitude snow
 
+  // biomes (temperature x moisture grid; grass/forest double as the
+  // temperate mid/wet cells)
+  biomeAmount: 1.0,        // 0 = plain altitude bands, 1 = full biome map
+  tempBias: 0.0,           // -1 frozen .. +1 scorching
+  moistureScale: 2.0,      // frequency of the moisture field
+  bioTundra:  [0.610, 0.630, 0.540],
+  bioSteppe:  [0.470, 0.550, 0.340],
+  bioTaiga:   [0.180, 0.380, 0.270],
+  bioShrub:   [0.580, 0.550, 0.310],
+  bioDesert:  [0.870, 0.700, 0.400],
+  bioSavanna: [0.660, 0.630, 0.270],
+  bioJungle:  [0.060, 0.330, 0.140],
+
   // palette (RGB 0..1)
   colDeep:    [0.030, 0.135, 0.330],
   colShallow: [0.070, 0.560, 0.680],
@@ -62,6 +75,8 @@ export const DEFAULT_PARAMS = {
   cloudDetail: 0.45,
   cloudAltitude: 0.055,    // fraction of radius
   cloudSpeed: 0.6,
+  cloudPuff: 0.6,          // vertex puffiness of the cloud silhouettes
+  cloudShadowStrength: 0.35, // hard shadows cast on terrain/water
   cloudColor:  [1.0, 1.0, 1.0],
   cloudShadow: [0.52, 0.58, 0.72],
 
@@ -90,6 +105,9 @@ export const PLANET_PRESETS = {
     label: 'Desert',
     patch: {
       seaLevel: 0.30, ridge: 0.72, warp: 0.85, continents: 0.55,
+      tempBias: 0.7, moistureScale: 2.4,
+      bioShrub: [0.720, 0.480, 0.260], bioSavanna: [0.780, 0.550, 0.280],
+      bioJungle: [0.550, 0.420, 0.220], bioDesert: [0.900, 0.620, 0.330],
       colDeep: [0.045, 0.230, 0.420], colShallow: [0.110, 0.700, 0.680],
       colSand: [0.900, 0.560, 0.330], colGrass: [0.800, 0.420, 0.240],
       colForest: [0.620, 0.300, 0.180], colRock: [0.560, 0.280, 0.190],
@@ -101,6 +119,9 @@ export const PLANET_PRESETS = {
     label: 'Ice',
     patch: {
       seaLevel: 0.38, snowLine: 0.30, polarCaps: 1.0,
+      tempBias: -0.8,
+      bioTundra: [0.720, 0.780, 0.800], bioSteppe: [0.600, 0.700, 0.720],
+      bioTaiga: [0.380, 0.540, 0.560],
       colDeep: [0.070, 0.190, 0.330], colShallow: [0.280, 0.640, 0.720],
       colSand: [0.740, 0.820, 0.860], colGrass: [0.560, 0.700, 0.740],
       colForest: [0.420, 0.560, 0.620], colRock: [0.580, 0.640, 0.700],
@@ -113,6 +134,7 @@ export const PLANET_PRESETS = {
       waterEnabled: false, cloudsEnabled: false, atmoStrength: 0.15,
       craters: 0.9, craterScale: 7.0, ridge: 0.25, continents: 0.2,
       heightScale: 90, seaLevel: 0.0, polarCaps: 0.0, snowLine: 1.1,
+      biomeAmount: 0.0, cloudShadowStrength: 0.0,
       colSand: [0.520, 0.510, 0.500], colGrass: [0.430, 0.420, 0.415],
       colForest: [0.360, 0.355, 0.350], colRock: [0.300, 0.295, 0.290],
       colDeep: [0.180, 0.180, 0.185], colShallow: [0.280, 0.280, 0.285],
@@ -123,6 +145,7 @@ export const PLANET_PRESETS = {
     label: 'Lava',
     patch: {
       seaLevel: 0.34, waterOpacity: 0.95, cloudsEnabled: false,
+      biomeAmount: 0.0, cloudShadowStrength: 0.0,
       colDeep: [0.750, 0.150, 0.020], colShallow: [1.000, 0.520, 0.050],
       colFoam: [1.000, 0.820, 0.300],
       colSand: [0.240, 0.150, 0.130], colGrass: [0.300, 0.180, 0.140],
@@ -135,6 +158,10 @@ export const PLANET_PRESETS = {
   candy: {
     label: 'Candy',
     patch: {
+      bioTundra: [0.850, 0.800, 0.950], bioSteppe: [0.650, 0.850, 0.800],
+      bioTaiga: [0.450, 0.700, 0.850], bioShrub: [0.950, 0.750, 0.600],
+      bioDesert: [1.000, 0.800, 0.650], bioSavanna: [0.800, 0.900, 0.550],
+      bioJungle: [0.300, 0.700, 0.550],
       colDeep: [0.360, 0.100, 0.420], colShallow: [0.850, 0.350, 0.750],
       colSand: [1.000, 0.850, 0.900], colGrass: [0.480, 0.850, 0.700],
       colForest: [0.250, 0.650, 0.600], colRock: [0.700, 0.550, 0.850],

@@ -31,6 +31,33 @@ export function TerrainPanel({ params: p, onParam }) {
   );
 }
 
+export function BiomesPanel({ params: p, onParam }) {
+  return (
+    <>
+      <Section title="Climate">
+        <Slider label="Biome amount" value={p.biomeAmount} min={0} max={1} step={0.05} onChange={(v) => onParam('biomeAmount', v)} title="0 = plain altitude bands, 1 = full temperature/moisture biome map" />
+        <Slider label="Temperature" value={p.tempBias} min={-1} max={1} step={0.05} onChange={(v) => onParam('tempBias', v)} title="Shifts the whole planet colder or hotter" />
+        <Slider label="Moisture scale" value={p.moistureScale} min={0.5} max={5} step={0.1} digits={1} onChange={(v) => onParam('moistureScale', v)} title="Frequency of the wet/dry regions" />
+      </Section>
+      <Section title="Cold biomes">
+        <ColorRow label="Tundra (dry)" value={p.bioTundra} onChange={(v) => onParam('bioTundra', v)} />
+        <ColorRow label="Steppe (mid)" value={p.bioSteppe} onChange={(v) => onParam('bioSteppe', v)} />
+        <ColorRow label="Taiga (wet)" value={p.bioTaiga} onChange={(v) => onParam('bioTaiga', v)} />
+      </Section>
+      <Section title="Temperate biomes">
+        <ColorRow label="Shrubland (dry)" value={p.bioShrub} onChange={(v) => onParam('bioShrub', v)} />
+        <ColorRow label="Grassland (mid)" value={p.colGrass} onChange={(v) => onParam('colGrass', v)} />
+        <ColorRow label="Forest (wet)" value={p.colForest} onChange={(v) => onParam('colForest', v)} />
+      </Section>
+      <Section title="Hot biomes">
+        <ColorRow label="Desert (dry)" value={p.bioDesert} onChange={(v) => onParam('bioDesert', v)} />
+        <ColorRow label="Savanna (mid)" value={p.bioSavanna} onChange={(v) => onParam('bioSavanna', v)} />
+        <ColorRow label="Jungle (wet)" value={p.bioJungle} onChange={(v) => onParam('bioJungle', v)} />
+      </Section>
+    </>
+  );
+}
+
 export function StylePanel({ params: p, onParam, onPreset }) {
   return (
     <>
@@ -59,8 +86,6 @@ export function StylePanel({ params: p, onParam, onPreset }) {
         <ColorRow label="Deep water" value={p.colDeep} onChange={(v) => onParam('colDeep', v)} />
         <ColorRow label="Shallow water" value={p.colShallow} onChange={(v) => onParam('colShallow', v)} />
         <ColorRow label="Sand" value={p.colSand} onChange={(v) => onParam('colSand', v)} />
-        <ColorRow label="Grass" value={p.colGrass} onChange={(v) => onParam('colGrass', v)} />
-        <ColorRow label="Forest" value={p.colForest} onChange={(v) => onParam('colForest', v)} />
         <ColorRow label="Rock" value={p.colRock} onChange={(v) => onParam('colRock', v)} />
         <ColorRow label="Snow" value={p.colSnow} onChange={(v) => onParam('colSnow', v)} />
         <ColorRow label="Foam" value={p.colFoam} onChange={(v) => onParam('colFoam', v)} />
@@ -103,10 +128,12 @@ export function CloudsPanel({ params: p, onParam }) {
         <Slider label="Coverage" value={p.cloudCoverage} min={0} max={1} step={0.02} onChange={(v) => onParam('cloudCoverage', v)} />
         <Slider label="Softness" value={p.cloudSoftness} min={0.005} max={0.4} step={0.005} digits={3} onChange={(v) => onParam('cloudSoftness', v)} title="Low = hard cartoon edges" />
         <Slider label="Density" value={p.cloudDensity} min={0.2} max={1} step={0.02} onChange={(v) => onParam('cloudDensity', v)} />
+        <Slider label="Shadows" value={p.cloudShadowStrength} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudShadowStrength', v)} title="Hard shadows the clouds cast on the surface" />
       </Section>
       <Section title="Shape & motion">
         <Slider label="Scale" value={p.cloudScale} min={1} max={10} step={0.1} digits={1} onChange={(v) => onParam('cloudScale', v)} />
         <Slider label="Detail" value={p.cloudDetail} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudDetail', v)} />
+        <Slider label="Puffiness" value={p.cloudPuff} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudPuff', v)} title="Vertex-displaced cumulus bumps on the silhouette" />
         <Slider label="Altitude" value={p.cloudAltitude} min={0.01} max={0.15} step={0.005} digits={3} onChange={(v) => onParam('cloudAltitude', v)} />
         <Slider label="Speed" value={p.cloudSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('cloudSpeed', v)} />
       </Section>
@@ -223,6 +250,7 @@ export function ExportPanel({ onExport, onScreenshot }) {
 
 export const PANELS = [
   { id: 'terrain', label: 'Terrain', component: TerrainPanel },
+  { id: 'biomes', label: 'Biomes', component: BiomesPanel },
   { id: 'style', label: 'Style', component: StylePanel },
   { id: 'water', label: 'Water', component: WaterPanel },
   { id: 'clouds', label: 'Clouds', component: CloudsPanel },

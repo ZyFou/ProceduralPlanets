@@ -3,6 +3,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
 import { zipSync } from 'fflate';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
+import { TOON_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { PlanetHeightSampler } from './PlanetHeightSampler.js';
 
 const FACES = [
@@ -22,85 +23,30 @@ void main() {
 }
 `;
 
+// Same shared surface GLSL as the live terrain material, so the baked texture
+// (biomes included) always matches the viewport.
 const BAKE_FRAGMENT = /* glsl */ `
 precision highp float;
 
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
+${TOON_GLSL}
+${SURFACE_GLSL}
 
 uniform vec3 uFaceOrigin;
 uniform vec3 uFaceU;
 uniform vec3 uFaceV;
 uniform bool uBakeLighting;
-uniform float uToonEnabled;
-uniform float uToonBands;
-uniform float uToonSoftness;
-uniform float uSunIntensity;
-uniform float uAmbient;
-uniform vec3 uSunDir;
-uniform float uBandSoftness;
-uniform float uSnowLine;
-uniform float uPolarCaps;
-uniform vec3 uColDeep;
-uniform vec3 uColShallow;
-uniform vec3 uColSand;
-uniform vec3 uColGrass;
-uniform vec3 uColForest;
-uniform vec3 uColRock;
-uniform vec3 uColSnow;
 
 varying vec2 vUv;
-
-float band(float edge, float v) {
-  return smoothstep(edge - uBandSoftness, edge + uBandSoftness, v);
-}
-
-float toonShade(float diff) {
-  if (uToonEnabled < 0.5) return diff;
-  float bands = max(uToonBands, 1.0);
-  float x = diff * bands;
-  float f = floor(x);
-  float soft = max(uToonSoftness, 0.001) * bands;
-  float edge = smoothstep(0.5 - soft, 0.5 + soft, x - f);
-  return clamp((f + edge) / bands, 0.0, 1.0);
-}
 
 void main() {
   vec3 cube = uFaceOrigin + vUv.x * uFaceU + vUv.y * uFaceV;
   vec3 dir = normalize(cube);
 
-  vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-  vec3 t1 = normalize(cross(ref, dir));
-  vec3 t2 = cross(dir, t1);
-  float eps = 0.0012;
-  float hC = height01(dir);
-  float hA = height01(normalize(dir + t1 * eps));
-  float hB = height01(normalize(dir + t2 * eps));
-  vec3 pC = dir * (uRadius + hC * uHeightScale);
-  vec3 pA = normalize(dir + t1 * eps) * (uRadius + hA * uHeightScale);
-  vec3 pB = normalize(dir + t2 * eps) * (uRadius + hB * uHeightScale);
-  vec3 n = normalize(cross(pA - pC, pB - pC));
-  if (dot(n, dir) < 0.0) n = -n;
-
-  float slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
-  float sea = uSeaLevel;
-  vec3 col;
-  if (hC < sea) {
-    float depth = clamp((sea - hC) / max(sea, 1e-4), 0.0, 1.0);
-    col = mix(uColSand * 0.72, uColDeep * 0.55, band(0.28, depth));
-  } else {
-    float rel = (hC - sea) / max(1.0 - sea, 1e-4);
-    col = uColSand;
-    col = mix(col, uColGrass, band(0.05, rel));
-    col = mix(col, uColForest, band(0.32, rel));
-    col = mix(col, uColRock, band(0.62, rel));
-    col = mix(col, uColSnow, band(uSnowLine, rel + (1.0 - slope) * 0.02));
-    col = mix(col, uColRock, band(0.42, slope) * (1.0 - band(uSnowLine, rel)));
-  }
-
-  float lat = abs(dir.y) + (vnoise3(dir * 6.0 + uSeedOffset) - 0.5) * 0.14;
-  float polar = smoothstep(0.78, 0.92, lat) * uPolarCaps;
-  col = mix(col, uColSnow, polar * step(sea, hC));
+  float h, slope;
+  vec3 n = terrainNormal(dir, h, slope);
+  vec3 col = surfaceColor(dir, h, slope);
 
   if (uBakeLighting) {
     float diff = toonShade(max(dot(n, uSunDir), 0.0));

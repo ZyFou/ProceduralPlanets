@@ -81,7 +81,8 @@ export class Engine {
     this.scene.add(this.water);
 
     this.cloudMat = createCloudMaterial(this.uniforms, oct);
-    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 72), this.cloudMat);
+    // dense sphere: the cloud vertex shader displaces it into puffy silhouettes
+    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 128), this.cloudMat);
     this.clouds.renderOrder = 20;
     this.clouds.frustumCulled = false;
     this.scene.add(this.clouds);
@@ -109,6 +110,10 @@ export class Engine {
     this.water.visible = !!this.params.waterEnabled;
     this.clouds.visible = !!this.params.cloudsEnabled;
     this.atmo.visible = !!this.params.atmoEnabled && this.params.atmoStrength > 0.01;
+    // terrain/water sample the cloud field for cast shadows — kill them too
+    // when the cloud layer is off
+    this.uniforms.uCloudShadowStr.value =
+      this.params.cloudsEnabled ? this.params.cloudShadowStrength : 0;
   }
 
   _applyControlLimits() {
@@ -162,6 +167,7 @@ export class Engine {
       case 'waterEnabled':
       case 'cloudsEnabled':
       case 'atmoEnabled':
+      case 'cloudShadowStrength':
         this._syncShellVisibility();
         return;
       case 'atmoStrength':
