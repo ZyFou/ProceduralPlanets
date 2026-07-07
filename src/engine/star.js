@@ -117,6 +117,35 @@ void main() {
 `;
 }
 
+/**
+ * Equirectangular bake fragment for export: maps UV -> sphere direction using
+ * three's SphereGeometry UV convention, then evaluates the SAME starSurface()
+ * body as the viewport (custom shader included). viewDir = dir bakes the
+ * view-independent surface — limb darkening and rim glow drop out, which is
+ * what a texture wrapped on a sphere wants.
+ */
+export function buildStarBakeFragment(body) {
+  return /* glsl */ `
+precision highp float;
+
+${NOISE_UNIFORMS_GLSL}
+${NOISE_FUNCTIONS_GLSL}
+${STAR_UNIFORMS_GLSL}
+
+varying vec2 vUv;
+
+${body}
+
+void main() {
+  float phi = vUv.x * 6.28318530718;
+  float theta = (1.0 - vUv.y) * 3.14159265359;
+  vec3 dir = vec3(-cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));
+  vec3 col = starSurface(dir, dir, uTime);
+  gl_FragColor = vec4(pow(max(col, vec3(0.0)), vec3(1.0 / 2.2)), 1.0);
+}
+`;
+}
+
 export function createStarSurfaceMaterial(shared, body) {
   return new THREE.ShaderMaterial({
     uniforms: { ...shared },

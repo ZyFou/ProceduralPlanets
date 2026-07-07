@@ -329,7 +329,11 @@ export class Engine {
     if (wasRunning) this.renderer.setAnimationLoop(null);
     try {
       this.renderOnce();
-      await PlanetExporter.export(this.renderer, this.params, this.uniforms, options, onProgress);
+      await PlanetExporter.export(
+        this.renderer, this.params, this.uniforms,
+        { ...options, starShaderBody: this.starShaderBody },
+        onProgress
+      );
     } finally {
       if (wasRunning && !this._disposed) this.renderer.setAnimationLoop(() => this._tick());
       this._resize();

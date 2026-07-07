@@ -265,7 +265,8 @@ const TEX_OPTIONS = [
   { value: '4096', label: '4096 x 4096 (UHD)' },
 ];
 
-export function ExportPanel({ onExport, onScreenshot }) {
+export function ExportPanel({ params: p, onExport, onScreenshot }) {
+  const isStar = p.mode === 'star';
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [opt, setOpt] = useState({
@@ -299,7 +300,7 @@ export function ExportPanel({ onExport, onScreenshot }) {
       <Section title="Quick export">
         <div className="export-actions">
           <button type="button" className="action-btn primary" onClick={doExport} disabled={busy}>
-            {busy ? 'Exporting...' : 'Export Planet'}
+            {busy ? 'Exporting...' : isStar ? 'Export Star' : 'Export Planet'}
           </button>
           <button type="button" className="action-btn" onClick={onScreenshot} disabled={busy}>
             Screenshot
@@ -310,7 +311,7 @@ export function ExportPanel({ onExport, onScreenshot }) {
 
       <Section title="Format & resolution">
         <SelectRow label="Format" value={opt.format} options={FORMAT_OPTIONS} onChange={(v) => set('format', v)} />
-        <Toggle label="Include Planet Mesh" value={opt.includeMesh} onChange={(v) => set('includeMesh', v)} />
+        <Toggle label={isStar ? 'Include Star Mesh' : 'Include Planet Mesh'} value={opt.includeMesh} onChange={(v) => set('includeMesh', v)} />
         {opt.includeMesh && (
           <SelectRow label="Mesh Resolution" value={opt.meshRes} options={RES_OPTIONS} onChange={(v) => set('meshRes', v)} />
         )}
@@ -320,14 +321,18 @@ export function ExportPanel({ onExport, onScreenshot }) {
         <Toggle label="Bake Color Texture" value={opt.bakeColor} onChange={(v) => set('bakeColor', v)} />
         {opt.bakeColor && (
           <>
-            <Toggle label="Bake Lighting into Color" value={opt.bakeLighting} onChange={(v) => set('bakeLighting', v)} />
+            {!isStar && (
+              <Toggle label="Bake Lighting into Color" value={opt.bakeLighting} onChange={(v) => set('bakeLighting', v)} />
+            )}
             <SelectRow label="Texture Size" value={opt.texRes} options={TEX_OPTIONS} onChange={(v) => set('texRes', v)} />
           </>
         )}
       </Section>
 
       <Section title="Additional assets" defaultOpen={false}>
-        <Toggle label="Include Water Shell" value={opt.exportWater} onChange={(v) => set('exportWater', v)} />
+        {!isStar && (
+          <Toggle label="Include Water Shell" value={opt.exportWater} onChange={(v) => set('exportWater', v)} />
+        )}
         <Toggle label="Export Preset (JSON)" value={opt.exportPreset} onChange={(v) => set('exportPreset', v)} />
       </Section>
     </>
@@ -341,7 +346,8 @@ export const PANELS = [
   { id: 'water', label: 'Water', component: WaterPanel, modes: ['planet'] },
   { id: 'clouds', label: 'Clouds', component: CloudsPanel, modes: ['planet'] },
   { id: 'star', label: 'Star', component: StarPanel, modes: ['star'] },
-  { id: 'shader', label: 'Shader', component: ShaderPanel, modes: ['star'] },
+  // Shader tab hidden for now — ShaderPanel + Engine.setStarShader stay wired,
+  // re-add { id: 'shader', modes: ['star'] } here to bring it back.
   { id: 'perf', label: 'Perf', component: PerformancePanel, modes: ['planet'] },
-  { id: 'export', label: 'Export', component: ExportPanel, modes: ['planet'] },
+  { id: 'export', label: 'Export', component: ExportPanel, modes: ['planet', 'star'] },
 ];

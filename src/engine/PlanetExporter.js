@@ -5,6 +5,7 @@ import { zipSync } from 'fflate';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import { TOON_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { PlanetHeightSampler } from './PlanetHeightSampler.js';
+import { STAR_OCTAVES, DEFAULT_STAR_BODY, buildStarBakeFragment } from './star.js';
 
 const FACES = [
   { name: 'pos_z', origin: [-1, -1, 1], u: [2, 0, 0], v: [0, 2, 0] },
@@ -67,17 +68,17 @@ function canvasToPng(canvas) {
   });
 }
 
-function renderTargetToCanvas(renderer, rt, size) {
-  const px = new Uint8Array(size * size * 4);
-  renderer.readRenderTargetPixels(rt, 0, 0, size, size, px);
+function renderTargetToCanvas(renderer, rt, w, h = w) {
+  const px = new Uint8Array(w * h * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
-  const img = ctx.createImageData(size, size);
-  for (let y = 0; y < size; y++) {
-    const src = (size - 1 - y) * size * 4;
-    img.data.set(px.subarray(src, src + size * 4), y * size * 4);
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const src = (h - 1 - y) * w * 4;
+    img.data.set(px.subarray(src, src + w * 4), y * w * 4);
   }
   ctx.putImageData(img, 0, 0);
   return canvas;
@@ -108,6 +109,9 @@ function cloneUniforms(uniforms, options) {
 
 export class PlanetExporter {
   static async export(renderer, params, uniforms, options = {}, onProgress = () => {}) {
+    if (params.mode === 'star') {
+      return PlanetExporter.exportStar(renderer, params, uniforms, options, onProgress);
+    }
     const format = options.format === 'obj' ? 'obj' : 'glb';
     const meshRes = Math.max(8, Math.min(1024, parseInt(options.meshRes, 10) || 128));
     const texRes = Math.max(64, Math.min(4096, parseInt(options.texRes, 10) || 1024));
@@ -273,5 +277,122 @@ export class PlanetExporter {
     onProgress('Compressing ZIP');
     const zipped = zipSync(zipFiles);
     downloadBlob(new Blob([zipped], { type: 'application/zip' }), `planet_export-${params.seed}.zip`);
+  }
+
+  // -------------------------------------------------------------------- star
+  // Star export: one UV sphere + an equirect emissive texture baked from the
+  // SAME starSurface() GLSL as the viewport (custom shader included via
+  // options.starShaderBody). The texture goes into both map and emissiveMap so
+  // the star reads self-lit in any glTF viewer.
+  static async exportStar(renderer, params, uniforms, options = {}, onProgress = () => {}) {
+    const format = options.format === 'obj' ? 'obj' : 'glb';
+    const meshRes = Math.max(16, Math.min(1024, parseInt(options.meshRes, 10) || 128));
+    const texRes = Math.max(128, Math.min(4096, parseInt(options.texRes, 10) || 1024));
+    const includeMesh = options.includeMesh !== false;
+    const bakeColor = options.bakeColor !== false;
+    const exportPreset = options.exportPreset !== false;
+    const starBody = options.starShaderBody || DEFAULT_STAR_BODY;
+
+    const group = new THREE.Group();
+    group.name = 'Star';
+    const zipFiles = {};
+
+    let map = null;
+    if (includeMesh && bakeColor) {
+      onProgress('Baking star texture');
+      const quadScene = new THREE.Scene();
+      const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const bakeUniforms = cloneUniforms(uniforms, options);
+      const bakeMaterial = new THREE.ShaderMaterial({
+        defines: { OCTAVES: STAR_OCTAVES },
+        uniforms: bakeUniforms,
+        vertexShader: BAKE_VERTEX,
+        fragmentShader: buildStarBakeFragment(starBody),
+      });
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bakeMaterial);
+      quadScene.add(quad);
+
+      const texW = texRes;
+      const texH = Math.max(64, texRes / 2);   // equirect is 2:1
+      const rt = new THREE.WebGLRenderTarget(texW, texH);
+      renderer.setRenderTarget(rt);
+      renderer.render(quadScene, quadCamera);
+      renderer.setRenderTarget(null);
+      const canvas = renderTargetToCanvas(renderer, rt, texW, texH);
+      rt.dispose();
+      bakeMaterial.dispose();
+      quad.geometry.dispose();
+
+      map = new THREE.CanvasTexture(canvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+      map._exportCanvas = canvas;
+    }
+
+    if (includeMesh) {
+      onProgress('Building star mesh');
+      const geometry = new THREE.SphereGeometry(
+        params.radius, meshRes, Math.max(8, Math.round(meshRes / 2))
+      );
+      const tint = new THREE.Color(...params.starColorMid);
+      const material = new THREE.MeshStandardMaterial({
+        name: 'Star_Surface',
+        color: map ? 0xffffff : tint,
+        map,
+        emissive: map ? new THREE.Color(0xffffff) : tint,
+        emissiveMap: map,
+        roughness: 1.0,
+        metalness: 0.0,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = 'Star_Surface';
+      group.add(mesh);
+    }
+
+    onProgress(`Packaging ${format.toUpperCase()}`);
+    if (includeMesh) {
+      if (format === 'glb') {
+        const model = await new Promise((resolve) => {
+          new GLTFExporter().parse(
+            group,
+            (result) => resolve(new Uint8Array(result)),
+            (err) => {
+              console.error(err);
+              resolve(null);
+            },
+            { binary: true }
+          );
+        });
+        if (model) zipFiles['star.glb'] = model;
+      } else {
+        const objText = new OBJExporter().parse(group);
+        zipFiles['star.obj'] = new TextEncoder().encode(objText);
+        for (const child of group.children) {
+          if (child.material?.map?._exportCanvas) {
+            zipFiles[`textures/${child.name}.png`] = await canvasToPng(child.material.map._exportCanvas);
+          }
+        }
+      }
+    }
+
+    if (exportPreset) {
+      zipFiles['star_preset.json'] = new TextEncoder().encode(
+        JSON.stringify(
+          { app: 'procedural-planets', mode: 'star', version: 1, params, starShader: starBody },
+          null, 2
+        )
+      );
+    }
+
+    group.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.geometry.dispose();
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    });
+
+    if (Object.keys(zipFiles).length === 0) return;
+    onProgress('Compressing ZIP');
+    const zipped = zipSync(zipFiles);
+    downloadBlob(new Blob([zipped], { type: 'application/zip' }), `star_export-${params.seed}.zip`);
   }
 }
