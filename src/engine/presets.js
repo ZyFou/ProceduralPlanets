@@ -4,7 +4,36 @@
 // world/geometry rebuilds for the few structural keys.
 // ============================================================================
 
+// Star-mode parameters (flat, star-prefixed so the two domains never collide).
+export const STAR_DEFAULTS = {
+  starColorCore: [1.000, 0.930, 0.550],
+  starColorMid:  [1.000, 0.550, 0.100],
+  starColorEdge: [0.860, 0.220, 0.020],
+  starSpotColor: [0.420, 0.100, 0.020],
+  starNoiseScale: 3.0,
+  starTurbulence: 0.55,    // domain warp of the granulation
+  starGranules: 0.60,      // granulation contrast
+  starFlowSpeed: 1.0,      // how fast the surface boils
+  starSpots: 0.35,         // sunspot coverage
+  starSpotScale: 2.4,
+  starLimbDarken: 0.55,
+  starBands: 5,            // posterize levels (0 = smooth)
+  starGlow: 0.5,           // additive hot rim on the disc
+  starPulseAmount: 0.015,  // radius breathing / surface wobble
+  starPulseSpeed: 1.2,
+  starCoronaColor: [1.000, 0.550, 0.120],
+  starCoronaSize: 0.5,     // halo extent (fraction of radius)
+  starCoronaStrength: 1.0,
+  starFlares: 0.7,         // wispy streaks in the corona
+};
+
+export const STAR_KEYS = new Set(Object.keys(STAR_DEFAULTS));
+
 export const DEFAULT_PARAMS = {
+  // mode: 'planet' | 'star' — toggles which scene set is live
+  mode: 'planet',
+  ...STAR_DEFAULTS,
+
   // world / shape
   seed: 1337,
   radius: 2000,
@@ -155,6 +184,79 @@ export const PLANET_PRESETS = {
       waveSpeed: 0.25,
     },
   },
+  ocean: {
+    label: 'Ocean',
+    patch: {
+      seaLevel: 0.62, continents: 0.50, noiseScale: 3.2, warp: 0.9,
+      ridge: 0.45, heightScale: 110, tempBias: 0.25, moistureScale: 2.6,
+      colDeep: [0.020, 0.100, 0.300], colShallow: [0.100, 0.620, 0.660],
+      colSand: [0.920, 0.850, 0.620], colGrass: [0.300, 0.650, 0.320],
+      colForest: [0.100, 0.430, 0.230],
+      cloudCoverage: 0.55, foamWidth: 0.18,
+      atmoColor: [0.30, 0.65, 1.0], atmoStrength: 1.0,
+    },
+  },
+  mars: {
+    label: 'Mars',
+    patch: {
+      waterEnabled: false, cloudsEnabled: false, cloudShadowStrength: 0.0,
+      atmoStrength: 0.45, atmoColor: [0.90, 0.55, 0.35],
+      seaLevel: 0.0, craters: 0.45, craterScale: 9.0, ridge: 0.8,
+      mountainScale: 3.0, biomeAmount: 0.0, heightScale: 160, continents: 0.4,
+      colSand: [0.720, 0.380, 0.200], colGrass: [0.620, 0.300, 0.160],
+      colForest: [0.480, 0.220, 0.120], colRock: [0.360, 0.170, 0.100],
+      colDeep: [0.300, 0.140, 0.080], colShallow: [0.450, 0.220, 0.120],
+      colSnow: [0.920, 0.880, 0.840], snowLine: 0.95, polarCaps: 0.65,
+    },
+  },
+  swamp: {
+    label: 'Swamp',
+    patch: {
+      seaLevel: 0.52, heightScale: 80, ridge: 0.2, warp: 1.2, continents: 0.35,
+      tempBias: 0.35, moistureScale: 3.5, waterOpacity: 0.9, waterSpec: 0.25,
+      waveSpeed: 0.3, foamWidth: 0.08,
+      bioJungle: [0.080, 0.300, 0.120], bioSavanna: [0.350, 0.480, 0.180],
+      bioDesert: [0.500, 0.500, 0.280], bioShrub: [0.420, 0.460, 0.220],
+      colDeep: [0.050, 0.150, 0.100], colShallow: [0.200, 0.400, 0.200],
+      colFoam: [0.700, 0.800, 0.550], colSand: [0.450, 0.450, 0.280],
+      colGrass: [0.300, 0.450, 0.180], colForest: [0.120, 0.280, 0.120],
+      colRock: [0.300, 0.320, 0.240], colSnow: [0.850, 0.880, 0.820],
+      snowLine: 0.95, polarCaps: 0.1,
+      cloudCoverage: 0.60, cloudColor: [0.92, 0.95, 0.85],
+      atmoColor: [0.55, 0.75, 0.45],
+    },
+  },
+  alien: {
+    label: 'Alien',
+    patch: {
+      tempBias: 0.2, moistureScale: 3.0, waterOpacity: 0.85, snowLine: 0.85,
+      bioTundra: [0.550, 0.750, 0.600], bioSteppe: [0.450, 0.700, 0.350],
+      bioTaiga: [0.200, 0.550, 0.450], bioShrub: [0.600, 0.700, 0.250],
+      bioDesert: [0.750, 0.720, 0.300], bioSavanna: [0.550, 0.750, 0.200],
+      bioJungle: [0.150, 0.500, 0.550],
+      colDeep: [0.200, 0.020, 0.300], colShallow: [0.550, 0.150, 0.750],
+      colFoam: [0.950, 0.750, 1.000], colSand: [0.750, 0.700, 0.450],
+      colGrass: [0.350, 0.700, 0.300], colForest: [0.100, 0.450, 0.400],
+      colRock: [0.350, 0.300, 0.450], colSnow: [0.900, 1.000, 0.900],
+      cloudColor: [0.85, 1.00, 0.75], cloudShadow: [0.45, 0.60, 0.45],
+      atmoColor: [0.45, 1.00, 0.35], atmoStrength: 1.1,
+    },
+  },
+  ashen: {
+    label: 'Ashen',
+    patch: {
+      seaLevel: 0.22, waterOpacity: 0.95, waveSpeed: 0.2, waterSpec: 0.15,
+      biomeAmount: 0.0, heightScale: 180, ridge: 1.0, mountainScale: 3.2,
+      colDeep: [0.600, 0.100, 0.010], colShallow: [1.000, 0.450, 0.030],
+      colFoam: [1.000, 0.850, 0.350],
+      colSand: [0.160, 0.150, 0.160], colGrass: [0.220, 0.200, 0.210],
+      colForest: [0.280, 0.260, 0.270], colRock: [0.100, 0.090, 0.100],
+      colSnow: [0.550, 0.520, 0.540], snowLine: 0.88, polarCaps: 0.0,
+      cloudCoverage: 0.40, cloudColor: [0.35, 0.33, 0.36],
+      cloudShadow: [0.12, 0.11, 0.13], cloudShadowStrength: 0.5,
+      atmoColor: [0.85, 0.30, 0.08], atmoStrength: 0.7, ambient: 0.28,
+    },
+  },
   candy: {
     label: 'Candy',
     patch: {
@@ -168,6 +270,73 @@ export const PLANET_PRESETS = {
       colSnow: [1.000, 0.970, 1.000], colFoam: [1.000, 0.900, 0.980],
       cloudColor: [1.0, 0.92, 0.97], atmoColor: [0.95, 0.50, 0.90],
       toonBands: 3, cloudCoverage: 0.40,
+    },
+  },
+};
+
+// Star style presets — patches over STAR_DEFAULTS (star keys only, so a star
+// preset never clobbers planet customization and vice versa).
+export const STAR_PRESETS = {
+  sun: {
+    label: 'Sun',
+    patch: {}, // the defaults ARE a G-type toon sun
+  },
+  redGiant: {
+    label: 'Red Giant',
+    patch: {
+      starColorCore: [1.000, 0.600, 0.250], starColorMid: [0.950, 0.300, 0.050],
+      starColorEdge: [0.550, 0.080, 0.020], starSpotColor: [0.250, 0.040, 0.010],
+      starNoiseScale: 2.0, starGranules: 0.50, starSpots: 0.55, starSpotScale: 1.6,
+      starFlowSpeed: 0.5, starPulseAmount: 0.035, starPulseSpeed: 0.6,
+      starCoronaColor: [1.000, 0.350, 0.080], starCoronaSize: 0.9,
+      starCoronaStrength: 1.2, starFlares: 1.0, starLimbDarken: 0.7,
+    },
+  },
+  blueGiant: {
+    label: 'Blue Giant',
+    patch: {
+      starColorCore: [0.880, 0.960, 1.000], starColorMid: [0.450, 0.650, 1.000],
+      starColorEdge: [0.130, 0.240, 0.850], starSpotColor: [0.060, 0.100, 0.450],
+      starNoiseScale: 3.6, starFlowSpeed: 1.5, starGranules: 0.7,
+      starSpots: 0.15, starLimbDarken: 0.4, starGlow: 0.8,
+      starCoronaColor: [0.500, 0.700, 1.000], starCoronaSize: 0.6,
+      starCoronaStrength: 1.1, starFlares: 0.8,
+    },
+  },
+  whiteDwarf: {
+    label: 'White Dwarf',
+    patch: {
+      starColorCore: [1.000, 1.000, 1.000], starColorMid: [0.850, 0.920, 1.000],
+      starColorEdge: [0.600, 0.720, 0.950], starSpotColor: [0.400, 0.480, 0.700],
+      starNoiseScale: 5.0, starGranules: 0.30, starSpots: 0.08,
+      starFlowSpeed: 0.7, starGlow: 0.9, starBands: 3,
+      starPulseAmount: 0.006, starPulseSpeed: 2.5,
+      starCoronaColor: [0.750, 0.850, 1.000], starCoronaSize: 0.25,
+      starCoronaStrength: 0.9, starFlares: 0.4, starLimbDarken: 0.35,
+    },
+  },
+  ember: {
+    label: 'Ember',
+    patch: {
+      starColorCore: [1.000, 0.450, 0.150], starColorMid: [0.500, 0.120, 0.040],
+      starColorEdge: [0.120, 0.030, 0.020], starSpotColor: [0.040, 0.015, 0.010],
+      starNoiseScale: 2.6, starGranules: 0.85, starSpots: 0.75, starSpotScale: 1.8,
+      starFlowSpeed: 0.3, starGlow: 0.25, starLimbDarken: 0.85,
+      starCoronaColor: [0.900, 0.250, 0.060], starCoronaSize: 0.3,
+      starCoronaStrength: 0.5, starFlares: 0.5,
+      starPulseAmount: 0.02, starPulseSpeed: 0.4,
+    },
+  },
+  eldritch: {
+    label: 'Eldritch',
+    patch: {
+      starColorCore: [0.750, 1.000, 0.550], starColorMid: [0.200, 0.850, 0.450],
+      starColorEdge: [0.050, 0.300, 0.350], starSpotColor: [0.300, 0.050, 0.450],
+      starNoiseScale: 3.4, starTurbulence: 1.3, starGranules: 0.8,
+      starFlowSpeed: 1.6, starSpots: 0.45, starSpotScale: 3.2,
+      starCoronaColor: [0.450, 1.000, 0.500], starCoronaSize: 0.8,
+      starCoronaStrength: 1.4, starFlares: 1.3, starBands: 4,
+      starPulseAmount: 0.03, starPulseSpeed: 1.8,
     },
   },
 };

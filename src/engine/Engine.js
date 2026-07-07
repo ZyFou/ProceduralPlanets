@@ -1,10 +1,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { DEFAULT_PARAMS, REBUILD_KEYS, PLANET_PRESETS, seedToOffset } from './presets.js';
+import {
+  DEFAULT_PARAMS, REBUILD_KEYS, PLANET_PRESETS,
+  STAR_DEFAULTS, STAR_KEYS, STAR_PRESETS, seedToOffset,
+} from './presets.js';
 import {
   createSharedUniforms, UNIFORM_MAP,
   createWaterMaterial, createCloudMaterial, createAtmosphereMaterial, createStarMaterial,
 } from './materials.js';
+import {
+  DEFAULT_STAR_BODY, createStarSurfaceMaterial, createCoronaMaterial,
+  validateStarShaderBody,
+} from './star.js';
 import { PlanetWorld } from './PlanetWorld.js';
 import { PlanetExporter } from './PlanetExporter.js';
 
@@ -48,6 +55,8 @@ export class Engine {
     });
 
     this._buildShells();
+    this._buildStar();
+    this._syncMode();
 
     const stars = new THREE.Mesh(new THREE.SphereGeometry(1e5, 16, 12), createStarMaterial());
     stars.frustumCulled = false;
@@ -106,10 +115,60 @@ export class Engine {
     this.atmo.scale.setScalar(R * 1.045 + hs);
   }
 
+  // ------------------------------------------------------------------- star
+  _buildStar() {
+    this.starShaderBody = DEFAULT_STAR_BODY;
+    this.starGroup = new THREE.Group();
+
+    this.starSurfaceMat = createStarSurfaceMaterial(this.uniforms, this.starShaderBody);
+    this.starMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), this.starSurfaceMat);
+    this.starMesh.frustumCulled = false;
+    this.starGroup.add(this.starMesh);
+
+    this.coronaMat = createCoronaMaterial(this.uniforms);
+    this.corona = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), this.coronaMat);
+    this.corona.renderOrder = 15;
+    this.corona.frustumCulled = false;
+    this.starGroup.add(this.corona);
+
+    this.scene.add(this.starGroup);
+    this._syncStarScales();
+  }
+
+  _syncStarScales() {
+    const R = this.params.radius;
+    this.starMesh.scale.setScalar(R);
+    this.corona.scale.setScalar(R * (1.04 + this.params.starCoronaSize * 0.6));
+  }
+
+  _syncMode() {
+    const star = this.params.mode === 'star';
+    this.world.group.visible = !star;
+    this.starGroup.visible = star;
+    this._syncShellVisibility();
+  }
+
+  /**
+   * Swap the editable starSurface() body. Compile-checks against the real GL
+   * context first; on error the current material stays and {ok:false, error}
+   * comes back for the Shader panel to display.
+   */
+  setStarShader(body) {
+    const error = validateStarShaderBody(this.renderer.getContext(), body);
+    if (error) return { ok: false, error };
+    this.starShaderBody = body;
+    const old = this.starMesh.material;
+    this.starSurfaceMat = createStarSurfaceMaterial(this.uniforms, body);
+    this.starMesh.material = this.starSurfaceMat;
+    old.dispose();
+    return { ok: true };
+  }
+
   _syncShellVisibility() {
-    this.water.visible = !!this.params.waterEnabled;
-    this.clouds.visible = !!this.params.cloudsEnabled;
-    this.atmo.visible = !!this.params.atmoEnabled && this.params.atmoStrength > 0.01;
+    const planet = this.params.mode !== 'star';
+    this.water.visible = planet && !!this.params.waterEnabled;
+    this.clouds.visible = planet && !!this.params.cloudsEnabled;
+    this.atmo.visible = planet && !!this.params.atmoEnabled && this.params.atmoStrength > 0.01;
     // terrain/water sample the cloud field for cast shadows — kill them too
     // when the cloud layer is off
     this.uniforms.uCloudShadowStr.value =
@@ -154,9 +213,16 @@ export class Engine {
         const u = UNIFORM_MAP[key];
         if (u) this._setUniform(u, value);
         this._syncShellScales();
+        if (key === 'radius') this._syncStarScales();
         if (key === 'radius' || key === 'heightScale') this._applyControlLimits();
         return;
       }
+      case 'mode':
+        this._syncMode();
+        return;
+      case 'starCoronaSize':
+        this._syncStarScales();
+        return;
       case 'sunAzimuth':
       case 'sunElevation':
         this._applySunDir();
@@ -211,9 +277,11 @@ export class Engine {
     const preset = PLANET_PRESETS[key];
     if (!preset) return this.params;
     const patch = { ...preset.patch };
-    // reset every param a previous preset may have touched
+    // reset every planet param a previous preset may have touched — but leave
+    // the star domain and the mode alone
     const base = { ...DEFAULT_PARAMS, seed: this.params.seed };
     for (const [k, v] of Object.entries(base)) {
+      if (STAR_KEYS.has(k) || k === 'mode') continue;
       if (!(k in patch)) patch[k] = v;
     }
     let structural = false;
@@ -222,6 +290,15 @@ export class Engine {
       else this.setParam(k, v);
     }
     if (structural) this._rebuildStructural();
+    return { ...this.params };
+  }
+
+  /** Apply a star preset patch (star keys only — planet params untouched). */
+  applyStarPreset(key) {
+    const preset = STAR_PRESETS[key];
+    if (!preset) return { ...this.params };
+    const patch = { ...STAR_DEFAULTS, ...preset.patch };
+    for (const [k, v] of Object.entries(patch)) this.setParam(k, v);
     return { ...this.params };
   }
 
@@ -262,7 +339,7 @@ export class Engine {
   /** One manual frame — used by automated verification when rAF is frozen. */
   renderOnce() {
     this.controls.update();
-    this.world.update(this.camera.position);
+    if (this.params.mode !== 'star') this.world.update(this.camera.position);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -282,7 +359,7 @@ export class Engine {
     this.uniforms.uTime.value += dt;
 
     this.controls.update();
-    this.world.update(this.camera.position);
+    if (this.params.mode !== 'star') this.world.update(this.camera.position);
     this.renderer.render(this.scene, this.camera);
 
     // stats at ~2 Hz
@@ -307,7 +384,10 @@ export class Engine {
     window.removeEventListener('resize', this._onResize);
     this.controls.dispose();
     this.world.dispose();
-    for (const m of [this.waterMat, this.cloudMat, this.atmoMat, this.stars.material]) m?.dispose();
+    for (const m of [
+      this.waterMat, this.cloudMat, this.atmoMat,
+      this.starSurfaceMat, this.coronaMat, this.stars.material,
+    ]) m?.dispose();
     this.renderer.dispose();
   }
 }

@@ -78,6 +78,26 @@ export function createSharedUniforms(p) {
 
     uAtmoColor:    { value: v3(p.atmoColor) },
     uAtmoStrength: { value: p.atmoStrength },
+
+    // star mode
+    uStarCore:       { value: v3(p.starColorCore) },
+    uStarMid:        { value: v3(p.starColorMid) },
+    uStarEdge:       { value: v3(p.starColorEdge) },
+    uStarSpotCol:    { value: v3(p.starSpotColor) },
+    uStarScale:      { value: p.starNoiseScale },
+    uStarWarp:       { value: p.starTurbulence },
+    uStarGranules:   { value: p.starGranules },
+    uStarFlow:       { value: p.starFlowSpeed },
+    uStarSpots:      { value: p.starSpots },
+    uStarSpotScale:  { value: p.starSpotScale },
+    uStarLimb:       { value: p.starLimbDarken },
+    uStarBands:      { value: p.starBands },
+    uStarGlow:       { value: p.starGlow },
+    uStarPulseAmt:   { value: p.starPulseAmount },
+    uStarPulseSpeed: { value: p.starPulseSpeed },
+    uStarCoronaCol:  { value: v3(p.starCoronaColor) },
+    uStarCoronaStr:  { value: p.starCoronaStrength },
+    uStarFlares:     { value: p.starFlares },
   };
 }
 
@@ -106,6 +126,16 @@ export const UNIFORM_MAP = {
   cloudPuff: 'uCloudPuff',
   // cloudShadowStrength is gated by cloudsEnabled — handled in Engine.setParam
   atmoColor: 'uAtmoColor', atmoStrength: 'uAtmoStrength',
+  // star mode (starCoronaSize scales the corona shell — Engine.setParam)
+  starColorCore: 'uStarCore', starColorMid: 'uStarMid', starColorEdge: 'uStarEdge',
+  starSpotColor: 'uStarSpotCol', starNoiseScale: 'uStarScale',
+  starTurbulence: 'uStarWarp', starGranules: 'uStarGranules',
+  starFlowSpeed: 'uStarFlow', starSpots: 'uStarSpots',
+  starSpotScale: 'uStarSpotScale', starLimbDarken: 'uStarLimb',
+  starBands: 'uStarBands', starGlow: 'uStarGlow',
+  starPulseAmount: 'uStarPulseAmt', starPulseSpeed: 'uStarPulseSpeed',
+  starCoronaColor: 'uStarCoronaCol', starCoronaStrength: 'uStarCoronaStr',
+  starFlares: 'uStarFlares',
 };
 
 // ---------------------------------------------------------------------------

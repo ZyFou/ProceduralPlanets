@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Slider, Toggle, ColorRow, Section, SelectRow } from './controls.jsx';
-import { PLANET_PRESETS } from '../engine/presets.js';
+import { PLANET_PRESETS, STAR_PRESETS } from '../engine/presets.js';
+import { DEFAULT_STAR_BODY } from '../engine/star.js';
 
 // One component per side-panel tab. Each receives (params, onParam) and, for
 // the style panel, onPreset. Pure declarative mappings — no engine access.
@@ -145,6 +146,91 @@ export function CloudsPanel({ params: p, onParam }) {
   );
 }
 
+export function StarPanel({ params: p, onParam, onStarPreset }) {
+  return (
+    <>
+      <Section title="Preset">
+        <div className="preset-grid">
+          {Object.entries(STAR_PRESETS).map(([key, def]) => (
+            <button key={key} type="button" className="preset-btn" onClick={() => onStarPreset(key)}>
+              {def.label}
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section title="Surface">
+        <Slider label="Scale" value={p.starNoiseScale} min={1} max={8} step={0.1} digits={1} onChange={(v) => onParam('starNoiseScale', v)} title="Granulation frequency" />
+        <Slider label="Turbulence" value={p.starTurbulence} min={0} max={2} step={0.05} onChange={(v) => onParam('starTurbulence', v)} title="Domain warp of the boiling surface" />
+        <Slider label="Granules" value={p.starGranules} min={0} max={1} step={0.05} onChange={(v) => onParam('starGranules', v)} title="Granulation contrast" />
+        <Slider label="Flow speed" value={p.starFlowSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('starFlowSpeed', v)} title="How fast the surface boils" />
+        <Slider label="Bands" value={p.starBands} min={0} max={8} step={1} digits={0} onChange={(v) => onParam('starBands', v)} title="Posterize levels — 0 = smooth gradient" />
+        <Slider label="Limb darkening" value={p.starLimbDarken} min={0} max={1} step={0.05} onChange={(v) => onParam('starLimbDarken', v)} />
+        <Slider label="Rim glow" value={p.starGlow} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starGlow', v)} title="Additive hot rim on the disc edge" />
+      </Section>
+      <Section title="Colors">
+        <ColorRow label="Core (hot)" value={p.starColorCore} onChange={(v) => onParam('starColorCore', v)} />
+        <ColorRow label="Mid" value={p.starColorMid} onChange={(v) => onParam('starColorMid', v)} />
+        <ColorRow label="Edge (cool)" value={p.starColorEdge} onChange={(v) => onParam('starColorEdge', v)} />
+        <ColorRow label="Sunspots" value={p.starSpotColor} onChange={(v) => onParam('starSpotColor', v)} />
+      </Section>
+      <Section title="Sunspots">
+        <Slider label="Amount" value={p.starSpots} min={0} max={1} step={0.05} onChange={(v) => onParam('starSpots', v)} />
+        <Slider label="Spot scale" value={p.starSpotScale} min={0.5} max={8} step={0.1} digits={1} onChange={(v) => onParam('starSpotScale', v)} />
+      </Section>
+      <Section title="Corona">
+        <ColorRow label="Color" value={p.starCoronaColor} onChange={(v) => onParam('starCoronaColor', v)} />
+        <Slider label="Size" value={p.starCoronaSize} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starCoronaSize', v)} title="Halo extent beyond the disc" />
+        <Slider label="Strength" value={p.starCoronaStrength} min={0} max={2} step={0.05} onChange={(v) => onParam('starCoronaStrength', v)} />
+        <Slider label="Flares" value={p.starFlares} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starFlares', v)} title="Wispy streaks drifting through the halo" />
+      </Section>
+      <Section title="Motion">
+        <Slider label="Pulse amount" value={p.starPulseAmount} min={0} max={0.08} step={0.002} digits={3} onChange={(v) => onParam('starPulseAmount', v)} title="Radius breathing / silhouette simmer" />
+        <Slider label="Pulse speed" value={p.starPulseSpeed} min={0} max={4} step={0.1} digits={1} onChange={(v) => onParam('starPulseSpeed', v)} />
+      </Section>
+    </>
+  );
+}
+
+export function ShaderPanel({ starShader, onStarShaderChange, onStarShaderApply, starShaderStatus }) {
+  return (
+    <>
+      <Section title="Custom star shader">
+        <p className="shader-hint">
+          The full <code>starSurface()</code> function of the sun — edit it and hit
+          Apply. Compile errors show up below without touching the running shader.
+          All <code>uStar*</code> uniforms stay bound to the Star panel sliders.
+        </p>
+        <textarea
+          className="shader-editor"
+          spellCheck={false}
+          value={starShader}
+          onChange={(e) => onStarShaderChange(e.target.value)}
+        />
+        <div className="export-actions">
+          <button type="button" className="action-btn primary" onClick={() => onStarShaderApply(starShader)}>
+            Apply
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => {
+              onStarShaderChange(DEFAULT_STAR_BODY);
+              onStarShaderApply(DEFAULT_STAR_BODY);
+            }}
+          >
+            Reset to default
+          </button>
+        </div>
+        {starShaderStatus && (
+          <div className={`shader-status ${starShaderStatus.ok ? 'ok' : 'err'}`}>
+            {starShaderStatus.ok ? 'Compiled — shader applied.' : starShaderStatus.error}
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
+
 export function PerformancePanel({ params: p, onParam }) {
   return (
     <>
@@ -249,11 +335,13 @@ export function ExportPanel({ onExport, onScreenshot }) {
 }
 
 export const PANELS = [
-  { id: 'terrain', label: 'Terrain', component: TerrainPanel },
-  { id: 'biomes', label: 'Biomes', component: BiomesPanel },
-  { id: 'style', label: 'Style', component: StylePanel },
-  { id: 'water', label: 'Water', component: WaterPanel },
-  { id: 'clouds', label: 'Clouds', component: CloudsPanel },
-  { id: 'perf', label: 'Perf', component: PerformancePanel },
-  { id: 'export', label: 'Export', component: ExportPanel },
+  { id: 'terrain', label: 'Terrain', component: TerrainPanel, modes: ['planet'] },
+  { id: 'biomes', label: 'Biomes', component: BiomesPanel, modes: ['planet'] },
+  { id: 'style', label: 'Style', component: StylePanel, modes: ['planet'] },
+  { id: 'water', label: 'Water', component: WaterPanel, modes: ['planet'] },
+  { id: 'clouds', label: 'Clouds', component: CloudsPanel, modes: ['planet'] },
+  { id: 'star', label: 'Star', component: StarPanel, modes: ['star'] },
+  { id: 'shader', label: 'Shader', component: ShaderPanel, modes: ['star'] },
+  { id: 'perf', label: 'Perf', component: PerformancePanel, modes: ['planet'] },
+  { id: 'export', label: 'Export', component: ExportPanel, modes: ['planet'] },
 ];

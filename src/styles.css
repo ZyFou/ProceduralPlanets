@@ -643,6 +643,98 @@ input {
   color: var(--accent);
 }
 
+/* ------------------------------------------------------------- mode switch */
+.tb-mode {
+  margin-left: 16px;
+}
+
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+}
+
+.mode-switch button {
+  height: 22px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: var(--cursor-pointer);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.mode-switch button:hover {
+  color: var(--text-main);
+}
+
+.mode-switch button.active {
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg-control));
+  color: var(--text-bright);
+}
+
+/* ------------------------------------------------------------ shader panel */
+.shader-hint {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.shader-hint code {
+  font-family: var(--mono);
+  color: var(--text-main);
+}
+
+.shader-editor {
+  width: 100%;
+  min-height: 320px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-main);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+  resize: vertical;
+  outline: 0;
+}
+
+.shader-editor:focus {
+  border-color: var(--border-active);
+}
+
+.shader-status {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.shader-status.ok {
+  color: #7fd88f;
+}
+
+.shader-status.err {
+  color: #ff7b72;
+}
+
 /* -------------------------------------------------------------- status bar */
 .statusbar {
   display: flex;

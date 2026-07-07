@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Engine } from './engine/Engine.js';
 import { DEFAULT_PARAMS } from './engine/presets.js';
+import { DEFAULT_STAR_BODY } from './engine/star.js';
 import { PANELS } from './components/panels.jsx';
 
 // Icons for the left toolbar (inline SVG, stroke = currentColor).
@@ -25,6 +26,12 @@ const ICONS = {
   ),
   export: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v11M8 10l4 4 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 18h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+  ),
+  star: (
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="1.6" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3L16.9 7.1M7.1 16.9l-1.8 1.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+  ),
+  shader: (
+    <svg viewBox="0 0 24 24" fill="none"><path d="M8 6 3 12l5 6M16 6l5 6-5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M13.5 5l-3 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
   ),
 };
 
@@ -65,6 +72,24 @@ export default function App() {
     if (merged) setParams(merged);
   }, []);
 
+  const onStarPreset = useCallback((key) => {
+    const merged = engineRef.current?.applyStarPreset(key);
+    if (merged) setParams(merged);
+  }, []);
+
+  const [starShader, setStarShader] = useState(DEFAULT_STAR_BODY);
+  const [starShaderStatus, setStarShaderStatus] = useState(null);
+
+  const onStarShaderApply = useCallback((src) => {
+    const res = engineRef.current?.setStarShader(src);
+    setStarShaderStatus(res ?? null);
+  }, []);
+
+  const onMode = useCallback((mode) => {
+    onParam('mode', mode);
+    setActivePanel(mode === 'star' ? 'star' : 'terrain');
+  }, [onParam]);
+
   const onRandomize = useCallback(() => {
     const seed = engineRef.current?.randomize();
     if (seed !== undefined) setParams((prev) => ({ ...prev, seed }));
@@ -88,7 +113,8 @@ export default function App() {
     await engineRef.current?.exportPlanet(options, onProgress);
   }, []);
 
-  const Panel = PANELS.find((p) => p.id === activePanel)?.component;
+  const visiblePanels = PANELS.filter((p) => p.modes.includes(params.mode));
+  const Panel = visiblePanels.find((p) => p.id === activePanel)?.component;
 
   return (
     <div className={`app${activePanel ? ' side-drawer-open' : ''}`}>
@@ -100,6 +126,24 @@ export default function App() {
             <path d="M19.8 9.9c1.2.8 1.8 1.7 1.5 2.6-.6 1.8-5.2 2-10.3.5S2.2 8.8 2.8 7c.3-.9 1.5-1.4 3.3-1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
           <span className="app-name">Procedural Planets</span>
+        </div>
+        <div className="tb-group tb-mode">
+          <div className="mode-switch" role="tablist" aria-label="Editor mode">
+            <button
+              type="button"
+              className={params.mode !== 'star' ? 'active' : ''}
+              onClick={() => onMode('planet')}
+            >
+              Planet
+            </button>
+            <button
+              type="button"
+              className={params.mode === 'star' ? 'active' : ''}
+              onClick={() => onMode('star')}
+            >
+              Star
+            </button>
+          </div>
         </div>
         <div className="tb-group tb-right">
           <label className="seed-box">
@@ -120,7 +164,7 @@ export default function App() {
 
       <div className="main">
         <nav className="left-toolbar">
-          {PANELS.map((p) => (
+          {visiblePanels.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -160,8 +204,13 @@ export default function App() {
                   params={params}
                   onParam={onParam}
                   onPreset={onPreset}
+                  onStarPreset={onStarPreset}
                   onExport={onExport}
                   onScreenshot={onScreenshot}
+                  starShader={starShader}
+                  onStarShaderChange={setStarShader}
+                  onStarShaderApply={onStarShaderApply}
+                  starShaderStatus={starShaderStatus}
                 />
               </div>
             </div>
@@ -171,7 +220,7 @@ export default function App() {
 
       <footer className="statusbar">
         <span className={`status-dot${booted ? ' ok' : ''}`} />
-        <span>Planet</span>
+        <span>{params.mode === 'star' ? 'Star' : 'Planet'}</span>
         <span className="sb-sep" />
         <span>Seed {params.seed}</span>
         <div className="sb-right">
