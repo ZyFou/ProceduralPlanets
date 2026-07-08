@@ -23,16 +23,37 @@ export const STAR_DEFAULTS = {
   starPulseSpeed: 1.2,
   starCoronaColor: [1.000, 0.550, 0.120],
   starCoronaSize: 0.5,     // halo extent (fraction of radius)
-  starCoronaStrength: 1.0,
+  starCoronaStrength: 0.0,
   starFlares: 0.7,         // wispy streaks in the corona
 };
 
 export const STAR_KEYS = new Set(Object.keys(STAR_DEFAULTS));
 
+// Gas-mode parameters (flat, gas-prefixed — own domain like the star's, so
+// planet presets never clobber gas customization and vice versa).
+export const GAS_DEFAULTS = {
+  gasScale: 2.4,
+  gasWarp: 0.9,            // swirl turbulence (two-pass domain warp)
+  gasContrast: 0.65,
+  gasFlowSpeed: 1.0,
+  gasBands: 5,             // posterize levels (0 = smooth)
+  gasStretch: 0.0,         // 0 = free swirls, >0 pulls toward latitude stripes
+  gasStorms: 0.45,         // storm oval coverage
+  gasStormScale: 1.5,
+  gasLimb: 0.55,
+  gasColorDeep:  [0.340, 0.160, 0.100],
+  gasColorBase:  [0.760, 0.540, 0.330],
+  gasColorSwirl: [0.950, 0.860, 0.660],
+  gasColorStorm: [0.820, 0.300, 0.160],
+};
+
+export const GAS_KEYS = new Set(Object.keys(GAS_DEFAULTS));
+
 export const DEFAULT_PARAMS = {
-  // mode: 'planet' | 'star' — toggles which scene set is live
+  // mode: 'planet' | 'gas' | 'star' — toggles which scene set is live
   mode: 'planet',
   ...STAR_DEFAULTS,
+  ...GAS_DEFAULTS,
 
   // world / shape
   seed: 1337,
@@ -98,14 +119,14 @@ export const DEFAULT_PARAMS = {
   // clouds
   cloudsEnabled: true,
   cloudCoverage: 0.48,
-  cloudSoftness: 0.05,     // low = hard cartoon edges
-  cloudDensity: 0.95,
+  cloudSoftness: 0.18,     // width of the translucent edge falloff
+  cloudDensity: 0.92,
   cloudScale: 3.2,
-  cloudDetail: 0.45,
+  cloudDetail: 0.7,        // billow + wisp detail strength
   cloudAltitude: 0.055,    // fraction of radius
   cloudSpeed: 0.6,
-  cloudPuff: 0.6,          // vertex puffiness of the cloud silhouettes
-  cloudShadowStrength: 0.35, // hard shadows cast on terrain/water
+  cloudPuff: 0.35,         // vertex swell of dense cells
+  cloudShadowStrength: 0.35, // soft shadows cast on terrain/water
   cloudColor:  [1.0, 1.0, 1.0],
   cloudShadow: [0.52, 0.58, 0.72],
 
@@ -270,6 +291,41 @@ export const PLANET_PRESETS = {
       colSnow: [1.000, 0.970, 1.000], colFoam: [1.000, 0.900, 0.980],
       cloudColor: [1.0, 0.92, 0.97], atmoColor: [0.95, 0.50, 0.90],
       toonBands: 3, cloudCoverage: 0.40,
+    },
+  },
+};
+
+// Gas giant style presets — patches over GAS_DEFAULTS (gas keys only).
+export const GAS_PRESETS = {
+  gasGiant: {
+    label: 'Gas Giant',
+    patch: {}, // the defaults ARE a warm marbled amber giant
+  },
+  iceGiant: {
+    label: 'Ice Giant',
+    patch: {
+      gasScale: 2.0, gasWarp: 1.25, gasContrast: 0.55, gasFlowSpeed: 0.7,
+      gasBands: 4, gasStorms: 0.22, gasStormScale: 1.2, gasLimb: 0.65,
+      gasColorDeep: [0.030, 0.090, 0.240], gasColorBase: [0.130, 0.340, 0.600],
+      gasColorSwirl: [0.550, 0.880, 0.920], gasColorStorm: [0.880, 0.960, 1.000],
+    },
+  },
+  toxic: {
+    label: 'Toxic',
+    patch: {
+      gasScale: 2.8, gasWarp: 1.1, gasContrast: 0.75, gasFlowSpeed: 1.3,
+      gasBands: 5, gasStorms: 0.55, gasStormScale: 2.0, gasLimb: 0.5,
+      gasColorDeep: [0.070, 0.120, 0.040], gasColorBase: [0.330, 0.460, 0.130],
+      gasColorSwirl: [0.780, 0.870, 0.340], gasColorStorm: [0.850, 0.640, 0.120],
+    },
+  },
+  nebular: {
+    label: 'Nebular',
+    patch: {
+      gasScale: 2.2, gasWarp: 1.4, gasContrast: 0.6, gasFlowSpeed: 0.9,
+      gasBands: 6, gasStorms: 0.35, gasStormScale: 1.1, gasLimb: 0.7,
+      gasColorDeep: [0.130, 0.030, 0.220], gasColorBase: [0.380, 0.150, 0.520],
+      gasColorSwirl: [0.850, 0.550, 0.950], gasColorStorm: [1.000, 0.750, 0.400],
     },
   },
 };

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
   DEFAULT_PARAMS, REBUILD_KEYS, PLANET_PRESETS,
-  STAR_DEFAULTS, STAR_KEYS, STAR_PRESETS, seedToOffset,
+  STAR_DEFAULTS, STAR_KEYS, STAR_PRESETS,
+  GAS_DEFAULTS, GAS_KEYS, GAS_PRESETS, seedToOffset,
 } from './presets.js';
 import {
   createSharedUniforms, UNIFORM_MAP,
@@ -12,6 +13,7 @@ import {
   DEFAULT_STAR_BODY, createStarSurfaceMaterial, createCoronaMaterial,
   validateStarShaderBody,
 } from './star.js';
+import { createGasSurfaceMaterial } from './gas.js';
 import { PlanetWorld } from './PlanetWorld.js';
 import { PlanetExporter } from './PlanetExporter.js';
 
@@ -56,6 +58,7 @@ export class Engine {
 
     this._buildShells();
     this._buildStar();
+    this._buildGas();
     this._syncMode();
 
     const stars = new THREE.Mesh(new THREE.SphereGeometry(1e5, 16, 12), createStarMaterial());
@@ -113,6 +116,16 @@ export class Engine {
     this.water.scale.setScalar(seaR);
     this.clouds.scale.setScalar(R * (1 + this.params.cloudAltitude) + hs);
     this.atmo.scale.setScalar(R * 1.045 + hs);
+    this.gasMesh?.scale.setScalar(R);
+  }
+
+  // -------------------------------------------------------------------- gas
+  _buildGas() {
+    this.gasMat = createGasSurfaceMaterial(this.uniforms);
+    this.gasMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), this.gasMat);
+    this.gasMesh.frustumCulled = false;
+    this.gasMesh.scale.setScalar(this.params.radius);
+    this.scene.add(this.gasMesh);
   }
 
   // ------------------------------------------------------------------- star
@@ -142,9 +155,10 @@ export class Engine {
   }
 
   _syncMode() {
-    const star = this.params.mode === 'star';
-    this.world.group.visible = !star;
-    this.starGroup.visible = star;
+    const mode = this.params.mode;
+    this.world.group.visible = mode === 'planet';
+    this.gasMesh.visible = mode === 'gas';
+    this.starGroup.visible = mode === 'star';
     this._syncShellVisibility();
   }
 
@@ -165,7 +179,8 @@ export class Engine {
   }
 
   _syncShellVisibility() {
-    const planet = this.params.mode !== 'star';
+    // the gas surface carries its whole look — no water/cloud/atmo shells
+    const planet = this.params.mode === 'planet';
     this.water.visible = planet && !!this.params.waterEnabled;
     this.clouds.visible = planet && !!this.params.cloudsEnabled;
     this.atmo.visible = planet && !!this.params.atmoEnabled && this.params.atmoStrength > 0.01;
@@ -278,10 +293,10 @@ export class Engine {
     if (!preset) return this.params;
     const patch = { ...preset.patch };
     // reset every planet param a previous preset may have touched — but leave
-    // the star domain and the mode alone
+    // the star and gas domains and the mode alone
     const base = { ...DEFAULT_PARAMS, seed: this.params.seed };
     for (const [k, v] of Object.entries(base)) {
-      if (STAR_KEYS.has(k) || k === 'mode') continue;
+      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode') continue;
       if (!(k in patch)) patch[k] = v;
     }
     let structural = false;
@@ -290,6 +305,15 @@ export class Engine {
       else this.setParam(k, v);
     }
     if (structural) this._rebuildStructural();
+    return { ...this.params };
+  }
+
+  /** Apply a gas preset patch (gas keys only — planet params untouched). */
+  applyGasPreset(key) {
+    const preset = GAS_PRESETS[key];
+    if (!preset) return { ...this.params };
+    const patch = { ...GAS_DEFAULTS, ...preset.patch };
+    for (const [k, v] of Object.entries(patch)) this.setParam(k, v);
     return { ...this.params };
   }
 
@@ -343,7 +367,7 @@ export class Engine {
   /** One manual frame — used by automated verification when rAF is frozen. */
   renderOnce() {
     this.controls.update();
-    if (this.params.mode !== 'star') this.world.update(this.camera.position);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -363,7 +387,7 @@ export class Engine {
     this.uniforms.uTime.value += dt;
 
     this.controls.update();
-    if (this.params.mode !== 'star') this.world.update(this.camera.position);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this.renderer.render(this.scene, this.camera);
 
     // stats at ~2 Hz
@@ -389,7 +413,7 @@ export class Engine {
     this.controls.dispose();
     this.world.dispose();
     for (const m of [
-      this.waterMat, this.cloudMat, this.atmoMat,
+      this.waterMat, this.cloudMat, this.atmoMat, this.gasMat,
       this.starSurfaceMat, this.coronaMat, this.stars.material,
     ]) m?.dispose();
     this.renderer.dispose();

@@ -79,6 +79,21 @@ export function createSharedUniforms(p) {
     uAtmoColor:    { value: v3(p.atmoColor) },
     uAtmoStrength: { value: p.atmoStrength },
 
+    // gas giant surface
+    uGasScale:      { value: p.gasScale },
+    uGasWarp:       { value: p.gasWarp },
+    uGasContrast:   { value: p.gasContrast },
+    uGasFlow:       { value: p.gasFlowSpeed },
+    uGasBands:      { value: p.gasBands },
+    uGasStretch:    { value: p.gasStretch },
+    uGasStorms:     { value: p.gasStorms },
+    uGasStormScale: { value: p.gasStormScale },
+    uGasLimb:       { value: p.gasLimb },
+    uGasDeep:       { value: v3(p.gasColorDeep) },
+    uGasBase:       { value: v3(p.gasColorBase) },
+    uGasSwirl:      { value: v3(p.gasColorSwirl) },
+    uGasStorm:      { value: v3(p.gasColorStorm) },
+
     // star mode
     uStarCore:       { value: v3(p.starColorCore) },
     uStarMid:        { value: v3(p.starColorMid) },
@@ -126,6 +141,12 @@ export const UNIFORM_MAP = {
   cloudPuff: 'uCloudPuff',
   // cloudShadowStrength is gated by cloudsEnabled — handled in Engine.setParam
   atmoColor: 'uAtmoColor', atmoStrength: 'uAtmoStrength',
+  // gas giant surface (mode toggles visibility — Engine.setParam)
+  gasScale: 'uGasScale', gasWarp: 'uGasWarp', gasContrast: 'uGasContrast',
+  gasFlowSpeed: 'uGasFlow', gasBands: 'uGasBands', gasStretch: 'uGasStretch',
+  gasStorms: 'uGasStorms', gasStormScale: 'uGasStormScale', gasLimb: 'uGasLimb',
+  gasColorDeep: 'uGasDeep', gasColorBase: 'uGasBase',
+  gasColorSwirl: 'uGasSwirl', gasColorStorm: 'uGasStorm',
   // star mode (starCoronaSize scales the corona shell — Engine.setParam)
   starColorCore: 'uStarCore', starColorMid: 'uStarMid', starColorEdge: 'uStarEdge',
   starSpotColor: 'uStarSpotCol', starNoiseScale: 'uStarScale',
@@ -342,11 +363,12 @@ export function createWaterMaterial(shared, octaves) {
 }
 
 // ---------------------------------------------------------------------------
-// Clouds — cartoon cumulus, not a flat shell. The vertex shader displaces the
-// sphere outward where the coverage field is dense, so clouds have real puffy
-// silhouettes against space. The fragment keeps the HARD coverage threshold,
-// shades each puff from the density gradient (rounded toon look) and draws a
-// darker "ink" band just inside the silhouette. No raymarch — still cheap.
+// Clouds — realistic weather-system look on a single shell, no raymarch. The
+// vertex shader still puffs dense cells slightly for a soft silhouette. The
+// fragment layers billow + wisp detail over the warped coverage field: soft
+// graded alpha (thin translucent edges, opaque cores), fractal erosion so
+// borders break into wisps, smooth non-toon shading with darker cores and a
+// forward-scatter silver lining on thin backlit edges.
 // ---------------------------------------------------------------------------
 
 const CLOUD_VERTEX = /* glsl */ `
@@ -361,12 +383,12 @@ varying vec3 vWorldPos;
 
 void main() {
   vec3 dir = normalize(position);
-  // puff the shell outward where clouds are; bottoms stay on the sphere so
-  // the layer reads like flat-based cumulus
+  // gentle outward swell where the field is dense — enough to soften the
+  // silhouette against space without reading as cartoon bumps
   float base = cloudBase(dir);
   float cut = 1.0 - uCloudCoverage;
-  float puff = smoothstep(cut - 0.12, cut + 0.35, base);
-  vec4 wp = modelMatrix * vec4(position * (1.0 + puff * uCloudPuff * 0.05), 1.0);
+  float puff = smoothstep(cut - 0.05, cut + 0.45, base);
+  vec4 wp = modelMatrix * vec4(position * (1.0 + puff * uCloudPuff * 0.03), 1.0);
   vDir = dir;
   vWorldPos = wp.xyz;
   gl_Position = projectionMatrix * viewMatrix * wp;
@@ -392,44 +414,72 @@ varying vec3 vWorldPos;
 
 void main() {
   vec3 dir = normalize(vDir);
-  float base = cloudBase(dir);
-  float detail = vnoise3(cloudDomain(dir) * 3.7 + uTime * uCloudSpeed * 0.08);
-  float shape = base + (detail - 0.5) * uCloudDetail * 0.4;
+  vec3 p = cloudDomain(dir);
+  // swirl warp (cloud shell only — too costly for the shared shadow path):
+  // fronts curl instead of sitting as static blobs
+  vec3 w = vec3(
+    vnoise3(p * 0.5 + 3.1),
+    vnoise3(p * 0.5 + 17.7),
+    vnoise3(p * 0.5 + 51.3)
+  ) - 0.5;
+  p += w * uCloudScale * 0.45;
+  float base = fbm(p);
+  float t = uTime * uCloudSpeed * 0.08;
 
-  // HARD threshold: this is the cartoon look. Coverage moves the cut line,
-  // softness controls the (thin) edge gradient.
+  // detail layers: mid-frequency billows shape the body, high-frequency
+  // wisps erode the thin edges into streaks (cheap 2-tap layers — ANGLE
+  // fully unrolls every noise call, so instruction count is compile time)
+  float bil = vnoise3(p * 2.6 + t) * 0.6 + vnoise3(p * 5.1 - t) * 0.4;
+  float wisp = vnoise3(p * 6.5 - t * 1.3) * 0.6 + vnoise3(p * 12.0 + t) * 0.4;
+
   float cut = 1.0 - uCloudCoverage;
-  float edgeSoft = max(uCloudSoftness, 0.005);
-  float alpha = smoothstep(cut, cut + edgeSoft, shape);
+  float soft = max(uCloudSoftness, 0.02);
+
+  // graded density: soft coverage ramp + billow detail
+  float dens = base + (bil - 0.5) * uCloudDetail * 0.35;
+  float cov = smoothstep(cut, cut + soft + 0.20, dens);
+  // fractal erosion: cores always pass, thin edges break into wisps
+  cov *= smoothstep(0.30, 0.60, wisp + cov * 0.9);
+  float alpha = cov * uCloudDensity;
   if (alpha < 0.01) discard;
 
-  // rounded shading: bend the shell normal by the density gradient so every
-  // puff gets its own lit and shaded side, then quantize with the toon ramp
+  // smooth shading from the density-gradient bent normal (no toon bands —
+  // clouds read realistic against the stylized terrain). Gradient sampled in
+  // the already-warped domain: skips recomputing the warp, visually identical
   vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
   vec3 t1 = normalize(cross(ref, dir));
   vec3 t2 = cross(dir, t1);
-  float e = 0.02;
-  float gx = cloudBase(normalize(dir + t1 * e)) - base;
-  float gy = cloudBase(normalize(dir + t2 * e)) - base;
-  vec3 n = normalize(dir - (t1 * gx + t2 * gy) * 9.0);
+  float e = 0.02 * uCloudScale;
+  float gx = fbm(p + t1 * e) - base;
+  float gy = fbm(p + t2 * e) - base;
+  vec3 n = normalize(dir - (t1 * gx + t2 * gy) * 5.0);
 
-  float diff = toonShade(max(dot(n, uSunDir), 0.0));
-  float core = smoothstep(cut, cut + 0.35, shape);
-  float lum = clamp(uAmbient * 0.5 + diff * (0.70 + core * 0.35), 0.0, 1.0);
-  vec3 col = mix(uCloudShadow, uCloudColor, lum);
+  // soft-wrapped diffuse so the terminator on each system stays gentle
+  float diff = max(dot(n, uSunDir), 0.0);
+  diff = diff * 0.85 + max(dot(dir, uSunDir), 0.0) * 0.15;
 
-  // cartoon "ink" band just inside the silhouette
-  float inner = smoothstep(cut + edgeSoft * 1.2, cut + edgeSoft * 3.0, shape);
-  col = mix(uCloudShadow * 0.9, col, 0.4 + 0.6 * inner);
+  // thick cores pick up the grey-blue shadow tone on their unlit side
+  float thick = smoothstep(cut + 0.12, cut + 0.45, dens);
+  vec3 col = mix(uCloudColor, uCloudShadow, thick * (1.0 - diff) * 0.55);
+  col *= clamp(uAmbient * 0.6 + diff * uSunIntensity * 0.95, 0.0, 1.2);
 
-  gl_FragColor = vec4(col, alpha * uCloudDensity);
+  // forward-scatter silver lining where thin cloud is backlit by the sun
+  vec3 viewDir = normalize(cameraPosition - vWorldPos);
+  float back = pow(max(dot(-viewDir, uSunDir), 0.0), 4.0);
+  col += uCloudColor * back * (1.0 - thick) * cov * 0.5;
+
+  // thin edges stay translucent, cores go nearly opaque
+  alpha *= mix(0.55, 1.0, thick);
+  gl_FragColor = vec4(col, alpha);
 }
 `;
 
 export function createCloudMaterial(shared, octaves) {
   return new THREE.ShaderMaterial({
     uniforms: { ...shared },
-    defines: { OCTAVES: Math.min(octaves, 5) },
+    // 4 octaves keep the cloud program small enough for ANGLE's D3D compiler
+    // (detail comes from the billow/wisp taps, not deep fbm)
+    defines: { OCTAVES: Math.min(octaves, 4) },
     vertexShader: CLOUD_VERTEX,
     fragmentShader: CLOUD_FRAGMENT,
     transparent: true,

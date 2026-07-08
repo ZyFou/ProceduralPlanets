@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Slider, Toggle, ColorRow, Section, SelectRow } from './controls.jsx';
-import { PLANET_PRESETS, STAR_PRESETS } from '../engine/presets.js';
+import { PLANET_PRESETS, STAR_PRESETS, GAS_PRESETS } from '../engine/presets.js';
 import { DEFAULT_STAR_BODY } from '../engine/star.js';
 
 // One component per side-panel tab. Each receives (params, onParam) and, for
@@ -127,7 +127,7 @@ export function CloudsPanel({ params: p, onParam }) {
       <Section title="Clouds">
         <Toggle label="Enabled" value={p.cloudsEnabled} onChange={(v) => onParam('cloudsEnabled', v)} />
         <Slider label="Coverage" value={p.cloudCoverage} min={0} max={1} step={0.02} onChange={(v) => onParam('cloudCoverage', v)} />
-        <Slider label="Softness" value={p.cloudSoftness} min={0.005} max={0.4} step={0.005} digits={3} onChange={(v) => onParam('cloudSoftness', v)} title="Low = hard cartoon edges" />
+        <Slider label="Softness" value={p.cloudSoftness} min={0.005} max={0.4} step={0.005} digits={3} onChange={(v) => onParam('cloudSoftness', v)} title="Width of the translucent edge falloff" />
         <Slider label="Density" value={p.cloudDensity} min={0.2} max={1} step={0.02} onChange={(v) => onParam('cloudDensity', v)} />
         <Slider label="Shadows" value={p.cloudShadowStrength} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudShadowStrength', v)} title="Hard shadows the clouds cast on the surface" />
       </Section>
@@ -141,6 +141,49 @@ export function CloudsPanel({ params: p, onParam }) {
       <Section title="Colors">
         <ColorRow label="Cloud" value={p.cloudColor} onChange={(v) => onParam('cloudColor', v)} />
         <ColorRow label="Shadow" value={p.cloudShadow} onChange={(v) => onParam('cloudShadow', v)} />
+      </Section>
+    </>
+  );
+}
+
+export function GasPanel({ params: p, onParam, onGasPreset }) {
+  return (
+    <>
+      <Section title="Preset">
+        <div className="preset-grid">
+          {Object.entries(GAS_PRESETS).map(([key, def]) => (
+            <button key={key} type="button" className="preset-btn" onClick={() => onGasPreset(key)}>
+              {def.label}
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section title="Flow">
+        <Slider label="Scale" value={p.gasScale} min={0.8} max={6} step={0.1} digits={1} onChange={(v) => onParam('gasScale', v)} title="Base frequency of the flow field" />
+        <Slider label="Turbulence" value={p.gasWarp} min={0} max={2} step={0.05} onChange={(v) => onParam('gasWarp', v)} title="Swirl strength of the two-pass domain warp" />
+        <Slider label="Contrast" value={p.gasContrast} min={0} max={1} step={0.05} onChange={(v) => onParam('gasContrast', v)} />
+        <Slider label="Flow speed" value={p.gasFlowSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('gasFlowSpeed', v)} title="Churn + differential rotation speed" />
+        <Slider label="Bands" value={p.gasBands} min={0} max={8} step={1} digits={0} onChange={(v) => onParam('gasBands', v)} title="Posterize levels — 0 = smooth gradient" />
+        <Slider label="Striping" value={p.gasStretch} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStretch', v)} title="0 = free swirls; raise only if you want the classic latitude stripes" />
+        <Slider label="Limb darkening" value={p.gasLimb} min={0} max={1} step={0.05} onChange={(v) => onParam('gasLimb', v)} />
+      </Section>
+      <Section title="Storms">
+        <Slider label="Coverage" value={p.gasStorms} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStorms', v)} title="Storm oval coverage" />
+        <Slider label="Storm scale" value={p.gasStormScale} min={0.5} max={5} step={0.1} digits={1} onChange={(v) => onParam('gasStormScale', v)} />
+      </Section>
+      <Section title="Colors">
+        <ColorRow label="Deep" value={p.gasColorDeep} onChange={(v) => onParam('gasColorDeep', v)} />
+        <ColorRow label="Base" value={p.gasColorBase} onChange={(v) => onParam('gasColorBase', v)} />
+        <ColorRow label="Swirl" value={p.gasColorSwirl} onChange={(v) => onParam('gasColorSwirl', v)} />
+        <ColorRow label="Storm" value={p.gasColorStorm} onChange={(v) => onParam('gasColorStorm', v)} />
+      </Section>
+      <Section title="Lighting">
+        <Slider label="Sun azimuth" value={p.sunAzimuth} min={0} max={360} step={1} digits={0} onChange={(v) => onParam('sunAzimuth', v)} />
+        <Slider label="Sun elevation" value={p.sunElevation} min={-30} max={90} step={1} digits={0} onChange={(v) => onParam('sunElevation', v)} />
+        <Slider label="Sun intensity" value={p.sunIntensity} min={0.2} max={2.5} step={0.05} onChange={(v) => onParam('sunIntensity', v)} />
+        <Slider label="Ambient" value={p.ambient} min={0} max={0.8} step={0.02} onChange={(v) => onParam('ambient', v)} />
+        <Toggle label="Toon shading" value={p.toonEnabled} onChange={(v) => onParam('toonEnabled', v)} />
+        <Slider label="Toon bands" value={p.toonBands} min={2} max={8} step={1} digits={0} onChange={(v) => onParam('toonBands', v)} />
       </Section>
     </>
   );
@@ -267,6 +310,7 @@ const TEX_OPTIONS = [
 
 export function ExportPanel({ params: p, onExport, onScreenshot }) {
   const isStar = p.mode === 'star';
+  const isGas = p.mode === 'gas';
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [opt, setOpt] = useState({
@@ -300,7 +344,7 @@ export function ExportPanel({ params: p, onExport, onScreenshot }) {
       <Section title="Quick export">
         <div className="export-actions">
           <button type="button" className="action-btn primary" onClick={doExport} disabled={busy}>
-            {busy ? 'Exporting...' : isStar ? 'Export Star' : 'Export Planet'}
+            {busy ? 'Exporting...' : isStar ? 'Export Star' : isGas ? 'Export Gas Planet' : 'Export Planet'}
           </button>
           <button type="button" className="action-btn" onClick={onScreenshot} disabled={busy}>
             Screenshot
@@ -311,7 +355,7 @@ export function ExportPanel({ params: p, onExport, onScreenshot }) {
 
       <Section title="Format & resolution">
         <SelectRow label="Format" value={opt.format} options={FORMAT_OPTIONS} onChange={(v) => set('format', v)} />
-        <Toggle label={isStar ? 'Include Star Mesh' : 'Include Planet Mesh'} value={opt.includeMesh} onChange={(v) => set('includeMesh', v)} />
+        <Toggle label={isStar ? 'Include Star Mesh' : isGas ? 'Include Gas Planet Mesh' : 'Include Planet Mesh'} value={opt.includeMesh} onChange={(v) => set('includeMesh', v)} />
         {opt.includeMesh && (
           <SelectRow label="Mesh Resolution" value={opt.meshRes} options={RES_OPTIONS} onChange={(v) => set('meshRes', v)} />
         )}
@@ -330,7 +374,7 @@ export function ExportPanel({ params: p, onExport, onScreenshot }) {
       </Section>
 
       <Section title="Additional assets" defaultOpen={false}>
-        {!isStar && (
+        {!isStar && !isGas && (
           <Toggle label="Include Water Shell" value={opt.exportWater} onChange={(v) => set('exportWater', v)} />
         )}
         <Toggle label="Export Preset (JSON)" value={opt.exportPreset} onChange={(v) => set('exportPreset', v)} />
@@ -345,9 +389,10 @@ export const PANELS = [
   { id: 'style', label: 'Style', component: StylePanel, modes: ['planet'] },
   { id: 'water', label: 'Water', component: WaterPanel, modes: ['planet'] },
   { id: 'clouds', label: 'Clouds', component: CloudsPanel, modes: ['planet'] },
+  { id: 'gas', label: 'Gas', component: GasPanel, modes: ['gas'] },
   { id: 'star', label: 'Star', component: StarPanel, modes: ['star'] },
   // Shader tab hidden for now — ShaderPanel + Engine.setStarShader stay wired,
   // re-add { id: 'shader', modes: ['star'] } here to bring it back.
   { id: 'perf', label: 'Perf', component: PerformancePanel, modes: ['planet'] },
-  { id: 'export', label: 'Export', component: ExportPanel, modes: ['planet', 'star'] },
+  { id: 'export', label: 'Export', component: ExportPanel, modes: ['planet', 'gas', 'star'] },
 ];

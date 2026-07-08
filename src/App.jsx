@@ -21,6 +21,9 @@ const ICONS = {
   clouds: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M7 17 a4 4 0 1 1 1-7.9 A5 5 0 0 1 17.5 10 A3.5 3.5 0 0 1 17 17 Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
   ),
+  gas: (
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.6" /><path d="M5.5 9.5 C8.5 11.5 12 7.5 15.5 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><path d="M5 14.5 C8.5 12.5 13 16.5 18.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><circle cx="15.8" cy="12" r="1.7" stroke="currentColor" strokeWidth="1.4" /></svg>
+  ),
   perf: (
     <svg viewBox="0 0 24 24" fill="none"><path d="M4 19 V11 M9 19 V5 M14 19 v-9 M19 19 V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
   ),
@@ -77,6 +80,11 @@ export default function App() {
     if (merged) setParams(merged);
   }, []);
 
+  const onGasPreset = useCallback((key) => {
+    const merged = engineRef.current?.applyGasPreset(key);
+    if (merged) setParams(merged);
+  }, []);
+
   const [starShader, setStarShader] = useState(DEFAULT_STAR_BODY);
   const [starShaderStatus, setStarShaderStatus] = useState(null);
 
@@ -87,7 +95,7 @@ export default function App() {
 
   const onMode = useCallback((mode) => {
     onParam('mode', mode);
-    setActivePanel(mode === 'star' ? 'star' : 'terrain');
+    setActivePanel(mode === 'star' ? 'star' : mode === 'gas' ? 'gas' : 'terrain');
   }, [onParam]);
 
   const onRandomize = useCallback(() => {
@@ -131,10 +139,17 @@ export default function App() {
           <div className="mode-switch" role="tablist" aria-label="Editor mode">
             <button
               type="button"
-              className={params.mode !== 'star' ? 'active' : ''}
+              className={params.mode === 'planet' ? 'active' : ''}
               onClick={() => onMode('planet')}
             >
               Planet
+            </button>
+            <button
+              type="button"
+              className={params.mode === 'gas' ? 'active' : ''}
+              onClick={() => onMode('gas')}
+            >
+              Gas
             </button>
             <button
               type="button"
@@ -205,6 +220,7 @@ export default function App() {
                   onParam={onParam}
                   onPreset={onPreset}
                   onStarPreset={onStarPreset}
+                  onGasPreset={onGasPreset}
                   onExport={onExport}
                   onScreenshot={onScreenshot}
                   starShader={starShader}
@@ -220,7 +236,7 @@ export default function App() {
 
       <footer className="statusbar">
         <span className={`status-dot${booted ? ' ok' : ''}`} />
-        <span>{params.mode === 'star' ? 'Star' : 'Planet'}</span>
+        <span>{params.mode === 'star' ? 'Star' : params.mode === 'gas' ? 'Gas Giant' : 'Planet'}</span>
         <span className="sb-sep" />
         <span>Seed {params.seed}</span>
         <div className="sb-right">

@@ -153,12 +153,16 @@ uniform float uCloudCoverage;
 uniform float uCloudScale;
 uniform float uCloudSpeed;
 
-// slow rotation drift around the poles axis + morphing over time
+// slow rotation drift around the poles axis + morphing over time, with a
+// mild zonal stretch so systems streak into belts. Kept warp-free on purpose:
+// this block is inlined into the (already huge) terrain and water programs
+// for cast shadows, and ANGLE's D3D compiler chokes on more inlined noise.
+// The cloud fragment adds its own swirl warp on top (cloudWarp there).
 vec3 cloudDomain(vec3 dir) {
   float t = uTime * uCloudSpeed * 0.02;
   float ca = cos(t), sa = sin(t);
   vec3 d = vec3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-  return d * uCloudScale + uSeedOffset * 0.37 + vec3(0.0, t * 2.1, 0.0);
+  return d * uCloudScale * vec3(1.0, 1.35, 1.0) + uSeedOffset * 0.37 + vec3(0.0, t * 2.1, 0.0);
 }
 
 float cloudBase(vec3 dir) {
@@ -169,12 +173,13 @@ float cloudBase(vec3 dir) {
 export const CLOUD_SHADOW_GLSL = /* glsl */ `
 uniform float uCloudShadowStr;
 
-// hard-edged cartoon shadow the cloud layer casts on whatever is below;
-// sampled slightly toward the sun so shadows sit offset from their clouds
+// soft shadow the cloud layer casts on whatever is below — graded with the
+// cloud density so thin cloud edges only dim slightly; sampled slightly
+// toward the sun so shadows sit offset from their clouds
 float cloudShadow(vec3 dir) {
   if (uCloudShadowStr < 0.005) return 0.0;
   float c = cloudBase(normalize(dir + uSunDir * 0.05));
   float cut = 1.0 - uCloudCoverage;
-  return smoothstep(cut + 0.02, cut + 0.10, c) * uCloudShadowStr;
+  return smoothstep(cut, cut + 0.30, c) * uCloudShadowStr * 0.85;
 }
 `;

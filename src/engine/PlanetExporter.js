@@ -6,6 +6,7 @@ import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import { TOON_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { PlanetHeightSampler } from './PlanetHeightSampler.js';
 import { STAR_OCTAVES, DEFAULT_STAR_BODY, buildStarBakeFragment } from './star.js';
+import { GAS_OCTAVES, buildGasBakeFragment } from './gas.js';
 
 const FACES = [
   { name: 'pos_z', origin: [-1, -1, 1], u: [2, 0, 0], v: [0, 2, 0] },
@@ -111,6 +112,9 @@ export class PlanetExporter {
   static async export(renderer, params, uniforms, options = {}, onProgress = () => {}) {
     if (params.mode === 'star') {
       return PlanetExporter.exportStar(renderer, params, uniforms, options, onProgress);
+    }
+    if (params.mode === 'gas') {
+      return PlanetExporter.exportGas(renderer, params, uniforms, options, onProgress);
     }
     const format = options.format === 'obj' ? 'obj' : 'glb';
     const meshRes = Math.max(8, Math.min(1024, parseInt(options.meshRes, 10) || 128));
@@ -277,6 +281,115 @@ export class PlanetExporter {
     onProgress('Compressing ZIP');
     const zipped = zipSync(zipFiles);
     downloadBlob(new Blob([zipped], { type: 'application/zip' }), `planet_export-${params.seed}.zip`);
+  }
+
+  // --------------------------------------------------------------------- gas
+  // Gas giant export: one smooth UV sphere + an equirect texture baked from
+  // the SAME gasSurface() GLSL as the viewport. Unlike the star it is not
+  // emissive — bakeLighting optionally folds the toon sun into the color map.
+  static async exportGas(renderer, params, uniforms, options = {}, onProgress = () => {}) {
+    const format = options.format === 'obj' ? 'obj' : 'glb';
+    const meshRes = Math.max(16, Math.min(1024, parseInt(options.meshRes, 10) || 128));
+    const texRes = Math.max(128, Math.min(4096, parseInt(options.texRes, 10) || 1024));
+    const includeMesh = options.includeMesh !== false;
+    const bakeColor = options.bakeColor !== false;
+    const exportPreset = options.exportPreset !== false;
+
+    const group = new THREE.Group();
+    group.name = 'GasPlanet';
+    const zipFiles = {};
+
+    let map = null;
+    if (includeMesh && bakeColor) {
+      onProgress('Baking gas texture');
+      const quadScene = new THREE.Scene();
+      const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const bakeUniforms = cloneUniforms(uniforms, options);
+      const bakeMaterial = new THREE.ShaderMaterial({
+        defines: { OCTAVES: GAS_OCTAVES },
+        uniforms: bakeUniforms,
+        vertexShader: BAKE_VERTEX,
+        fragmentShader: buildGasBakeFragment(),
+      });
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bakeMaterial);
+      quadScene.add(quad);
+
+      const texW = texRes;
+      const texH = Math.max(64, texRes / 2);   // equirect is 2:1
+      const rt = new THREE.WebGLRenderTarget(texW, texH);
+      renderer.setRenderTarget(rt);
+      renderer.render(quadScene, quadCamera);
+      renderer.setRenderTarget(null);
+      const canvas = renderTargetToCanvas(renderer, rt, texW, texH);
+      rt.dispose();
+      bakeMaterial.dispose();
+      quad.geometry.dispose();
+
+      map = new THREE.CanvasTexture(canvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+      map._exportCanvas = canvas;
+    }
+
+    if (includeMesh) {
+      onProgress('Building gas planet mesh');
+      const geometry = new THREE.SphereGeometry(
+        params.radius, meshRes, Math.max(8, Math.round(meshRes / 2))
+      );
+      const material = new THREE.MeshStandardMaterial({
+        name: 'GasPlanet_Surface',
+        color: map ? 0xffffff : new THREE.Color(...params.gasColorBase),
+        map,
+        roughness: 0.85,
+        metalness: 0.0,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = 'GasPlanet_Surface';
+      group.add(mesh);
+    }
+
+    onProgress(`Packaging ${format.toUpperCase()}`);
+    if (includeMesh) {
+      if (format === 'glb') {
+        const model = await new Promise((resolve) => {
+          new GLTFExporter().parse(
+            group,
+            (result) => resolve(new Uint8Array(result)),
+            (err) => {
+              console.error(err);
+              resolve(null);
+            },
+            { binary: true }
+          );
+        });
+        if (model) zipFiles['planet.glb'] = model;
+      } else {
+        const objText = new OBJExporter().parse(group);
+        zipFiles['planet.obj'] = new TextEncoder().encode(objText);
+        for (const child of group.children) {
+          if (child.material?.map?._exportCanvas) {
+            zipFiles[`textures/${child.name}.png`] = await canvasToPng(child.material.map._exportCanvas);
+          }
+        }
+      }
+    }
+
+    if (exportPreset) {
+      zipFiles['planet_preset.json'] = new TextEncoder().encode(
+        JSON.stringify({ app: 'procedural-planets', mode: 'gas', version: 1, params }, null, 2)
+      );
+    }
+
+    group.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.geometry.dispose();
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    });
+
+    if (Object.keys(zipFiles).length === 0) return;
+    onProgress('Compressing ZIP');
+    const zipped = zipSync(zipFiles);
+    downloadBlob(new Blob([zipped], { type: 'application/zip' }), `gas_planet_export-${params.seed}.zip`);
   }
 
   // -------------------------------------------------------------------- star
