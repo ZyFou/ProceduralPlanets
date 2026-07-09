@@ -86,7 +86,7 @@ export function createSharedUniforms(p) {
     uGasFlow:       { value: p.gasFlowSpeed },
     uGasBands:      { value: p.gasBands },
     uGasStretch:    { value: p.gasStretch },
-    uGasStorms:     { value: p.gasStorms },
+    uGasStorms:     { value: p.gasStormsEnabled ? p.gasStorms : 0 },
     uGasStormScale: { value: p.gasStormScale },
     uGasLimb:       { value: p.gasLimb },
     uGasDeep:       { value: v3(p.gasColorDeep) },
@@ -103,7 +103,7 @@ export function createSharedUniforms(p) {
     uStarWarp:       { value: p.starTurbulence },
     uStarGranules:   { value: p.starGranules },
     uStarFlow:       { value: p.starFlowSpeed },
-    uStarSpots:      { value: p.starSpots },
+    uStarSpots:      { value: p.starSpotsEnabled ? p.starSpots : 0 },
     uStarSpotScale:  { value: p.starSpotScale },
     uStarLimb:       { value: p.starLimbDarken },
     uStarBands:      { value: p.starBands },
@@ -144,14 +144,16 @@ export const UNIFORM_MAP = {
   // gas giant surface (mode toggles visibility — Engine.setParam)
   gasScale: 'uGasScale', gasWarp: 'uGasWarp', gasContrast: 'uGasContrast',
   gasFlowSpeed: 'uGasFlow', gasBands: 'uGasBands', gasStretch: 'uGasStretch',
-  gasStorms: 'uGasStorms', gasStormScale: 'uGasStormScale', gasLimb: 'uGasLimb',
+  // gasStorms is gated by gasStormsEnabled — handled in Engine.setParam
+  gasStormScale: 'uGasStormScale', gasLimb: 'uGasLimb',
   gasColorDeep: 'uGasDeep', gasColorBase: 'uGasBase',
   gasColorSwirl: 'uGasSwirl', gasColorStorm: 'uGasStorm',
   // star mode (starCoronaSize scales the corona shell — Engine.setParam)
   starColorCore: 'uStarCore', starColorMid: 'uStarMid', starColorEdge: 'uStarEdge',
   starSpotColor: 'uStarSpotCol', starNoiseScale: 'uStarScale',
   starTurbulence: 'uStarWarp', starGranules: 'uStarGranules',
-  starFlowSpeed: 'uStarFlow', starSpots: 'uStarSpots',
+  starFlowSpeed: 'uStarFlow',
+  // starSpots is gated by starSpotsEnabled — handled in Engine.setParam
   starSpotScale: 'uStarSpotScale', starLimbDarken: 'uStarLimb',
   starBands: 'uStarBands', starGlow: 'uStarGlow',
   starPulseAmount: 'uStarPulseAmt', starPulseSpeed: 'uStarPulseSpeed',

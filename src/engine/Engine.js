@@ -160,6 +160,11 @@ export class Engine {
     this.gasMesh.visible = mode === 'gas';
     this.starGroup.visible = mode === 'star';
     this._syncShellVisibility();
+    this._syncStarVisibility();
+  }
+
+  _syncStarVisibility() {
+    this.corona.visible = this.params.mode === 'star' && !!this.params.starCoronaEnabled;
   }
 
   /**
@@ -237,6 +242,17 @@ export class Engine {
         return;
       case 'starCoronaSize':
         this._syncStarScales();
+        return;
+      case 'starCoronaEnabled':
+        this._syncStarVisibility();
+        return;
+      case 'starSpots':
+      case 'starSpotsEnabled':
+        this.uniforms.uStarSpots.value = this.params.starSpotsEnabled ? this.params.starSpots : 0;
+        return;
+      case 'gasStorms':
+      case 'gasStormsEnabled':
+        this.uniforms.uGasStorms.value = this.params.gasStormsEnabled ? this.params.gasStorms : 0;
         return;
       case 'sunAzimuth':
       case 'sunElevation':

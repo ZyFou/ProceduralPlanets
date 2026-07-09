@@ -146,7 +146,7 @@ export function CloudsPanel({ params: p, onParam }) {
   );
 }
 
-export function GasPanel({ params: p, onParam, onGasPreset }) {
+export function GasFlowPanel({ params: p, onParam, onGasPreset }) {
   return (
     <>
       <Section title="Preset">
@@ -167,16 +167,38 @@ export function GasPanel({ params: p, onParam, onGasPreset }) {
         <Slider label="Striping" value={p.gasStretch} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStretch', v)} title="0 = free swirls; raise only if you want the classic latitude stripes" />
         <Slider label="Limb darkening" value={p.gasLimb} min={0} max={1} step={0.05} onChange={(v) => onParam('gasLimb', v)} />
       </Section>
+    </>
+  );
+}
+
+export function GasStormsPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Storms">
+        <Toggle label="Enabled" value={p.gasStormsEnabled} onChange={(v) => onParam('gasStormsEnabled', v)} />
         <Slider label="Coverage" value={p.gasStorms} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStorms', v)} title="Storm oval coverage" />
         <Slider label="Storm scale" value={p.gasStormScale} min={0.5} max={5} step={0.1} digits={1} onChange={(v) => onParam('gasStormScale', v)} />
       </Section>
+    </>
+  );
+}
+
+export function GasColorsPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Colors">
         <ColorRow label="Deep" value={p.gasColorDeep} onChange={(v) => onParam('gasColorDeep', v)} />
         <ColorRow label="Base" value={p.gasColorBase} onChange={(v) => onParam('gasColorBase', v)} />
         <ColorRow label="Swirl" value={p.gasColorSwirl} onChange={(v) => onParam('gasColorSwirl', v)} />
         <ColorRow label="Storm" value={p.gasColorStorm} onChange={(v) => onParam('gasColorStorm', v)} />
       </Section>
+    </>
+  );
+}
+
+export function GasLightingPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Lighting">
         <Slider label="Sun azimuth" value={p.sunAzimuth} min={0} max={360} step={1} digits={0} onChange={(v) => onParam('sunAzimuth', v)} />
         <Slider label="Sun elevation" value={p.sunElevation} min={-30} max={90} step={1} digits={0} onChange={(v) => onParam('sunElevation', v)} />
@@ -189,7 +211,7 @@ export function GasPanel({ params: p, onParam, onGasPreset }) {
   );
 }
 
-export function StarPanel({ params: p, onParam, onStarPreset }) {
+export function StarSurfacePanel({ params: p, onParam, onStarPreset }) {
   return (
     <>
       <Section title="Preset">
@@ -210,22 +232,52 @@ export function StarPanel({ params: p, onParam, onStarPreset }) {
         <Slider label="Limb darkening" value={p.starLimbDarken} min={0} max={1} step={0.05} onChange={(v) => onParam('starLimbDarken', v)} />
         <Slider label="Rim glow" value={p.starGlow} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starGlow', v)} title="Additive hot rim on the disc edge" />
       </Section>
+    </>
+  );
+}
+
+export function StarColorsPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Colors">
         <ColorRow label="Core (hot)" value={p.starColorCore} onChange={(v) => onParam('starColorCore', v)} />
         <ColorRow label="Mid" value={p.starColorMid} onChange={(v) => onParam('starColorMid', v)} />
         <ColorRow label="Edge (cool)" value={p.starColorEdge} onChange={(v) => onParam('starColorEdge', v)} />
         <ColorRow label="Sunspots" value={p.starSpotColor} onChange={(v) => onParam('starSpotColor', v)} />
       </Section>
+    </>
+  );
+}
+
+export function StarSunspotsPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Sunspots">
+        <Toggle label="Enabled" value={p.starSpotsEnabled} onChange={(v) => onParam('starSpotsEnabled', v)} />
         <Slider label="Amount" value={p.starSpots} min={0} max={1} step={0.05} onChange={(v) => onParam('starSpots', v)} />
         <Slider label="Spot scale" value={p.starSpotScale} min={0.5} max={8} step={0.1} digits={1} onChange={(v) => onParam('starSpotScale', v)} />
       </Section>
+    </>
+  );
+}
+
+export function StarCoronaPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Corona">
+        <Toggle label="Enabled" value={p.starCoronaEnabled} onChange={(v) => onParam('starCoronaEnabled', v)} />
         <ColorRow label="Color" value={p.starCoronaColor} onChange={(v) => onParam('starCoronaColor', v)} />
         <Slider label="Size" value={p.starCoronaSize} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starCoronaSize', v)} title="Halo extent beyond the disc" />
         <Slider label="Strength" value={p.starCoronaStrength} min={0} max={2} step={0.05} onChange={(v) => onParam('starCoronaStrength', v)} />
         <Slider label="Flares" value={p.starFlares} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starFlares', v)} title="Wispy streaks drifting through the halo" />
       </Section>
+    </>
+  );
+}
+
+export function StarMotionPanel({ params: p, onParam }) {
+  return (
+    <>
       <Section title="Motion">
         <Slider label="Pulse amount" value={p.starPulseAmount} min={0} max={0.08} step={0.002} digits={3} onChange={(v) => onParam('starPulseAmount', v)} title="Radius breathing / silhouette simmer" />
         <Slider label="Pulse speed" value={p.starPulseSpeed} min={0} max={4} step={0.1} digits={1} onChange={(v) => onParam('starPulseSpeed', v)} />
@@ -389,8 +441,15 @@ export const PANELS = [
   { id: 'style', label: 'Style', component: StylePanel, modes: ['planet'] },
   { id: 'water', label: 'Water', component: WaterPanel, modes: ['planet'] },
   { id: 'clouds', label: 'Clouds', component: CloudsPanel, modes: ['planet'] },
-  { id: 'gas', label: 'Gas', component: GasPanel, modes: ['gas'] },
-  { id: 'star', label: 'Star', component: StarPanel, modes: ['star'] },
+  { id: 'gasFlow', label: 'Flow', component: GasFlowPanel, modes: ['gas'] },
+  { id: 'gasStorms', label: 'Storms', component: GasStormsPanel, modes: ['gas'] },
+  { id: 'gasColors', label: 'Colors', component: GasColorsPanel, modes: ['gas'] },
+  { id: 'gasLighting', label: 'Lighting', component: GasLightingPanel, modes: ['gas'] },
+  { id: 'starSurface', label: 'Surface', component: StarSurfacePanel, modes: ['star'] },
+  { id: 'starColors', label: 'Colors', component: StarColorsPanel, modes: ['star'] },
+  { id: 'starSunspots', label: 'Sunspots', component: StarSunspotsPanel, modes: ['star'] },
+  { id: 'starCorona', label: 'Corona', component: StarCoronaPanel, modes: ['star'] },
+  { id: 'starMotion', label: 'Motion', component: StarMotionPanel, modes: ['star'] },
   // Shader tab hidden for now — ShaderPanel + Engine.setStarShader stay wired,
   // re-add { id: 'shader', modes: ['star'] } here to bring it back.
   { id: 'perf', label: 'Perf', component: PerformancePanel, modes: ['planet'] },

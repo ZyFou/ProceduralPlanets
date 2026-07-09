@@ -14,6 +14,7 @@ export const STAR_DEFAULTS = {
   starTurbulence: 0.55,    // domain warp of the granulation
   starGranules: 0.60,      // granulation contrast
   starFlowSpeed: 1.0,      // how fast the surface boils
+  starSpotsEnabled: true,
   starSpots: 0.35,         // sunspot coverage
   starSpotScale: 2.4,
   starLimbDarken: 0.55,
@@ -21,9 +22,10 @@ export const STAR_DEFAULTS = {
   starGlow: 0.5,           // additive hot rim on the disc
   starPulseAmount: 0.015,  // radius breathing / surface wobble
   starPulseSpeed: 1.2,
+  starCoronaEnabled: false,
   starCoronaColor: [1.000, 0.550, 0.120],
-  starCoronaSize: 0.5,     // halo extent (fraction of radius)
-  starCoronaStrength: 0.0,
+  starCoronaSize: 0.0,     // halo extent (fraction of radius)
+  starCoronaStrength: 1.0,
   starFlares: 0.7,         // wispy streaks in the corona
 };
 
@@ -38,6 +40,7 @@ export const GAS_DEFAULTS = {
   gasFlowSpeed: 1.0,
   gasBands: 5,             // posterize levels (0 = smooth)
   gasStretch: 0.0,         // 0 = free swirls, >0 pulls toward latitude stripes
+  gasStormsEnabled: true,
   gasStorms: 0.45,         // storm oval coverage
   gasStormScale: 1.5,
   gasLimb: 0.55,
@@ -344,7 +347,7 @@ export const STAR_PRESETS = {
       starColorEdge: [0.550, 0.080, 0.020], starSpotColor: [0.250, 0.040, 0.010],
       starNoiseScale: 2.0, starGranules: 0.50, starSpots: 0.55, starSpotScale: 1.6,
       starFlowSpeed: 0.5, starPulseAmount: 0.035, starPulseSpeed: 0.6,
-      starCoronaColor: [1.000, 0.350, 0.080], starCoronaSize: 0.9,
+      starCoronaEnabled: true, starCoronaColor: [1.000, 0.350, 0.080], starCoronaSize: 0.9,
       starCoronaStrength: 1.2, starFlares: 1.0, starLimbDarken: 0.7,
     },
   },
@@ -355,7 +358,7 @@ export const STAR_PRESETS = {
       starColorEdge: [0.130, 0.240, 0.850], starSpotColor: [0.060, 0.100, 0.450],
       starNoiseScale: 3.6, starFlowSpeed: 1.5, starGranules: 0.7,
       starSpots: 0.15, starLimbDarken: 0.4, starGlow: 0.8,
-      starCoronaColor: [0.500, 0.700, 1.000], starCoronaSize: 0.6,
+      starCoronaEnabled: true, starCoronaColor: [0.500, 0.700, 1.000], starCoronaSize: 0.6,
       starCoronaStrength: 1.1, starFlares: 0.8,
     },
   },
@@ -367,7 +370,7 @@ export const STAR_PRESETS = {
       starNoiseScale: 5.0, starGranules: 0.30, starSpots: 0.08,
       starFlowSpeed: 0.7, starGlow: 0.9, starBands: 3,
       starPulseAmount: 0.006, starPulseSpeed: 2.5,
-      starCoronaColor: [0.750, 0.850, 1.000], starCoronaSize: 0.25,
+      starCoronaEnabled: true, starCoronaColor: [0.750, 0.850, 1.000], starCoronaSize: 0.25,
       starCoronaStrength: 0.9, starFlares: 0.4, starLimbDarken: 0.35,
     },
   },
@@ -378,7 +381,7 @@ export const STAR_PRESETS = {
       starColorEdge: [0.120, 0.030, 0.020], starSpotColor: [0.040, 0.015, 0.010],
       starNoiseScale: 2.6, starGranules: 0.85, starSpots: 0.75, starSpotScale: 1.8,
       starFlowSpeed: 0.3, starGlow: 0.25, starLimbDarken: 0.85,
-      starCoronaColor: [0.900, 0.250, 0.060], starCoronaSize: 0.3,
+      starCoronaEnabled: true, starCoronaColor: [0.900, 0.250, 0.060], starCoronaSize: 0.3,
       starCoronaStrength: 0.5, starFlares: 0.5,
       starPulseAmount: 0.02, starPulseSpeed: 0.4,
     },
@@ -390,7 +393,7 @@ export const STAR_PRESETS = {
       starColorEdge: [0.050, 0.300, 0.350], starSpotColor: [0.300, 0.050, 0.450],
       starNoiseScale: 3.4, starTurbulence: 1.3, starGranules: 0.8,
       starFlowSpeed: 1.6, starSpots: 0.45, starSpotScale: 3.2,
-      starCoronaColor: [0.450, 1.000, 0.500], starCoronaSize: 0.8,
+      starCoronaEnabled: true, starCoronaColor: [0.450, 1.000, 0.500], starCoronaSize: 0.8,
       starCoronaStrength: 1.4, starFlares: 1.3, starBands: 4,
       starPulseAmount: 0.03, starPulseSpeed: 1.8,
     },
