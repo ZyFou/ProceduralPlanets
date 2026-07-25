@@ -69,6 +69,12 @@ export class Engine {
     // resize handling
     this._onResize = () => this._resize();
     window.addEventListener('resize', this._onResize);
+    this._resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => {
+          if (!this._disposed) this._resize();
+        });
+    this._resizeObserver?.observe(canvas);
     this._resize();
 
     // stats
@@ -426,6 +432,7 @@ export class Engine {
     this._disposed = true;
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this._onResize);
+    this._resizeObserver?.disconnect();
     this.controls.dispose();
     this.world.dispose();
     for (const m of [
