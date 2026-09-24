@@ -1,15 +1,18 @@
 // ============================================================================
-// Shared shading GLSL: toon lighting, the biome-driven surface palette and the
-// cloud coverage field. ONE source of truth — the live terrain material, the
-// water/cloud shells and the export texture baker all include these blocks, so
-// the baked texture can never drift from what the viewport shows.
+// Shared shading GLSL. ONE source of truth — the terrain material, the ocean /
+// cloud / atmosphere passes (PlanetPipeline.js) and the export texture baker
+// all include these blocks, so nothing can drift apart.
 //
 // Include order matters (blocks only declare their own uniforms):
-//   NOISE_UNIFORMS + NOISE_FUNCTIONS  (noiseGLSL.js — height01, fbm, vnoise3)
-//   TOON_GLSL                         (sun + toon banding)
-//   SURFACE_GLSL                      (biomes + surfaceColor + terrainNormal)
-//   CLOUD_FIELD_GLSL                  (cloud coverage field, no sun needed)
-//   CLOUD_SHADOW_GLSL                 (needs TOON_GLSL for uSunDir)
+//   NOISE_UNIFORMS + NOISE_FUNCTIONS  (noiseGLSL.js — heightField, gnoise…)
+//   TOON_GLSL                         (sun uniforms + optional toon banding)
+//   ATMOSPHERE_GLSL                   (needs TOON_GLSL for uSunDir)
+//   CLOUD_FIELD_GLSL                  (needs ATMOSPHERE_GLSL)
+//   SURFACE_GLSL                      (climate, albedo, to-scale detail)
+//
+// Colour convention: palette params are sRGB (what the colour picker shows);
+// shaders convert to linear albedo and output linear HDR radiance. Exposure,
+// tone mapping and the sRGB transfer happen once, in the composite pass.
 // ============================================================================
 
 export const TOON_GLSL = /* glsl */ `
@@ -33,15 +36,151 @@ float toonShade(float diff) {
 `;
 
 // ---------------------------------------------------------------------------
-// Surface palette: a 3x3 biome grid (temperature x moisture) blended with the
-// classic altitude ramp, plus beach / rock / snow / polar overlays. All knobs
-// are uniforms; band() gives every transition the hard cartoon edge.
+// Physically based atmosphere helpers. Every length is derived from the
+// planet radius in JS (Engine._syncAtmosphere): optical depths match Earth's,
+// so the sky, limb glow and sunset reddening look right at ANY planet size.
+// Sun transmittance comes from a baked LUT (radius x sun-zenith cosine).
+// ---------------------------------------------------------------------------
+export const ATMOSPHERE_GLSL = /* glsl */ `
+#ifndef PI
+#define PI 3.141592653589793
+#endif
+const float SUN_E = 6.0;           // sun irradiance at intensity 1 (HDR units)
+const vec2 LUT_SIZE = vec2(256.0, 64.0);
+
+uniform sampler2D uTransmittanceLUT;
+uniform float uAtmoOn;             // 0 = vacuum (no scattering, planet shadow only)
+uniform float uAtmoGround;         // scattering ground radius (sea level)
+uniform float uAtmoTop;            // top of the atmosphere
+uniform vec3  uAtmoRayleigh;       // scattering coefficients per world unit
+uniform float uAtmoMie;
+uniform vec3  uAtmoOzone;          // absorption per world unit (tent profile)
+uniform float uAtmoHR;             // Rayleigh scale height (world units)
+uniform float uAtmoHM;             // Mie scale height
+uniform vec3  uSkyTint;            // normalised Rayleigh colour (sky light)
+
+float sat(float x) { return clamp(x, 0.0, 1.0); }
+vec3 srgbToLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
+
+// ray / sphere at the origin: (tNear, tFar); tNear > tFar means miss
+vec2 raySphere(vec3 ro, vec3 rd, float r) {
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - r * r;
+  float h = b * b - c;
+  if (h < 0.0) return vec2(1e20, -1e20);
+  h = sqrt(h);
+  return vec2(-b - h, -b + h);
+}
+
+float ozoneDensity(float h) {
+  float top = uAtmoTop - uAtmoGround;
+  return max(0.0, 1.0 - abs(h - top * 0.25) / (top * 0.15));
+}
+
+// transmittance from a point at radius r toward a direction with zenith
+// cosine mu, out to space (0 when the planet blocks it, soft penumbra)
+vec3 atmoTransmittance(float r, float mu) {
+  float y = sat((r - uAtmoGround) / max(uAtmoTop - uAtmoGround, 1e-4));
+  vec2 uv = vec2(mu * 0.5 + 0.5, y);
+  uv = (uv * (LUT_SIZE - 1.0) + 0.5) / LUT_SIZE;
+  return texture2D(uTransmittanceLUT, uv).rgb;
+}
+
+// direct sun irradiance reaching world point p (planet shadow + reddening)
+vec3 sunIrradiance(vec3 p) {
+  float r = length(p);
+  return atmoTransmittance(r, dot(p / r, uSunDir)) * (SUN_E * uSunIntensity);
+}
+
+// diffuse sky light on a surface with normal n at p: blue-tinted, fades out
+// across the terminator; a faint floor keeps the night side readable
+vec3 skyIrradiance(vec3 p, vec3 n) {
+  vec3 up = normalize(p);
+  float mu = dot(up, uSunDir);
+  float day = smoothstep(-0.22, 0.35, mu);
+  vec3 tint = mix(vec3(1.0), uSkyTint, 0.75 * uAtmoOn);
+  float facing = 0.62 + 0.38 * dot(n, up);
+  vec3 sky = tint * (SUN_E * uSunIntensity * uAmbient * 0.35) * day * facing;
+  return sky + vec3(0.004, 0.005, 0.008) * SUN_E;
+}
+
+float phaseRayleigh(float mu) { return 3.0 / (16.0 * PI) * (1.0 + mu * mu); }
+float phaseHG(float mu, float g) {
+  float g2 = g * g;
+  return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * mu, 1e-4), 1.5));
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Cloud field — the weather cubemap (baked in PlanetPipeline) drives the
+// volumetric raymarch AND the shadows cast on terrain / ocean, so shadows
+// always match the clouds above. Sampling a texture keeps the (already big)
+// terrain program light on ANGLE/D3D.
+// ---------------------------------------------------------------------------
+export const CLOUD_FIELD_GLSL = /* glsl */ `
+uniform samplerCube uWeatherMap;   // r: cloud field, g: cloud type, b: cirrus
+uniform highp sampler3D uCloudNoise; // tileable Perlin-Worley (r) + Worley fbm (gba)
+uniform float uCloudShapeFreq;     // world-space noise frequencies
+uniform float uCloudDetailFreq;
+uniform vec3  uCloudWind;
+uniform float uCloudCoverage;
+uniform float uCloudSoftness;
+uniform float uCloudDensity;
+uniform float uCloudBottom;        // shell radii (world units)
+uniform float uCloudTop;
+uniform float uCloudRotation;      // drift angle around the pole axis
+uniform float uCloudShadowStr;
+
+vec3 cloudRotate(vec3 d) {
+  float c = cos(uCloudRotation), s = sin(uCloudRotation);
+  return vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
+}
+
+vec4 weatherAt(vec3 dir) {
+  return textureCube(uWeatherMap, cloudRotate(dir));
+}
+
+// 0..1 cloud cover from the weather field and the coverage slider
+float cloudCover(vec4 w) {
+  float cut = 1.0 - uCloudCoverage;
+  float soft = max(uCloudSoftness, 0.01);
+  return smoothstep(cut - soft * 0.15, cut + soft + 0.05, w.r);
+}
+
+// fraction of sunlight blocked by the cloud layer above world point p:
+// the sun ray is intersected with the mid shell and the SAME coverage +
+// billow-shape field as the volume is looked up, so even small cumulus cast
+// matching shadows
+float cloudShadow(vec3 p) {
+  if (uCloudShadowStr < 0.005) return 0.0;
+  float rm = mix(uCloudBottom, uCloudTop, 0.4);
+  vec2 t = raySphere(p, uSunDir, rm);
+  if (t.y < 0.0 || t.x > t.y) return 0.0;
+  float tt = t.x > 0.0 ? t.x : t.y;
+  vec3 q = p + uSunDir * tt;
+  vec3 dr = cloudRotate(normalize(q));
+  float cov = cloudCover(textureCube(uWeatherMap, dr));
+  if (cov < 0.01) return 0.0;
+  vec4 n = texture(uCloudNoise, dr * rm * uCloudShapeFreq + uCloudWind * 0.35);
+  float low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
+  float base = sat((n.r - (low - 1.0)) / (2.0 - low));
+  float dens = sat((base - (1.0 - cov)) / max(cov, 1e-3)) * cov;
+  return (1.0 - exp(-dens * 9.0 * uCloudDensity)) * uCloudShadowStr;
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Surface: climate-driven biomes (temperature from latitude + altitude lapse,
+// moisture from the Hadley/Ferrel cell pattern + continentality + noise),
+// slope-driven rock, temperature-driven snow, and multi-octave world-space
+// detail whose octaves fade with the pixel footprint — zooming in reveals new
+// detail instead of aliasing, at any planet size.
 // ---------------------------------------------------------------------------
 export const SURFACE_GLSL = /* glsl */ `
-uniform float uBandSoftness;
+uniform float uBandSoftness;  // width of biome transitions
 uniform float uSnowLine;
 uniform float uPolarCaps;
-uniform float uBiomeAmount;   // 0 = plain altitude bands, 1 = full biome map
+uniform float uBiomeAmount;   // 0 = plain altitude ramp, 1 = full biome map
 uniform float uTempBias;      // -1 frozen .. +1 scorching
 uniform float uMoistScale;    // frequency of the moisture field
 uniform vec3 uColDeep;
@@ -60,126 +199,122 @@ uniform vec3 uBioDesert;      // hot   / dry
 uniform vec3 uBioSavanna;     // hot   / mid
 uniform vec3 uBioJungle;      // hot   / wet
 
-// hard-ish band helper: cartoon transitions with a controllable soft width
-float band(float edge, float v) {
-  return smoothstep(edge - uBandSoftness, edge + uBandSoftness, v);
+vec3 lin(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
+
+float soft01(float edge, float v, float w) {
+  return smoothstep(edge - w, edge + w, v);
 }
 
-// analytic normal from finite differences on the height field;
-// also returns height fraction and slope for the palette
-vec3 terrainNormal(vec3 dir, out float hC, out float slope) {
-  vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-  vec3 t1 = normalize(cross(ref, dir));
-  vec3 t2 = cross(dir, t1);
-  float eps = 0.0012;
-  hC = height01(dir);
-  float hA = height01(normalize(dir + t1 * eps));
-  float hB = height01(normalize(dir + t2 * eps));
-  vec3 pC = dir * (uRadius + hC * uHeightScale);
-  vec3 pA = normalize(dir + t1 * eps) * (uRadius + hA * uHeightScale);
-  vec3 pB = normalize(dir + t2 * eps) * (uRadius + hB * uHeightScale);
-  vec3 n = normalize(cross(pA - pC, pB - pC));
-  if (dot(n, dir) < 0.0) n = -n;
-  slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
-  return n;
-}
-
-// temperature 0 (polar) .. 1 (equatorial), cooled by altitude, wobbled by
-// noise so climate borders aren't perfect latitude rings
-float biomeTemp(vec3 dir, float rel) {
-  float lat = abs(dir.y);
-  float wob = (vnoise3(dir * 4.0 + uSeedOffset * 0.7) - 0.5) * 0.18;
-  return clamp(1.0 - lat * 1.1 - rel * 0.5 + uTempBias * 0.55 + wob, 0.0, 1.0);
-}
-
-// moisture: independent low-frequency field with boosted contrast so wet and
-// dry regions read as distinct patches, not a mushy gradient
-float biomeMoist(vec3 dir) {
-  float m = fbm(dir * uMoistScale + uSeedOffset * 1.31 + 31.7);
-  return clamp((m - 0.5) * 2.4 + 0.5, 0.0, 1.0);
-}
-
-vec3 biomeColor(vec3 dir, float rel) {
-  float temp = biomeTemp(dir, rel);
-  float moist = biomeMoist(dir);
-  float t1 = band(0.38, temp);   // cold -> temperate
-  float t2 = band(0.70, temp);   // temperate -> hot
-  vec3 dry = mix(uBioTundra, uBioShrub,  t1); dry = mix(dry, uBioDesert,  t2);
-  vec3 mid = mix(uBioSteppe, uColGrass,  t1); mid = mix(mid, uBioSavanna, t2);
-  vec3 wet = mix(uBioTaiga,  uColForest, t1); wet = mix(wet, uBioJungle,  t2);
-  float m1 = band(0.36, moist);
-  float m2 = band(0.66, moist);
-  vec3 col = mix(dry, mid, m1);
-  return mix(col, wet, m2);
-}
-
-vec3 surfaceColor(vec3 dir, float h, float slope) {
-  float sea = uSeaLevel;
-  if (h < sea) {
-    // seabed: sand near shore -> deep floor
-    float depth = clamp((sea - h) / max(sea, 1e-4), 0.0, 1.0);
-    return mix(uColSand * 0.72, uColDeep * 0.55, band(0.28, depth));
+// World-space fractal detail. Octave periods run from ~14 world units down to
+// sub-unit; each fades out once it drops below ~2-4 pixels (fp = world units
+// per pixel). slope is the self-similar bump gradient (per-octave unit slope).
+float surfaceDetail(vec3 wp, float fp, out vec3 slope) {
+  float v = 0.0;
+  slope = vec3(0.0);
+  float f = 1.0 / 14.0;
+  float a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
+    vec4 n = gnoised(wp * f + float(i) * 17.31);
+    v += n.x * a * fade;
+    slope += n.yzw * fade * 0.55;
+    f *= 2.13;
+    a *= 0.62;
   }
-  float rel = (h - sea) / max(1.0 - sea, 1e-4);   // 0..1 above sea
-
-  // base vegetation: classic altitude ramp blended toward the biome map
-  vec3 alt = mix(uColGrass, uColForest, band(0.35, rel));
-  vec3 col = mix(alt, biomeColor(dir, rel), clamp(uBiomeAmount, 0.0, 1.0));
-
-  // subtle macro tint so big single-biome regions don't read as flat fills
-  col *= mix(0.95, 1.05, vnoise3(dir * 9.0 + uSeedOffset * 0.53));
-
-  // beach ring just above the waterline
-  col = mix(uColSand, col, band(0.05, rel));
-
-  // high peaks: rock then snow; steep slopes read as rock at any altitude
-  col = mix(col, uColRock, band(0.62, rel));
-  col = mix(col, uColSnow, band(uSnowLine, rel + (1.0 - slope) * 0.02));
-  col = mix(col, uColRock, band(0.42, slope) * (1.0 - band(uSnowLine, rel)));
-
-  // polar caps override everything above water, with a wobbled edge
-  float lat = abs(dir.y) + (vnoise3(dir * 6.0 + uSeedOffset) - 0.5) * 0.14;
-  float polar = smoothstep(0.78, 0.92, lat) * uPolarCaps;
-  return mix(col, uColSnow, polar);
-}
-`;
-
-// ---------------------------------------------------------------------------
-// Cloud coverage field — shared by the cloud shell (shape) and the terrain /
-// water shaders (cast shadows), so shadows always match the clouds above.
-// ---------------------------------------------------------------------------
-export const CLOUD_FIELD_GLSL = /* glsl */ `
-uniform float uCloudCoverage;
-uniform float uCloudScale;
-uniform float uCloudSpeed;
-
-// slow rotation drift around the poles axis + morphing over time, with a
-// mild zonal stretch so systems streak into belts. Kept warp-free on purpose:
-// this block is inlined into the (already huge) terrain and water programs
-// for cast shadows, and ANGLE's D3D compiler chokes on more inlined noise.
-// The cloud fragment adds its own swirl warp on top (cloudWarp there).
-vec3 cloudDomain(vec3 dir) {
-  float t = uTime * uCloudSpeed * 0.02;
-  float ca = cos(t), sa = sin(t);
-  vec3 d = vec3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-  return d * uCloudScale * vec3(1.0, 1.35, 1.0) + uSeedOffset * 0.37 + vec3(0.0, t * 2.1, 0.0);
+  return v;
 }
 
-float cloudBase(vec3 dir) {
-  return fbm(cloudDomain(dir));
+// temperature 0 (polar) .. 1 (equatorial); altitude lapse cools peaks
+float climateTemp(vec3 dir, float rel, float jit) {
+  float lat = abs(dir.y);
+  float t = 1.0 - pow(lat, 1.35) * 1.02 - rel * 0.85 + uTempBias * 0.45 + jit * 0.07;
+  t -= smoothstep(0.55, 0.98, lat) * uPolarCaps * 0.3;
+  return sat(t);
 }
-`;
 
-export const CLOUD_SHADOW_GLSL = /* glsl */ `
-uniform float uCloudShadowStr;
+// moisture: wet equator, dry subtropics (~30 deg), wet storm tracks (~60
+// deg), dry poles — then continental interiors dry out, coasts stay humid
+float climateMoist(vec3 dir, float cLow, float jit) {
+  float latA = asin(clamp(dir.y, -1.0, 1.0));
+  float cells = cos(latA * 6.0);
+  vec3 q = dir * uMoistScale + uSeedOffset * 1.31 + 31.7;
+  float n = gnoise(q) + 0.5 * gnoise(q * 2.07 + 13.1) + 0.25 * gnoise(q * 4.3 + 5.7);
+  float interior = smoothstep(0.50, 0.66, cLow);
+  return sat(0.50 + cells * 0.2 + n * 0.62 - interior * 0.24 + jit * 0.06);
+}
 
-// soft shadow the cloud layer casts on whatever is below — graded with the
-// cloud density so thin cloud edges only dim slightly; sampled slightly
-// toward the sun so shadows sit offset from their clouds
-float cloudShadow(vec3 dir) {
-  if (uCloudShadowStr < 0.005) return 0.0;
-  float c = cloudBase(normalize(dir + uSunDir * 0.05));
-  float cut = 1.0 - uCloudCoverage;
-  return smoothstep(cut, cut + 0.30, c) * uCloudShadowStr * 0.85;
+vec3 biomeAlbedo(float temp, float moist) {
+  float w = max(uBandSoftness * 2.0, 0.04);
+  float t1 = soft01(0.34, temp, w);
+  float t2 = soft01(0.68, temp, w);
+  vec3 dry = mix(lin(uBioTundra), lin(uBioShrub),  t1); dry = mix(dry, lin(uBioDesert),  t2);
+  vec3 mid = mix(lin(uBioSteppe), lin(uColGrass),  t1); mid = mix(mid, lin(uBioSavanna), t2);
+  vec3 wet = mix(lin(uBioTaiga),  lin(uColForest), t1); wet = mix(wet, lin(uBioJungle),  t2);
+  float m1 = soft01(0.34, moist, w);
+  float m2 = soft01(0.62, moist, w);
+  return mix(mix(dry, mid, m1), wet, m2);
+}
+
+// polar ice mask (land ice sheets + sea ice), shared with the ocean pass
+float polarIce(vec3 dir, float jit) {
+  float lat = abs(dir.y) + jit * 0.035;
+  float edge = 0.985 - uPolarCaps * 0.22 - max(-uTempBias, 0.0) * 0.2;
+  return smoothstep(edge - 0.03, edge + 0.03, lat) * step(0.01, uPolarCaps);
+}
+
+// linear albedo. det = surfaceDetail value, returns rock/snow cover for shading
+vec3 surfaceAlbedo(vec3 dir, float h, float slope, float cLow, float mtn, float det,
+                   out float rockOut, out float snowOut) {
+  float sea = uSeaLevel;
+  float jit = gnoise(dir * 11.0 + uSeedOffset * 0.53) * 0.7 + det * 0.6;
+  rockOut = 0.0;
+  snowOut = 0.0;
+
+  if (h < sea) {
+    // seabed: pale sand on the shelves, darker silt on the abyssal plain
+    float depth = (sea - h) / max(sea, 1e-4);
+    vec3 sand = lin(uColSand);
+    vec3 silt = lin(uColRock) * vec3(0.55, 0.52, 0.5);
+    return mix(sand, silt, smoothstep(0.02, 0.3, depth + jit * 0.04)) * (1.0 + det * 0.15);
+  }
+  float rel = (h - sea) / max(1.0 - sea, 1e-4);
+
+  float temp = climateTemp(dir, rel, jit);
+  float moist = climateMoist(dir, cLow, jit);
+  vec3 plain = mix(lin(uColGrass), lin(uColForest), smoothstep(0.02, 0.25, rel + jit * 0.03));
+  vec3 col = mix(plain, biomeAlbedo(temp, moist), sat(uBiomeAmount));
+
+  // vegetation density / soil variation at every scale
+  col *= 1.0 + det * 0.22;
+  col = mix(col, col * vec3(1.12, 1.0, 0.82), sat(gnoise(dir * 38.0 + uSeedOffset) * 0.8 + 0.2) * 0.35);
+
+  // beaches: only on low, flat coasts
+  float beach = (1.0 - smoothstep(0.004, 0.03, rel + det * 0.012)) * (1.0 - smoothstep(0.05, 0.16, slope));
+  col = mix(col, lin(uColSand), beach);
+
+  // bare rock: steep slopes and high ranges above the tree line, with
+  // eroded strata banding close up
+  float sph = h * 900.0 + det * 5.0;
+  float strata = 0.85 + 0.15 * sin(sph) * (1.0 - smoothstep(0.4, 1.2, fwidth(sph)));
+  vec3 rockCol = lin(uColRock) * strata * (1.0 + det * 0.25);
+  // thresholds widen with the screen-space rate of change: no sub-pixel
+  // sparkle on distant ridgelines
+  float aaR = min(fwidth(rel) * 1.5, 0.2);
+  float rock = max(smoothstep(0.16, 0.38, slope + det * 0.05),
+                   smoothstep(0.30 - aaR, 0.55 + aaR, rel + mtn * 0.12 + det * 0.04) * 0.9);
+  col = mix(col, rockCol, rock);
+  rockOut = rock;
+
+  // snow: altitude snow line that drops toward the poles and in cold
+  // climates; steep faces shed it
+  float lat = abs(dir.y);
+  float line = uSnowLine * (1.0 - lat * lat * 0.85) - uTempBias * 0.25;
+  float snow = smoothstep(line - 0.04 - aaR, line + 0.04 + aaR, rel + det * 0.035);
+  snow *= 1.0 - smoothstep(0.30, 0.55 + aaR, slope);
+  snow *= 1.0 - smoothstep(1.0, 1.1, uSnowLine);   // >1.1 = no altitude snow
+  snow = max(snow, polarIce(dir, jit));
+  col = mix(col, lin(uColSnow) * (1.0 + det * 0.05), snow);
+  snowOut = snow;
+  return col;
 }
 `;

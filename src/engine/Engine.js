@@ -5,10 +5,8 @@ import {
   STAR_DEFAULTS, STAR_KEYS, STAR_PRESETS,
   GAS_DEFAULTS, GAS_KEYS, GAS_PRESETS, seedToOffset,
 } from './presets.js';
-import {
-  createSharedUniforms, UNIFORM_MAP,
-  createWaterMaterial, createCloudMaterial, createAtmosphereMaterial, createStarMaterial,
-} from './materials.js';
+import { createSharedUniforms, UNIFORM_MAP } from './materials.js';
+import { PlanetPipeline } from './PlanetPipeline.js';
 import {
   DEFAULT_STAR_BODY, createStarSurfaceMaterial, createCoronaMaterial,
   validateStarShaderBody,
@@ -22,7 +20,17 @@ import { PlanetExporter } from './PlanetExporter.js';
 // Framework-agnostic: React talks to it via setParam/applyPreset/randomize and
 // receives stats through the onStats callback. Almost every param maps to a
 // shared uniform (live); the few structural keys rebuild the world.
+// Rendering goes through PlanetPipeline (HDR scene -> volumetric clouds ->
+// ocean / atmosphere / tone-map composite).
 // ============================================================================
+
+// params that feed derived (physically scaled) uniforms
+const ATMO_KEYS = new Set(['radius', 'heightScale', 'seaLevel', 'atmoEnabled', 'atmoStrength',
+  'atmoColor', 'atmoHeight', 'atmoHaze', 'cloudAltitude', 'cloudThickness']);
+const WATER_KEYS = new Set(['radius', 'heightScale', 'seaLevel', 'colShallow', 'waterClarity']);
+const WEATHER_KEYS = new Set(['seed', 'cloudScale']);
+
+const srgbToLinear = (c) => Math.pow(Math.max(c, 0), 2.2);
 
 export class Engine {
   constructor({ canvas, callbacks = {} }) {
@@ -30,9 +38,13 @@ export class Engine {
     this.params = { ...DEFAULT_PARAMS };
     this._disposed = false;
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // no MSAA on the default framebuffer: every frame is composited from
+    // the pipeline's HDR targets
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x000000, 1);
+    // a frame is several passes: count them all, reset once per frame
+    this.renderer.info.autoReset = false;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, 1, 1, 1e6);
@@ -47,6 +59,10 @@ export class Engine {
 
     this.uniforms = createSharedUniforms(this.params);
     this._applySunDir();
+    this.pipeline = new PlanetPipeline(this.renderer, this.uniforms);
+    this.pipeline.setCloudResolution(this.params.cloudResolution);
+    this._syncAtmosphere();
+    this._syncWater();
 
     // world + shells
     this.world = new PlanetWorld(this.scene, this.uniforms, {
@@ -56,15 +72,9 @@ export class Engine {
       octaves: this.params.octaves,
     });
 
-    this._buildShells();
     this._buildStar();
     this._buildGas();
     this._syncMode();
-
-    const stars = new THREE.Mesh(new THREE.SphereGeometry(1e5, 16, 12), createStarMaterial());
-    stars.frustumCulled = false;
-    this.scene.add(stars);
-    this.stars = stars;
 
     // resize handling
     this._onResize = () => this._resize();
@@ -86,43 +96,58 @@ export class Engine {
     this.renderer.setAnimationLoop(() => this._tick());
   }
 
-  // ------------------------------------------------------------------ shells
-  _buildShells() {
-    const R = this.params.radius;
+  // ------------------------------------------------ derived render uniforms
+  // Atmosphere + cloud shell, scaled to the planet: optical depths match
+  // Earth's whatever the radius, so the sky reads the same at any size.
+  _syncAtmosphere() {
     const p = this.params;
-    const oct = p.octaves;
+    const u = this.uniforms;
+    const R = p.radius;
+    const ground = R + p.seaLevel * p.heightScale;
+    const top = ground + R * p.atmoHeight;
+    const H = top - ground;
+    const HR = H * 0.11;
+    const HM = H * 0.022;
+    const s = p.atmoEnabled ? p.atmoStrength : 0;
 
-    this.waterMat = createWaterMaterial(this.uniforms, oct);
-    this.water = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), this.waterMat);
-    this.water.renderOrder = 10;
-    this.water.frustumCulled = false;
-    this.scene.add(this.water);
+    // Rayleigh colour from the tint: squared so the default blue tint lands on
+    // Earth's lambda^-4 ratios (~0.17 : 0.41 : 1)
+    const tint = p.atmoColor.map((c) => Math.max(c, 0.001) ** 2);
+    const tMax = Math.max(...tint);
+    const rel = tint.map((c) => c / tMax);
+    u.uAtmoGround.value = ground;
+    u.uAtmoTop.value = top;
+    u.uAtmoHR.value = HR;
+    u.uAtmoHM.value = HM;
+    u.uAtmoRayleigh.value.set(...rel.map((c) => (c * 0.2 * s) / HR));
+    u.uAtmoMie.value = ((0.004 + 0.14 * p.atmoHaze) * s) / HM;
+    const oz = (0.03 * s) / (0.15 * H);
+    u.uAtmoOzone.value.set(0.35 * oz, 1.0 * oz, 0.045 * oz);
+    u.uSkyTint.value.set(...rel);
+    u.uAtmoOn.value = s > 0.001 ? 1 : 0;
 
-    this.cloudMat = createCloudMaterial(this.uniforms, oct);
-    // dense sphere: the cloud vertex shader displaces it into puffy silhouettes
-    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 128), this.cloudMat);
-    this.clouds.renderOrder = 20;
-    this.clouds.frustumCulled = false;
-    this.scene.add(this.clouds);
+    // cloud shell sits in the lower air, relative to sea level: high ranges
+    // can pierce it
+    u.uCloudBottom.value = ground + R * p.cloudAltitude;
+    u.uCloudTop.value = u.uCloudBottom.value + R * Math.max(p.cloudThickness, 0.0005);
+    this.pipeline.lutDirty = true;
+  }
 
-    this.atmoMat = createAtmosphereMaterial(this.uniforms);
-    this.atmo = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), this.atmoMat);
-    this.atmo.renderOrder = 30;
-    this.atmo.frustumCulled = false;
-    this.scene.add(this.atmo);
-
-    this._syncShellScales();
-    this._syncShellVisibility();
+  // ocean sphere + absorption: the shallow colour is what one "clarity depth"
+  // of water does to light, so absorption scales with the terrain relief
+  _syncWater() {
+    const p = this.params;
+    const u = this.uniforms;
+    u.uSeaRadius.value = p.radius + p.seaLevel * p.heightScale;
+    const depth = Math.max(p.waterClarity * p.heightScale, 1e-3);
+    u.uWaterAbsorb.value.set(...p.colShallow.map((c) => {
+      const t = Math.min(Math.max(srgbToLinear(c), 0.004), 0.999);
+      return -Math.log(t) / depth;
+    }));
   }
 
   _syncShellScales() {
-    const R = this.params.radius;
-    const hs = this.params.heightScale;
-    const seaR = R + this.params.seaLevel * hs;
-    this.water.scale.setScalar(seaR);
-    this.clouds.scale.setScalar(R * (1 + this.params.cloudAltitude) + hs);
-    this.atmo.scale.setScalar(R * 1.045 + hs);
-    this.gasMesh?.scale.setScalar(R);
+    this.gasMesh?.scale.setScalar(this.params.radius);
   }
 
   // -------------------------------------------------------------------- gas
@@ -190,11 +215,6 @@ export class Engine {
   }
 
   _syncShellVisibility() {
-    // the gas surface carries its whole look — no water/cloud/atmo shells
-    const planet = this.params.mode === 'planet';
-    this.water.visible = planet && !!this.params.waterEnabled;
-    this.clouds.visible = planet && !!this.params.cloudsEnabled;
-    this.atmo.visible = planet && !!this.params.atmoEnabled && this.params.atmoStrength > 0.01;
     // terrain/water sample the cloud field for cast shadows — kill them too
     // when the cloud layer is off
     this.uniforms.uCloudShadowStr.value =
@@ -225,6 +245,9 @@ export class Engine {
       this._rebuildStructural();
       return;
     }
+    if (ATMO_KEYS.has(key)) this._syncAtmosphere();
+    if (WATER_KEYS.has(key)) this._syncWater();
+    if (WEATHER_KEYS.has(key)) this.pipeline.weatherDirty = true;
 
     switch (key) {
       case 'seed': {
@@ -232,10 +255,12 @@ export class Engine {
         this.uniforms.uSeedOffset.value.set(off[0], off[1], off[2]);
         return;
       }
+      case 'cloudResolution':
+        this.pipeline.setCloudResolution(value);
+        return;
       case 'radius':
       case 'heightScale':
-      case 'seaLevel':
-      case 'cloudAltitude': {
+      case 'seaLevel': {
         const u = UNIFORM_MAP[key];
         if (u) this._setUniform(u, value);
         this._syncShellScales();
@@ -269,12 +294,7 @@ export class Engine {
         return;
       case 'waterEnabled':
       case 'cloudsEnabled':
-      case 'atmoEnabled':
       case 'cloudShadowStrength':
-        this._syncShellVisibility();
-        return;
-      case 'atmoStrength':
-        this._setUniform('uAtmoStrength', value);
         this._syncShellVisibility();
         return;
       case 'wireframe':
@@ -300,13 +320,6 @@ export class Engine {
   _rebuildStructural() {
     const p = this.params;
     this.world.rebuild({ chunkRes: p.chunkRes, maxDepth: p.maxDepth, octaves: p.octaves });
-    // shells share the OCTAVES define — rebuild their materials too
-    this.water.material.dispose();
-    this.clouds.material.dispose();
-    this.waterMat = createWaterMaterial(this.uniforms, p.octaves);
-    this.cloudMat = createCloudMaterial(this.uniforms, p.octaves);
-    this.water.material = this.waterMat;
-    this.clouds.material = this.cloudMat;
   }
 
   /** Apply a preset patch; returns the merged params for the UI to mirror. */
@@ -360,9 +373,13 @@ export class Engine {
     const prevRatio = this.renderer.getPixelRatio();
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(w, h, false);
+    this.pipeline.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.render(this.scene, this.camera);
+    // LOD may be stale (e.g. right after a structural rebuild, or when the
+    // loop is paused in a background tab)
+    if (this.world.group.visible) this.world.update(this.camera.position);
+    this._renderFrame();
     const url = this.renderer.domElement.toDataURL('image/png');
     this.renderer.setPixelRatio(prevRatio);
     this.renderer.setSize(prevSize.x, prevSize.y, false);
@@ -390,7 +407,54 @@ export class Engine {
   renderOnce() {
     this.controls.update();
     if (this.world.group.visible) this.world.update(this.camera.position);
-    this.renderer.render(this.scene, this.camera);
+    this._renderFrame();
+  }
+
+  // near/far hug the planet: nothing can be closer than the camera's height
+  // above the highest possible terrain, so the depth buffer keeps enough
+  // precision for the ocean/cloud passes to reconstruct seabed depths
+  _updateClipPlanes() {
+    const p = this.params;
+    const R = p.radius;
+    const dist = this.camera.position.length();
+    let near = 1, far = 1e6;
+    if (p.mode === 'planet') {
+      const alt = dist - (R + p.heightScale);
+      near = Math.max(0.05, alt * 0.8);
+      far = dist + R + p.heightScale + 10;
+    } else {
+      const shell = p.mode === 'star' ? R * (1.04 + p.starCoronaSize * 0.6) : R;
+      near = Math.max(0.5, (dist - shell) * 0.5);
+      far = dist + shell * 1.2 + 10;
+    }
+    if (Math.abs(near - this.camera.near) > 1e-6 || Math.abs(far - this.camera.far) > 1e-3) {
+      this.camera.near = near;
+      this.camera.far = far;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  _renderFrame() {
+    const p = this.params;
+    const t = this.uniforms.uTime.value;
+    const R = p.radius;
+    this.renderer.info.reset();
+    this._updateClipPlanes();
+    this.uniforms.uCloudRotation.value = t * p.cloudSpeed * 0.004;
+    // cloud noise frequencies in WORLD units, tied to the shell thickness
+    const thick = Math.max(R * p.cloudThickness, 1e-3);
+    const shapeFreq = 1 / (thick * 1.6 * p.cloudDetailScale);
+    const wind = t * p.cloudSpeed * 0.004;
+    this.uniforms.uCloudShapeFreq.value = shapeFreq;
+    this.uniforms.uCloudDetailFreq.value = shapeFreq * 4.1;
+    this.uniforms.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
+    this.pipeline.render(this.scene, this.camera, {
+      planet: p.mode === 'planet',
+      water: !!p.waterEnabled,
+      clouds: !!p.cloudsEnabled,
+      cloudSteps: p.cloudQuality,
+      weatherTime: t * p.cloudSpeed * 0.0035,
+    });
   }
 
   // ------------------------------------------------------------------- loop
@@ -399,6 +463,8 @@ export class Engine {
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
+    const db = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.pipeline.setSize(db.x, db.y);
     this.camera.aspect = w / Math.max(h, 1);
     this.camera.updateProjectionMatrix();
   }
@@ -410,7 +476,7 @@ export class Engine {
 
     this.controls.update();
     if (this.world.group.visible) this.world.update(this.camera.position);
-    this.renderer.render(this.scene, this.camera);
+    this._renderFrame();
 
     // stats at ~2 Hz
     this._frames++;
@@ -435,10 +501,8 @@ export class Engine {
     this._resizeObserver?.disconnect();
     this.controls.dispose();
     this.world.dispose();
-    for (const m of [
-      this.waterMat, this.cloudMat, this.atmoMat, this.gasMat,
-      this.starSurfaceMat, this.coronaMat, this.stars.material,
-    ]) m?.dispose();
+    for (const m of [this.gasMat, this.starSurfaceMat, this.coronaMat]) m?.dispose();
+    this.pipeline.dispose();
     this.renderer.dispose();
   }
 }

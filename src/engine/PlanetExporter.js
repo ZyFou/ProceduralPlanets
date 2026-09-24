@@ -3,7 +3,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
 import { zipSync } from 'fflate';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
-import { TOON_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
+import { TOON_GLSL, ATMOSPHERE_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { PlanetHeightSampler } from './PlanetHeightSampler.js';
 import { STAR_OCTAVES, DEFAULT_STAR_BODY, buildStarBakeFragment } from './star.js';
 import { GAS_OCTAVES, buildGasBakeFragment } from './gas.js';
@@ -33,6 +33,7 @@ precision highp float;
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
 ${TOON_GLSL}
+${ATMOSPHERE_GLSL}
 ${SURFACE_GLSL}
 
 uniform vec3 uFaceOrigin;
@@ -46,9 +47,19 @@ void main() {
   vec3 cube = uFaceOrigin + vUv.x * uFaceU + vUv.y * uFaceV;
   vec3 dir = normalize(cube);
 
-  float h, slope;
-  vec3 n = terrainNormal(dir, h, slope);
-  vec3 col = surfaceColor(dir, h, slope);
+  vec3 grad;
+  float cLow, mtn;
+  float h = heightField(dir, grad, cLow, mtn);
+  float r = uRadius + h * uHeightScale;
+  vec3 n = normalize(dir - (grad - dir * dot(grad, dir)) * (uHeightScale / r));
+  float slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
+  // texel footprint in world units: detail finer than a texel filters out
+  vec3 wp = dir * r;
+  float fp = max(length(dFdx(wp)), length(dFdy(wp)));
+  vec3 dSlope;
+  float det = surfaceDetail(wp, fp, dSlope);
+  float rock, snow;
+  vec3 col = surfaceAlbedo(dir, h, slope, cLow, mtn, det, rock, snow);
 
   if (uBakeLighting) {
     float diff = toonShade(max(dot(n, uSunDir), 0.0));
@@ -103,7 +114,9 @@ function cloneUniforms(uniforms, options) {
   };
   for (const [key, uniform] of Object.entries(uniforms)) {
     const value = uniform.value;
-    out[key] = { value: value && typeof value.clone === 'function' ? value.clone() : value };
+    // baked textures (LUT / weather / noise volume) are shared, never cloned
+    const clonable = value && typeof value.clone === 'function' && !value.isTexture;
+    out[key] = { value: clonable ? value.clone() : value };
   }
   return out;
 }

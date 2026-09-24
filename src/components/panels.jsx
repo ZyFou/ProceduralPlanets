@@ -71,34 +71,34 @@ export function StylePanel({ params: p, onParam, onPreset }) {
           ))}
         </div>
       </Section>
-      <Section title="Toon shading">
-        <Toggle label="Enabled" value={p.toonEnabled} onChange={(v) => onParam('toonEnabled', v)} />
-        <Slider label="Bands" value={p.toonBands} min={2} max={8} step={1} digits={0} onChange={(v) => onParam('toonBands', v)} />
-        <Slider label="Band softness" value={p.toonSoftness} min={0} max={0.3} step={0.005} digits={3} onChange={(v) => onParam('toonSoftness', v)} />
-        <Slider label="Color softness" value={p.bandSoftness} min={0.005} max={0.15} step={0.005} digits={3} onChange={(v) => onParam('bandSoftness', v)} title="Width of the terrain color band transitions" />
-      </Section>
       <Section title="Lighting">
         <Slider label="Sun azimuth" value={p.sunAzimuth} min={0} max={360} step={1} digits={0} onChange={(v) => onParam('sunAzimuth', v)} />
         <Slider label="Sun elevation" value={p.sunElevation} min={-30} max={90} step={1} digits={0} onChange={(v) => onParam('sunElevation', v)} />
         <Slider label="Sun intensity" value={p.sunIntensity} min={0.2} max={2.5} step={0.05} onChange={(v) => onParam('sunIntensity', v)} />
-        <Slider label="Ambient" value={p.ambient} min={0} max={0.8} step={0.02} onChange={(v) => onParam('ambient', v)} />
-      </Section>
-      <Section title="Surface palette">
-        <ColorRow label="Deep water" value={p.colDeep} onChange={(v) => onParam('colDeep', v)} />
-        <ColorRow label="Shallow water" value={p.colShallow} onChange={(v) => onParam('colShallow', v)} />
-        <ColorRow label="Sand" value={p.colSand} onChange={(v) => onParam('colSand', v)} />
-        <ColorRow label="Rock" value={p.colRock} onChange={(v) => onParam('colRock', v)} />
-        <ColorRow label="Snow" value={p.colSnow} onChange={(v) => onParam('colSnow', v)} />
-        <ColorRow label="Foam" value={p.colFoam} onChange={(v) => onParam('colFoam', v)} />
-      </Section>
-      <Section title="Snow & poles">
-        <Slider label="Snow line" value={p.snowLine} min={0.2} max={1.1} step={0.02} onChange={(v) => onParam('snowLine', v)} />
-        <Slider label="Polar caps" value={p.polarCaps} min={0} max={1} step={0.05} onChange={(v) => onParam('polarCaps', v)} />
+        <Slider label="Sky light" value={p.ambient} min={0} max={0.8} step={0.02} onChange={(v) => onParam('ambient', v)} title="Diffuse light from the sky dome (fades out on the night side)" />
+        <Slider label="Exposure" value={p.exposure} min={0.3} max={3} step={0.05} onChange={(v) => onParam('exposure', v)} title="Camera exposure before the filmic tone map" />
       </Section>
       <Section title="Atmosphere">
         <Toggle label="Enabled" value={p.atmoEnabled} onChange={(v) => onParam('atmoEnabled', v)} />
-        <Slider label="Strength" value={p.atmoStrength} min={0} max={2} step={0.05} onChange={(v) => onParam('atmoStrength', v)} />
-        <ColorRow label="Color" value={p.atmoColor} onChange={(v) => onParam('atmoColor', v)} />
+        <Slider label="Density" value={p.atmoStrength} min={0} max={3} step={0.05} onChange={(v) => onParam('atmoStrength', v)} title="Air density — 1 matches Earth's optical depth at any planet size" />
+        <Slider label="Height" value={p.atmoHeight} min={0.01} max={0.12} step={0.005} digits={3} onChange={(v) => onParam('atmoHeight', v)} title="Atmosphere thickness as a fraction of the radius" />
+        <Slider label="Haze" value={p.atmoHaze} min={0} max={1} step={0.05} onChange={(v) => onParam('atmoHaze', v)} title="Aerosols / dust (Mie scattering): whiter sky, sun halo" />
+        <ColorRow label="Scattering tint" value={p.atmoColor} onChange={(v) => onParam('atmoColor', v)} />
+      </Section>
+      <Section title="Surface palette">
+        <ColorRow label="Sand" value={p.colSand} onChange={(v) => onParam('colSand', v)} />
+        <ColorRow label="Rock" value={p.colRock} onChange={(v) => onParam('colRock', v)} />
+        <ColorRow label="Snow & ice" value={p.colSnow} onChange={(v) => onParam('colSnow', v)} />
+        <Slider label="Biome blend" value={p.bandSoftness} min={0.005} max={0.2} step={0.005} digits={3} onChange={(v) => onParam('bandSoftness', v)} title="Width of the transitions between biomes" />
+      </Section>
+      <Section title="Snow & poles">
+        <Slider label="Snow line" value={p.snowLine} min={0.1} max={1.2} step={0.02} onChange={(v) => onParam('snowLine', v)} title="Altitude where snow starts at the equator (drops toward the poles)" />
+        <Slider label="Polar ice" value={p.polarCaps} min={0} max={1} step={0.05} onChange={(v) => onParam('polarCaps', v)} title="Extent of the polar ice sheets and sea ice" />
+      </Section>
+      <Section title="Stylized shading" defaultOpen={false}>
+        <Toggle label="Toon bands" value={p.toonEnabled} onChange={(v) => onParam('toonEnabled', v)} />
+        <Slider label="Bands" value={p.toonBands} min={2} max={8} step={1} digits={0} onChange={(v) => onParam('toonBands', v)} />
+        <Slider label="Band softness" value={p.toonSoftness} min={0} max={0.3} step={0.005} digits={3} onChange={(v) => onParam('toonSoftness', v)} />
       </Section>
     </>
   );
@@ -109,13 +109,22 @@ export function WaterPanel({ params: p, onParam }) {
     <>
       <Section title="Ocean">
         <Toggle label="Enabled" value={p.waterEnabled} onChange={(v) => onParam('waterEnabled', v)} />
-        <Slider label="Opacity" value={p.waterOpacity} min={0.3} max={1} step={0.02} onChange={(v) => onParam('waterOpacity', v)} />
-        <Slider label="Specular" value={p.waterSpec} min={0} max={1.5} step={0.05} onChange={(v) => onParam('waterSpec', v)} />
+        <Slider label="Clarity" value={p.waterClarity} min={0.005} max={0.4} step={0.005} digits={3} onChange={(v) => onParam('waterClarity', v)} title="How deep light reaches before the water takes the shallow tint (fraction of the terrain relief)" />
+        <ColorRow label="Deep water" value={p.colDeep} onChange={(v) => onParam('colDeep', v)} />
+        <ColorRow label="Shallow tint" value={p.colShallow} onChange={(v) => onParam('colShallow', v)} />
+        <Slider label="Sun glint" value={p.waterSpec} min={0} max={2} step={0.05} onChange={(v) => onParam('waterSpec', v)} />
+        <Slider label="Molten" value={p.waterEmissive} min={0} max={1} step={0.05} onChange={(v) => onParam('waterEmissive', v)} title="Self-lit liquid (lava seas); foam becomes cooled crust" />
       </Section>
-      <Section title="Waves & foam">
-        <Slider label="Wave scale" value={p.waveScale} min={5} max={80} step={1} digits={0} onChange={(v) => onParam('waveScale', v)} />
+      <Section title="Waves">
+        <Slider label="Wave size" value={p.waveSize} min={0.5} max={40} step={0.5} digits={1} onChange={(v) => onParam('waveSize', v)} title="Longest wavelength in world units — detail below a pixel turns into glint roughness" />
+        <Slider label="Wave height" value={p.waveHeight} min={0} max={2} step={0.05} onChange={(v) => onParam('waveHeight', v)} title="Steepness: calm mirror to rough sea" />
         <Slider label="Wave speed" value={p.waveSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('waveSpeed', v)} />
-        <Slider label="Foam width" value={p.foamWidth} min={0} max={0.5} step={0.01} onChange={(v) => onParam('foamWidth', v)} title="Hard cartoon foam ring along the coast" />
+      </Section>
+      <Section title="Foam">
+        <Slider label="Shore width" value={p.foamWidth} min={0} max={1} step={0.01} onChange={(v) => onParam('foamWidth', v)} title="Surf band along the coasts (depth based)" />
+        <Slider label="Amount" value={p.foamAmount} min={0} max={2} step={0.05} onChange={(v) => onParam('foamAmount', v)} />
+        <Slider label="Whitecaps" value={p.whitecaps} min={0} max={1} step={0.05} onChange={(v) => onParam('whitecaps', v)} title="Breaking crests in windy open water" />
+        <ColorRow label="Foam" value={p.colFoam} onChange={(v) => onParam('colFoam', v)} />
       </Section>
     </>
   );
@@ -127,20 +136,25 @@ export function CloudsPanel({ params: p, onParam }) {
       <Section title="Clouds">
         <Toggle label="Enabled" value={p.cloudsEnabled} onChange={(v) => onParam('cloudsEnabled', v)} />
         <Slider label="Coverage" value={p.cloudCoverage} min={0} max={1} step={0.02} onChange={(v) => onParam('cloudCoverage', v)} />
-        <Slider label="Softness" value={p.cloudSoftness} min={0.005} max={0.4} step={0.005} digits={3} onChange={(v) => onParam('cloudSoftness', v)} title="Width of the translucent edge falloff" />
-        <Slider label="Density" value={p.cloudDensity} min={0.2} max={1} step={0.02} onChange={(v) => onParam('cloudDensity', v)} />
-        <Slider label="Shadows" value={p.cloudShadowStrength} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudShadowStrength', v)} title="Hard shadows the clouds cast on the surface" />
+        <Slider label="Density" value={p.cloudDensity} min={0.1} max={2} step={0.05} onChange={(v) => onParam('cloudDensity', v)} title="Optical thickness of the volume" />
+        <Slider label="Softness" value={p.cloudSoftness} min={0.01} max={0.5} step={0.01} onChange={(v) => onParam('cloudSoftness', v)} title="How gradually systems thin out into broken fields" />
+        <Slider label="Shadows" value={p.cloudShadowStrength} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudShadowStrength', v)} title="Shadows cast on land and sea" />
       </Section>
       <Section title="Shape & motion">
-        <Slider label="Scale" value={p.cloudScale} min={1} max={10} step={0.1} digits={1} onChange={(v) => onParam('cloudScale', v)} />
-        <Slider label="Detail" value={p.cloudDetail} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudDetail', v)} />
-        <Slider label="Puffiness" value={p.cloudPuff} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudPuff', v)} title="Vertex-displaced cumulus bumps on the silhouette" />
-        <Slider label="Altitude" value={p.cloudAltitude} min={0.01} max={0.15} step={0.005} digits={3} onChange={(v) => onParam('cloudAltitude', v)} />
+        <Slider label="System scale" value={p.cloudScale} min={1} max={10} step={0.1} digits={1} onChange={(v) => onParam('cloudScale', v)} title="Frequency of weather systems" />
+        <Slider label="Erosion" value={p.cloudDetail} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudDetail', v)} title="Wispy bottoms / billowy tops" />
+        <Slider label="Billow size" value={p.cloudDetailScale} min={0.3} max={3} step={0.05} onChange={(v) => onParam('cloudDetailScale', v)} />
+        <Slider label="Altitude" value={p.cloudAltitude} min={0} max={0.03} step={0.001} digits={3} onChange={(v) => onParam('cloudAltitude', v)} title="Cloud base above sea level (fraction of radius)" />
+        <Slider label="Thickness" value={p.cloudThickness} min={0.002} max={0.03} step={0.001} digits={3} onChange={(v) => onParam('cloudThickness', v)} title="Depth of the cloud layer (fraction of radius)" />
         <Slider label="Speed" value={p.cloudSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('cloudSpeed', v)} />
+      </Section>
+      <Section title="Quality">
+        <Slider label="Ray steps" value={p.cloudQuality} min={24} max={128} step={4} digits={0} onChange={(v) => onParam('cloudQuality', v)} title="Maximum raymarch steps through the cloud layer" />
+        <Slider label="Resolution" value={p.cloudResolution} min={0.25} max={1} step={0.05} onChange={(v) => onParam('cloudResolution', v)} title="Pixel budget of the cloud pass when the planet fills the screen — a smaller planet automatically gets full-resolution clouds" />
       </Section>
       <Section title="Colors">
         <ColorRow label="Cloud" value={p.cloudColor} onChange={(v) => onParam('cloudColor', v)} />
-        <ColorRow label="Shadow" value={p.cloudShadow} onChange={(v) => onParam('cloudShadow', v)} />
+        <ColorRow label="Sky-lit tint" value={p.cloudShadow} onChange={(v) => onParam('cloudShadow', v)} />
       </Section>
     </>
   );

@@ -71,6 +71,26 @@ analytic normals), so terrain edits are live uniform changes — no CPU meshing.
 - [ ] README
 - Commit: `checkpoint-4`
 
+## Checkpoint 5 — Realistic rendering pipeline  ✅
+Replaced the toon look with a physically based, planet-scaled pipeline
+(toon banding survives as an optional "Stylized shading" toggle).
+- [x] Height field: gradient noise with analytic derivatives, exact normals
+      from one evaluation; Earth-like hypsometry (abyssal plains, steep
+      continental slopes, low platforms); ridged-multifractal ranges along
+      tectonic belts. CPU mirror (PlanetHeightSampler) emulates float32 hashes
+      so exports match the GPU.
+- [x] Surface: climate biomes (latitude + lapse rate, Hadley/Ferrel moisture,
+      continentality), slope rock, temperature snow, polar ice; world-space
+      detail octaves faded by pixel footprint (to scale at any zoom).
+- [x] PlanetPipeline: HDR scene + float depth -> volumetric clouds
+      (weather cubemap + 128^3 Perlin-Worley, adaptive resolution) ->
+      composite: analytic ocean (Beer-Lambert water column, GGX glint with
+      footprint-filtered waves, shore foam, whitecaps, sea ice, molten mode),
+      Rayleigh/Mie/ozone single scattering with a transmittance LUT, stars,
+      ACES tone map. Palette params are sRGB albedos.
+- [x] Projects saved before renderVersion 2 get their look keys migrated
+      (shape kept).
+
 ## Verification notes (this machine)
 - preview_screenshot can hang; run `node .claude/shot-receiver.cjs` (port 5199)
   and POST canvas JPEG from page. Occluded tab: rAF frozen → drive

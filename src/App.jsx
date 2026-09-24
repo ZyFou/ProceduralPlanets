@@ -20,7 +20,8 @@ import {
   X,
 } from 'lucide-react';
 import { Engine } from './engine/Engine.js';
-import { DEFAULT_PARAMS } from './engine/presets.js';
+import { DEFAULT_PARAMS, migrateParams } from './engine/presets.js';
+import { getProjectTemplate } from './project/ProjectTemplates.js';
 import { DEFAULT_STAR_BODY } from './engine/star.js';
 import { PANELS } from './components/panels.jsx';
 import { searchSettings } from './components/settingsSearch.js';
@@ -74,7 +75,10 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !booted || !project?.params) return;
-    const next = { ...DEFAULT_PARAMS, ...project.params };
+    // older projects carry the toon-era look: migrate it, keep the shape
+    const template = getProjectTemplate(project.metadata?.templateId);
+    const presetKey = template.mode === 'planet' ? template.preset : 'terran';
+    const next = { ...DEFAULT_PARAMS, ...migrateParams(project.params, presetKey) };
     skipPersistRef.current = true;
     Object.entries(next).forEach(([key, value]) => engine.setParam(key, value));
     setParams(next);
