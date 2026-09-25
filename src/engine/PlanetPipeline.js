@@ -52,6 +52,7 @@ vec3 linearToSrgb(vec3 c) {
 const NOISE_VOLUME_SIZE = 64;
 const EROSION_VOLUME_SIZE = 64;
 const WEATHER_SIZE = 512;
+const WEATHER_STEP = 0.004;   // weather time between crossfaded keyframes
 const MAX_CLOUD_STEPS = 128;
 
 // ---------------------------------------------------------------------------
@@ -259,7 +260,7 @@ float cloudDensity(vec3 p, bool detail, out float hf) {
   hf = (r - uCloudBottom) / (uCloudTop - uCloudBottom);
   if (hf <= 0.0 || hf >= 1.0) return 0.0;
   vec3 dr = cloudRotate(p / r);
-  vec4 w = textureLod(uWeatherMap, dr, 0.0);
+  vec4 w = weatherRotated(dr);
   float cov = cloudCover(w);
   if (cov < 0.01) return 0.0;
 
@@ -795,7 +796,6 @@ export class PlanetPipeline {
     this.height = 1;
     this.lutDirty = true;
     this.weatherDirty = true;
-    this._weatherClock = 0;
     this._noiseBaked = false;
 
     const halfLinear = {
@@ -820,14 +820,15 @@ export class PlanetPipeline {
     this.lutRT.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.lutRT.texture.wrapT = THREE.ClampToEdgeWrapping;
 
-    // r = cloud field, g = cloud type. Double buffered: while the weather
-    // evolves, the next state is baked one face per frame into the back
-    // buffer (no multi-millisecond hitch), then the two swap.
+    // r = cloud field, g = cloud type. The weather evolves through keyframes
+    // WEATHER_STEP apart: the shaders crossfade keyframe A -> B while the one
+    // after B is baked one face per frame into the third cube (no
+    // multi-millisecond hitch). When the clock passes B they rotate.
     const weather = { ...halfLinear, format: THREE.RGFormat };
-    this.weatherRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather);
-    this.weatherBackRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather);
-    this._weatherFace = -1;   // next face of the back-buffer bake (-1 = idle)
-    this._weatherNext = 0;    // weather time being baked into the back buffer
+    this.weatherRTs = [0, 1, 2].map(() => new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather));
+    this._wA = 0; this._wB = 0; this._wC = 1;   // indices: shown, next, baking
+    this._tA = 0; this._tB = 0; this._tC = 0;   // their weather times
+    this._weatherFace = -1;   // next face of the background bake (-1 = ready)
 
     const volume = (format, size) => {
       const rt = new THREE.WebGL3DRenderTarget(size, size, size, {
@@ -846,7 +847,8 @@ export class PlanetPipeline {
     this.erosionRT = volume(THREE.RedFormat, EROSION_VOLUME_SIZE);
 
     uniforms.uTransmittanceLUT.value = this.lutRT.texture;
-    uniforms.uWeatherMap.value = this.weatherRT.texture;
+    uniforms.uWeatherMap.value = this.weatherRTs[0].texture;
+    uniforms.uWeatherMapNext.value = this.weatherRTs[0].texture;
     uniforms.uCloudNoise.value = this.noiseRT.texture;
     uniforms.uCloudErosion.value = this.erosionRT.texture;
 
@@ -981,7 +983,8 @@ export class PlanetPipeline {
   // Cloud cost scales with the pixels that actually see the cloud shell, so a
   // planet that fills little of the screen can afford full-resolution clouds
   // (crisp edges); close up, the scale drops back to the budget. Quantised so
-  // the target is only reallocated when the step changes.
+  // the target is only reallocated when the step changes, with hysteresis so
+  // a camera hovering on a step boundary doesn't toggle it every frame.
   _fitCloudScale(camera, shellRadius) {
     const d = camera.position.length();
     let frac = 1;
@@ -992,7 +995,7 @@ export class PlanetPipeline {
     }
     const s = Math.min(1, this.cloudBudget / Math.sqrt(Math.max(frac, 1e-3)));
     const q = Math.max(0.25, Math.round(s * 8) / 8);
-    if (q !== this.cloudScale) {
+    if (q !== this.cloudScale && Math.abs(s - this.cloudScale) > 0.09) {
       this.cloudScale = q;
       this.setSize(this.width, this.height);
     }
@@ -1028,28 +1031,62 @@ export class PlanetPipeline {
     this._noiseBaked = true;
   }
 
-  /** Bake the whole weather cubemap now (seed / scale changes). */
-  _bakeWeather(time) {
-    this.weatherMat.uniforms.uWeatherTime.value = time;
-    for (let f = 0; f < 6; f++) {
-      this.weatherMat.uniforms.uFace.value = f;
-      this._blit(this.weatherMat, this.weatherRT, f);
-    }
-    this.weatherDirty = false;
-    this._weatherFace = -1;
+  /** One face of weather keyframe `idx` at weather time `time`. */
+  _bakeWeatherFace(idx, time, face) {
+    const wu = this.weatherMat.uniforms;
+    wu.uWeatherTime.value = time;
+    wu.uFace.value = face;
+    this._blit(this.weatherMat, this.weatherRTs[idx], face);
   }
 
-  /** One face of the evolving weather into the back buffer; swap when done. */
-  _stepWeather() {
-    const wu = this.weatherMat.uniforms;
-    wu.uWeatherTime.value = this._weatherNext;
-    wu.uFace.value = this._weatherFace;
-    this._blit(this.weatherMat, this.weatherBackRT, this._weatherFace);
-    if (++this._weatherFace === 6) {
-      [this.weatherRT, this.weatherBackRT] = [this.weatherBackRT, this.weatherRT];
-      this.uniforms.uWeatherMap.value = this.weatherRT.texture;
-      this._weatherFace = -1;
+  /** Start baking the keyframe after B into the free cube. */
+  _queueWeather() {
+    this._wC = [0, 1, 2].find((i) => i !== this._wA && i !== this._wB);
+    this._tC = this._tB + WEATHER_STEP;
+    this._weatherFace = 0;
+  }
+
+  /**
+   * Advance the weather keyframes to weather time wt and set the crossfade.
+   * Seed / scale changes rebake keyframe A at once; B aliases A until the
+   * background bake delivers the next state, so evolution resumes smoothly.
+   */
+  _updateWeather(wt) {
+    if (this.weatherDirty) {
+      for (let f = 0; f < 6; f++) this._bakeWeatherFace(this._wA, wt, f);
+      this._wB = this._wA;
+      this._tA = this._tB = wt;
+      this._shown = this._wtPrev = wt;
+      this._queueWeather();
+      this.weatherDirty = false;
     }
+    // the displayed weather clock follows wt but waits at keyframe B until
+    // the next one is baked, then catches up at 1.5x (never a jump)
+    const dw = Math.max(0, wt - this._wtPrev);
+    this._wtPrev = wt;
+    const behind = wt - this._shown > dw;
+    this._shown = Math.min(this._shown + dw * (behind ? 1.5 : 1), wt, this._tB);
+    // one face of the background keyframe per frame; if the clock ran more
+    // than half a step past B (very fast wind / low fps), finish it now
+    // rather than let the crossfade fall behind
+    if (this._weatherFace >= 0) {
+      const late = wt - this._tB > WEATHER_STEP * 0.5;
+      do {
+        this._bakeWeatherFace(this._wC, this._tC, this._weatherFace);
+      } while (++this._weatherFace < 6 && late);
+      if (this._weatherFace === 6) this._weatherFace = -1;
+    }
+    // reached B with the next keyframe ready: rotate
+    if (this._shown >= this._tB && this._weatherFace < 0) {
+      this._wA = this._wB; this._tA = this._tB;
+      this._wB = this._wC; this._tB = this._tC;
+      this._queueWeather();
+    }
+    const span = this._tB - this._tA;
+    const blend = span > 0 ? THREE.MathUtils.clamp((this._shown - this._tA) / span, 0, 1) : 0;
+    this.uniforms.uWeatherMap.value = this.weatherRTs[this._wA].texture;
+    this.uniforms.uWeatherMapNext.value = this.weatherRTs[this._wB].texture;
+    this.uniforms.uWeatherBlend.value = blend;
   }
 
   /**
@@ -1074,17 +1111,8 @@ export class PlanetPipeline {
     if (planet) {
       if (clouds || this.uniforms.uCloudShadowStr.value > 0) {
         if (!this._noiseBaked) this._bakeNoise();
-        // evolve the weather every couple of seconds; drift is a free rotation
-        if (this.weatherDirty) {
-          this._weatherClock = opts.weatherTime;
-          this._bakeWeather(opts.weatherTime);
-        } else if (this._weatherFace >= 0) {
-          this._stepWeather();
-        } else if (Math.abs(opts.weatherTime - this._weatherClock) > 0.004) {
-          this._weatherClock = this._weatherNext = opts.weatherTime;
-          this._weatherFace = 0;
-          this._stepWeather();
-        }
+        // weather evolves through crossfaded keyframes; drift is a free rotation
+        this._updateWeather(opts.weatherTime);
       }
     }
 
@@ -1127,7 +1155,7 @@ export class PlanetPipeline {
   }
 
   dispose() {
-    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, this.weatherRT, this.weatherBackRT,
+    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, ...this.weatherRTs,
       this.noiseRT, this.erosionRT]) rt.dispose();
     this.sceneRT.depthTexture?.dispose();
     this._disposeBloom();

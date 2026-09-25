@@ -77,7 +77,9 @@ export function createSharedUniforms(p) {
 
     // clouds — weather cubemap + noise volume are baked by PlanetPipeline
     uWeatherMap:    { value: null },
-    uCloudNoise:    { value: null },
+    uWeatherMapNext:{ value: null },
+    uWeatherBlend:  { value: 0 },
+    uCloudNoise:   { value: null },
     uCloudErosion:  { value: null },
     uCloudCoverage: { value: p.cloudCoverage },
     uCloudSoftness: { value: p.cloudSoftness },

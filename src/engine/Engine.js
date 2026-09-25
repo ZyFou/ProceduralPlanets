@@ -94,6 +94,9 @@ export class Engine {
     this._fpsTime = performance.now();
     this._fps = 0;
 
+    // cloud motion clock: integrated (not t * speed) so changing the speed
+    // slider changes how fast the clouds move without teleporting them
+    this._cloudTime = 0;
     this._clock = new THREE.Clock();
     this.renderer.setAnimationLoop(() => this._tick());
   }
@@ -469,15 +472,15 @@ export class Engine {
 
   _renderFrame() {
     const p = this.params;
-    const t = this.uniforms.uTime.value;
+    const ct = this._cloudTime;
     const R = p.radius;
     this.renderer.info.reset();
     this._updateClipPlanes();
-    this.uniforms.uCloudRotation.value = t * p.cloudSpeed * 0.004;
+    this.uniforms.uCloudRotation.value = (ct * 0.004) % (Math.PI * 2);
     // cloud noise frequencies in WORLD units, tied to the shell thickness
     const thick = Math.max(R * p.cloudThickness, 1e-3);
     const shapeFreq = 1 / (thick * 1.6 * p.cloudDetailScale);
-    const wind = t * p.cloudSpeed * 0.004;
+    const wind = ct * 0.004;
     this.uniforms.uCloudShapeFreq.value = shapeFreq;
     this.uniforms.uCloudDetailFreq.value = shapeFreq * 4.1;
     this.uniforms.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
@@ -488,7 +491,7 @@ export class Engine {
       water: !!p.waterEnabled,
       clouds: !!p.cloudsEnabled,
       cloudSteps: p.cloudQuality,
-      weatherTime: t * p.cloudSpeed * 0.0035,
+      weatherTime: ct * 0.0035,
     });
   }
 
@@ -508,6 +511,7 @@ export class Engine {
     if (this._disposed) return;
     const dt = Math.min(this._clock.getDelta(), 0.05);
     this.uniforms.uTime.value += dt;
+    this._cloudTime += dt * this.params.cloudSpeed;
 
     this.controls.update();
     if (this.world.group.visible) this.world.update(this.camera.position, this.camera);

@@ -119,6 +119,8 @@ float phaseHG(float mu, float g) {
 // ---------------------------------------------------------------------------
 export const CLOUD_FIELD_GLSL = /* glsl */ `
 uniform samplerCube uWeatherMap;   // r: cloud field, g: cloud type
+uniform samplerCube uWeatherMapNext; // the next evolution keyframe
+uniform float uWeatherBlend;       // 0..1 between the two keyframes
 uniform highp sampler3D uCloudNoise;   // tileable Worley fbm (r) + Perlin-Worley (g)
 uniform highp sampler3D uCloudErosion; // the same Worley fbm alone (detail taps)
 uniform float uCloudShapeFreq;     // world-space noise frequencies
@@ -137,8 +139,15 @@ vec3 cloudRotate(vec3 d) {
   return vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
 }
 
+// weather at an already-rotated direction: the field evolves by crossfading
+// two baked keyframes, so cloud systems grow and dissolve continuously
+// instead of popping when a new state is swapped in
+vec4 weatherRotated(vec3 dr) {
+  return mix(textureLod(uWeatherMap, dr, 0.0), textureLod(uWeatherMapNext, dr, 0.0), uWeatherBlend);
+}
+
 vec4 weatherAt(vec3 dir) {
-  return textureLod(uWeatherMap, cloudRotate(dir), 0.0);
+  return weatherRotated(cloudRotate(dir));
 }
 
 // 0..1 cloud cover from the weather field and the coverage slider
@@ -160,7 +169,7 @@ float cloudShadow(vec3 p) {
   float tt = t.x > 0.0 ? t.x : t.y;
   vec3 q = p + uSunDir * tt;
   vec3 dr = cloudRotate(normalize(q));
-  float cov = cloudCover(textureLod(uWeatherMap, dr, 0.0));
+  float cov = cloudCover(weatherRotated(dr));
   if (cov < 0.01) return 0.0;
   vec2 n = textureLod(uCloudNoise, dr * rm * uCloudShapeFreq + uCloudWind * 0.35, 0.0).rg;
   float base = sat((n.y - (n.x - 1.0)) / (2.0 - n.x));
