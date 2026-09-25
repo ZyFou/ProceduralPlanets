@@ -18,6 +18,13 @@ import { createTerrainMaterial } from './materials.js';
 // are outside the view frustum or entirely below the true horizon: the
 // vertex shader evaluates the full height field, so off-screen chunks are
 // not free.
+//
+// Chunk meshes are pooled, never disposed while the world lives: three
+// deletes a shader program as soon as its last material is disposed, so
+// dropping every chunk of one terrain variant (crossing the level-2 LOD
+// boundary while zooming) would recompile it — a multi-second stall for this
+// shader — on the way back. warmup() compiles both variants in the
+// background up front, before the first zoom needs the fine one.
 // ============================================================================
 
 const FACES = [
@@ -89,6 +96,7 @@ export class PlanetWorld {
     this.scene.add(this.group);
     this.geometry = buildChunkGeometry(this.opts.chunkRes);
     this.chunks = new Map();     // key -> mesh
+    this._pool = [[], []];       // free chunk meshes by variant (1: LOW_VARYING)
     this._desired = new Map();   // key -> node desc (rebuilt every update)
     this._camPos = new THREE.Vector3();
     this._v = new THREE.Vector3();
@@ -107,14 +115,49 @@ export class PlanetWorld {
     for (const mesh of this.chunks.values()) mesh.material.wireframe = on;
   }
 
-  /** Rebuild everything (structural change: chunkRes / maxDepth / octaves). */
-  rebuild(opts = {}) {
-    Object.assign(this.opts, opts);
+  /**
+   * Start compiling both terrain variants and park their meshes in the pool,
+   * which keeps the programs alive. compile() only issues compile + link; the
+   * driver builds them in the background and nothing waits on the status
+   * until first use. (Not compileAsync: its status poll throws if the world
+   * is rebuilt or disposed before the compile finishes.) `target` must be
+   * the render target the terrain is drawn into: the program key depends on
+   * its colour space.
+   */
+  warmup(renderer, camera, target) {
+    const scene = new THREE.Scene();
+    for (const low of [0, 1]) {
+      if (this._pool[low].length) continue;
+      const mesh = this._newMesh(low);
+      scene.add(mesh);
+      this._pool[low].push(mesh);
+    }
+    if (!scene.children.length) return;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(target);
+    renderer.compile(scene, camera);
+    renderer.setRenderTarget(prev);
+  }
+
+  _disposeMeshes() {
     for (const mesh of this.chunks.values()) {
       this.group.remove(mesh);
       mesh.material.dispose();
     }
     this.chunks.clear();
+    for (const pool of this._pool) {
+      for (const mesh of pool) {
+        mesh.removeFromParent();
+        mesh.material.dispose();
+      }
+      pool.length = 0;
+    }
+  }
+
+  /** Rebuild everything (structural change: chunkRes / maxDepth / octaves). */
+  rebuild(opts = {}) {
+    Object.assign(this.opts, opts);
+    this._disposeMeshes();
     this.geometry.dispose();
     this.geometry = buildChunkGeometry(this.opts.chunkRes);
   }
@@ -143,7 +186,7 @@ export class PlanetWorld {
     for (const [key, mesh] of this.chunks) {
       if (!this._desired.has(key)) {
         this.group.remove(mesh);
-        mesh.material.dispose();
+        this._pool[mesh.userData.low].push(mesh);
         this.chunks.delete(key);
       }
     }
@@ -238,21 +281,35 @@ export class PlanetWorld {
     }
   }
 
-  _createChunk(key, node) {
-    const face = FACES[node.f];
+  // A chunk mesh of one terrain variant (low: LOW_VARYING), placed later.
+  _newMesh(low) {
     const chunkUniforms = {
-      uFaceOrigin: { value: new THREE.Vector3(...face.origin) },
-      uFaceU:      { value: new THREE.Vector3(...face.u) },
-      uFaceV:      { value: new THREE.Vector3(...face.v) },
-      uUV0:        { value: new THREE.Vector2(node.u0, node.v0) },
-      uUVSize:     { value: node.size },
+      uFaceOrigin: { value: new THREE.Vector3() },
+      uFaceU:      { value: new THREE.Vector3() },
+      uFaceV:      { value: new THREE.Vector3() },
+      uUV0:        { value: new THREE.Vector2() },
+      uUVSize:     { value: 1 },
     };
-    const mat = createTerrainMaterial(this.shared, this.opts.octaves, chunkUniforms, node.level >= 2);
-    // skirt depth scales with node size so coarse chunks hide bigger cracks
-    mat.uniforms.uSkirtDepth = { value: Math.max(this.heightScale * 0.6, node.size * this.radius * 0.05) };
-    mat.wireframe = this.wireframe;
+    const mat = createTerrainMaterial(this.shared, this.opts.octaves, chunkUniforms, low === 1);
     const mesh = new THREE.Mesh(this.geometry, mat);
     mesh.frustumCulled = false;  // culled in update() instead (shader-displaced)
+    mesh.userData.low = low;
+    return mesh;
+  }
+
+  _createChunk(key, node) {
+    const face = FACES[node.f];
+    const low = node.level >= 2 ? 1 : 0;
+    const mesh = this._pool[low].pop() || this._newMesh(low);
+    const mu = mesh.material.uniforms;
+    mu.uFaceOrigin.value.fromArray(face.origin);
+    mu.uFaceU.value.fromArray(face.u);
+    mu.uFaceV.value.fromArray(face.v);
+    mu.uUV0.value.set(node.u0, node.v0);
+    mu.uUVSize.value = node.size;
+    // skirt depth scales with node size so coarse chunks hide bigger cracks
+    mu.uSkirtDepth.value = Math.max(this.heightScale * 0.6, node.size * this.radius * 0.05);
+    mesh.material.wireframe = this.wireframe;
     const u0 = node.u0, v0 = node.v0, s = node.size;
     const c = this._centerDir(node.f, u0 + s / 2, v0 + s / 2);
     // angular radius: farthest corner / edge midpoint from the center
@@ -268,11 +325,7 @@ export class PlanetWorld {
   }
 
   dispose() {
-    for (const mesh of this.chunks.values()) {
-      this.group.remove(mesh);
-      mesh.material.dispose();
-    }
-    this.chunks.clear();
+    this._disposeMeshes();
     this.geometry.dispose();
     this.scene.remove(this.group);
   }

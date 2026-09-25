@@ -73,6 +73,7 @@ export class Engine {
       splitFactor: this.params.splitFactor,
       octaves: this.params.octaves,
     });
+    this.world.warmup(this.renderer, this.camera, this.pipeline.sceneRT);
 
     this._buildStar();
     this._buildGas();
@@ -354,6 +355,7 @@ export class Engine {
   _rebuildStructural() {
     const p = this.params;
     this.world.rebuild({ chunkRes: p.chunkRes, maxDepth: p.maxDepth, octaves: p.octaves });
+    this.world.warmup(this.renderer, this.camera, this.pipeline.sceneRT);
   }
 
   /** Apply a preset patch; returns the merged params for the UI to mirror. */
