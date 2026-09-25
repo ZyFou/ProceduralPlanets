@@ -212,13 +212,12 @@ for (const [k, e] of Object.entries(docs)) {
 }
 dts += `}
 
-/** Parameter object as stored on a Planet (colours normalised to arrays). */
-export type ResolvedPlanetParams = {
-  [K in keyof PlanetParams]-?: PlanetParams[K] extends ColorInput | undefined
-    ? (Exclude<PlanetParams[K], undefined> extends ColorInput ? [number, number, number] : Exclude<PlanetParams[K], undefined>)
-    : Exclude<PlanetParams[K], undefined>;
-};
+/** Parameter object as stored on a Planet (every key present, colours as [r, g, b]). */
+export interface ResolvedPlanetParams {
 `;
+const resolvedType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : e.type === 'color' ? '[number, number, number]' : e.type);
+for (const [k, e] of Object.entries(docs)) dts += `  ${k}: ${resolvedType(e, k)};\n`;
+dts += '}\n';
 
 const outputs = {
   'src/lib/paramDocs.js': js,
