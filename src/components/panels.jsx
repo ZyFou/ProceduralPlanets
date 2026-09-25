@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Slider, Toggle, ColorRow, Section, SelectRow } from './controls.jsx';
 import { PLANET_PRESETS, STAR_PRESETS, GAS_PRESETS } from '../engine/presets.js';
 import { DEFAULT_STAR_BODY } from '../engine/star.js';
+import { planetCodeSnippet } from '../project/codeSnippet.js';
 
 // One component per side-panel tab. Each receives (params, onParam) and, for
 // the style panel, onPreset. Pure declarative mappings — no engine access.
@@ -481,7 +482,34 @@ export function ExportPanel({ params: p, onExport, onScreenshot }) {
         )}
         <Toggle label="Export Preset (JSON)" value={opt.exportPreset} onChange={(v) => set('exportPreset', v)} />
       </Section>
+
+      <UseInCodeSection params={p} />
     </>
+  );
+}
+
+// The current body as a procedural-planets constructor call, for pasting
+// into another three.js project.
+function UseInCodeSection({ params }) {
+  const [copied, setCopied] = useState('');
+  const code = planetCodeSnippet(params);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied('Copied to clipboard');
+    } catch {
+      setCopied('Select the code and copy it manually');
+    }
+    window.setTimeout(() => setCopied(''), 2000);
+  };
+  return (
+    <Section title="Use in code" defaultOpen={false}>
+      <div className="export-actions">
+        <button type="button" className="action-btn" onClick={copy}>Copy code</button>
+      </div>
+      {copied && <div className="export-status">{copied}</div>}
+      <pre className="code-snippet">{code}</pre>
+    </Section>
   );
 }
 

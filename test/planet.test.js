@@ -245,3 +245,18 @@ describe('PlanetRenderer', () => {
     expect(() => new PlanetRenderer({})).toThrow(/WebGLRenderer/);
   });
 });
+
+describe('studio code snippet', async () => {
+  const { planetCodeSnippet, snippetParams } = await import('../src/project/codeSnippet.js');
+
+  it('only lists non-default keys of the body domain, and rebuilds the same planet', () => {
+    const planet = new Planet({ preset: 'ringed', seed: 4 });
+    const extra = snippetParams(planet.params);
+    expect(extra.seed).toBe(4);
+    expect(extra.seaLevel).toBeUndefined();          // terrestrial key: not a gas concern
+    const rebuilt = new Planet({ type: 'gas', ...extra });
+    for (const k of Object.keys(GAS_PRESETS.ringed.patch)) expect(rebuilt.get(k)).toEqual(planet.get(k));
+    expect(planetCodeSnippet(planet.params)).toContain("type: 'gas'");
+    planet.dispose(); rebuilt.dispose();
+  });
+});
