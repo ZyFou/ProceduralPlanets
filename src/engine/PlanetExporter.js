@@ -298,8 +298,9 @@ export class PlanetExporter {
 
   // --------------------------------------------------------------------- gas
   // Gas giant export: one smooth UV sphere + an equirect texture baked from
-  // the SAME gasSurface() GLSL as the viewport. Unlike the star it is not
-  // emissive — bakeLighting optionally folds the toon sun into the color map.
+  // the SAME gasAlbedo() GLSL as the viewport. Unlike the star it is not
+  // emissive — bakeLighting optionally folds a Lambert sun into the color map.
+  // (Rings are viewport-only.)
   static async exportGas(renderer, params, uniforms, options = {}, onProgress = () => {}) {
     const format = options.format === 'obj' ? 'obj' : 'glb';
     const meshRes = Math.max(16, Math.min(1024, parseInt(options.meshRes, 10) || 128));
@@ -350,7 +351,7 @@ export class PlanetExporter {
       );
       const material = new THREE.MeshStandardMaterial({
         name: 'GasPlanet_Surface',
-        color: map ? 0xffffff : new THREE.Color(...params.gasColorBase),
+        color: map ? 0xffffff : new THREE.Color(...params.gasColorZone),
         map,
         roughness: 0.85,
         metalness: 0.0,
@@ -459,7 +460,7 @@ export class PlanetExporter {
       const geometry = new THREE.SphereGeometry(
         params.radius, meshRes, Math.max(8, Math.round(meshRes / 2))
       );
-      const tint = new THREE.Color(...params.starColorMid);
+      const tint = new THREE.Color(...params.starTint);
       const material = new THREE.MeshStandardMaterial({
         name: 'Star_Surface',
         color: map ? 0xffffff : tint,

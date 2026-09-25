@@ -8,10 +8,9 @@ import {
 import { createSharedUniforms, UNIFORM_MAP } from './materials.js';
 import { PlanetPipeline } from './PlanetPipeline.js';
 import {
-  DEFAULT_STAR_BODY, createStarSurfaceMaterial, createCoronaMaterial,
-  validateStarShaderBody,
+  DEFAULT_STAR_BODY, createStarSurfaceMaterial, validateStarShaderBody,
 } from './star.js';
-import { createGasSurfaceMaterial } from './gas.js';
+import { createGasSurfaceMaterial, createRingMaterial, createRingGeometry } from './gas.js';
 import { PlanetWorld } from './PlanetWorld.js';
 import { PlanetExporter } from './PlanetExporter.js';
 
@@ -26,7 +25,10 @@ import { PlanetExporter } from './PlanetExporter.js';
 
 // params that feed derived (physically scaled) uniforms
 const ATMO_KEYS = new Set(['radius', 'heightScale', 'seaLevel', 'atmoEnabled', 'atmoStrength',
-  'atmoColor', 'atmoHeight', 'atmoHaze', 'cloudAltitude', 'cloudThickness']);
+  'atmoColor', 'atmoHeight', 'atmoHaze', 'cloudAltitude', 'cloudThickness', 'mode',
+  'gasAtmoColor', 'gasAtmoStrength', 'gasAtmoHaze']);
+// gas giants keep a thin haze layer above the cloud tops (fraction of radius)
+const GAS_ATMO_HEIGHT = 0.025;
 const WATER_KEYS = new Set(['radius', 'heightScale', 'seaLevel', 'colShallow', 'waterClarity']);
 const WEATHER_KEYS = new Set(['seed', 'cloudScale']);
 
@@ -99,20 +101,23 @@ export class Engine {
   // ------------------------------------------------ derived render uniforms
   // Atmosphere + cloud shell, scaled to the planet: optical depths match
   // Earth's whatever the radius, so the sky reads the same at any size.
+  // Gas mode swaps in the giant's own haze layer, grounded on the cloud tops.
   _syncAtmosphere() {
     const p = this.params;
     const u = this.uniforms;
     const R = p.radius;
-    const ground = R + p.seaLevel * p.heightScale;
-    const top = ground + R * p.atmoHeight;
+    const gas = p.mode === 'gas';
+    const ground = gas ? R : R + p.seaLevel * p.heightScale;
+    const top = ground + R * (gas ? GAS_ATMO_HEIGHT : p.atmoHeight);
     const H = top - ground;
     const HR = H * 0.11;
     const HM = H * 0.022;
-    const s = p.atmoEnabled ? p.atmoStrength : 0;
+    const s = gas ? p.gasAtmoStrength : p.atmoEnabled ? p.atmoStrength : 0;
+    const haze = gas ? p.gasAtmoHaze : p.atmoHaze;
 
     // Rayleigh colour from the tint: squared so the default blue tint lands on
     // Earth's lambda^-4 ratios (~0.17 : 0.41 : 1)
-    const tint = p.atmoColor.map((c) => Math.max(c, 0.001) ** 2);
+    const tint = (gas ? p.gasAtmoColor : p.atmoColor).map((c) => Math.max(c, 0.001) ** 2);
     const tMax = Math.max(...tint);
     const rel = tint.map((c) => c / tMax);
     u.uAtmoGround.value = ground;
@@ -120,7 +125,7 @@ export class Engine {
     u.uAtmoHR.value = HR;
     u.uAtmoHM.value = HM;
     u.uAtmoRayleigh.value.set(...rel.map((c) => (c * 0.2 * s) / HR));
-    u.uAtmoMie.value = ((0.004 + 0.14 * p.atmoHaze) * s) / HM;
+    u.uAtmoMie.value = ((0.004 + 0.14 * haze) * s) / HM;
     const oz = (0.03 * s) / (0.15 * H);
     u.uAtmoOzone.value.set(0.35 * oz, 1.0 * oz, 0.045 * oz);
     u.uSkyTint.value.set(...rel);
@@ -151,12 +156,40 @@ export class Engine {
   }
 
   // -------------------------------------------------------------------- gas
+  // Planet sphere + ring disc share a group tilted by the axial tilt; the
+  // shaders read the planet-local direction for the bands and uGasAxis for
+  // the ring plane.
   _buildGas() {
+    this.gasGroup = new THREE.Group();
     this.gasMat = createGasSurfaceMaterial(this.uniforms);
-    this.gasMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), this.gasMat);
+    this.gasMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 128), this.gasMat);
     this.gasMesh.frustumCulled = false;
     this.gasMesh.scale.setScalar(this.params.radius);
-    this.scene.add(this.gasMesh);
+    this.gasGroup.add(this.gasMesh);
+
+    this.ringMat = createRingMaterial(this.uniforms);
+    this.ringMesh = new THREE.Mesh(createRingGeometry(), this.ringMat);
+    this.ringMesh.frustumCulled = false;
+    this.ringMesh.renderOrder = 10;
+    this.gasGroup.add(this.ringMesh);
+
+    this.scene.add(this.gasGroup);
+    this._syncGasTilt();
+  }
+
+  _syncGasTilt() {
+    // tilt the spin axis toward the default camera's side so rings open up
+    this.gasGroup.rotation.set(0, 0, 0);
+    this.gasGroup.rotateY(THREE.MathUtils.degToRad(45));
+    this.gasGroup.rotateX(THREE.MathUtils.degToRad(this.params.gasTilt));
+    this.gasGroup.updateMatrixWorld(true);
+    this.uniforms.uGasAxis.value.set(0, 1, 0).applyQuaternion(this.gasGroup.quaternion).normalize();
+  }
+
+  _syncGasVisibility() {
+    const on = !!this.params.gasRingsEnabled;
+    this.uniforms.uGasRingOn.value = on ? 1 : 0;
+    this.ringMesh.visible = on;
   }
 
   // ------------------------------------------------------------------- star
@@ -168,34 +201,24 @@ export class Engine {
     this.starMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96), this.starSurfaceMat);
     this.starMesh.frustumCulled = false;
     this.starGroup.add(this.starMesh);
-
-    this.coronaMat = createCoronaMaterial(this.uniforms);
-    this.corona = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), this.coronaMat);
-    this.corona.renderOrder = 15;
-    this.corona.frustumCulled = false;
-    this.starGroup.add(this.corona);
+    // chromosphere, prominences and corona are drawn around the disc by the
+    // composite pass (STAR_CORONA_GLSL) — no halo geometry
 
     this.scene.add(this.starGroup);
     this._syncStarScales();
   }
 
   _syncStarScales() {
-    const R = this.params.radius;
-    this.starMesh.scale.setScalar(R);
-    this.corona.scale.setScalar(R * (1.04 + this.params.starCoronaSize * 0.6));
+    this.starMesh.scale.setScalar(this.params.radius);
   }
 
   _syncMode() {
     const mode = this.params.mode;
     this.world.group.visible = mode === 'planet';
-    this.gasMesh.visible = mode === 'gas';
+    this.gasGroup.visible = mode === 'gas';
     this.starGroup.visible = mode === 'star';
     this._syncShellVisibility();
-    this._syncStarVisibility();
-  }
-
-  _syncStarVisibility() {
-    this.corona.visible = this.params.mode === 'star' && !!this.params.starCoronaEnabled;
+    this._syncGasVisibility();
   }
 
   /**
@@ -271,19 +294,26 @@ export class Engine {
       case 'mode':
         this._syncMode();
         return;
-      case 'starCoronaSize':
-        this._syncStarScales();
-        return;
       case 'starCoronaEnabled':
-        this._syncStarVisibility();
+        this.uniforms.uStarCoronaOn.value = value ? 1 : 0;
         return;
       case 'starSpots':
       case 'starSpotsEnabled':
         this.uniforms.uStarSpots.value = this.params.starSpotsEnabled ? this.params.starSpots : 0;
         return;
       case 'gasStorms':
-      case 'gasStormsEnabled':
-        this.uniforms.uGasStorms.value = this.params.gasStormsEnabled ? this.params.gasStorms : 0;
+      case 'gasGreatSpot':
+      case 'gasStormsEnabled': {
+        const on = !!this.params.gasStormsEnabled;
+        this.uniforms.uGasStorms.value = on ? this.params.gasStorms : 0;
+        this.uniforms.uGasGreatSpot.value = on ? this.params.gasGreatSpot : 0;
+        return;
+      }
+      case 'gasTilt':
+        this._syncGasTilt();
+        return;
+      case 'gasRingsEnabled':
+        this._syncGasVisibility();
         return;
       case 'sunAzimuth':
       case 'sunElevation':
@@ -423,7 +453,9 @@ export class Engine {
       near = Math.max(0.05, alt * 0.8);
       far = dist + R + p.heightScale + 10;
     } else {
-      const shell = p.mode === 'star' ? R * (1.04 + p.starCoronaSize * 0.6) : R;
+      const shell = p.mode === 'star'
+        ? R * (1.02 + p.starPulseAmount * 3)
+        : R * (p.gasRingsEnabled ? Math.max(p.gasRingOuter, 1.05) : 1.05);
       near = Math.max(0.5, (dist - shell) * 0.5);
       far = dist + shell * 1.2 + 10;
     }
@@ -449,7 +481,8 @@ export class Engine {
     this.uniforms.uCloudDetailFreq.value = shapeFreq * 4.1;
     this.uniforms.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
     this.pipeline.render(this.scene, this.camera, {
-      planet: p.mode === 'planet',
+      mode: p.mode,
+      bloom: p.mode === 'star' ? p.starBloom : 0,
       water: !!p.waterEnabled,
       clouds: !!p.cloudsEnabled,
       cloudSteps: p.cloudQuality,
@@ -501,7 +534,10 @@ export class Engine {
     this._resizeObserver?.disconnect();
     this.controls.dispose();
     this.world.dispose();
-    for (const m of [this.gasMat, this.starSurfaceMat, this.coronaMat]) m?.dispose();
+    this.ringMesh.geometry.dispose();
+    this.gasMesh.geometry.dispose();
+    this.starMesh.geometry.dispose();
+    for (const m of [this.gasMat, this.ringMat, this.starSurfaceMat]) m?.dispose();
     this.pipeline.dispose();
     this.renderer.dispose();
   }

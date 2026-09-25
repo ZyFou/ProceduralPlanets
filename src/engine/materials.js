@@ -106,40 +106,51 @@ export function createSharedUniforms(p) {
     uAtmoColor:     { value: v3(p.atmoColor) },
     uAtmoStrength:  { value: p.atmoStrength },
 
-    // gas giant surface
-    uGasScale:      { value: p.gasScale },
-    uGasWarp:       { value: p.gasWarp },
+    // gas giant surface + rings
+    uGasBandCount:  { value: p.gasBandCount },
     uGasContrast:   { value: p.gasContrast },
+    uGasBandWarp:   { value: p.gasBandWarp },
+    uGasTurb:       { value: p.gasWarp },
+    uGasScale:      { value: p.gasScale },
     uGasFlow:       { value: p.gasFlowSpeed },
-    uGasBands:      { value: p.gasBands },
-    uGasStretch:    { value: p.gasStretch },
+    uGasPolarHaze:  { value: p.gasPolarHaze },
     uGasStorms:     { value: p.gasStormsEnabled ? p.gasStorms : 0 },
     uGasStormScale: { value: p.gasStormScale },
+    uGasGreatSpot:  { value: p.gasStormsEnabled ? p.gasGreatSpot : 0 },
     uGasLimb:       { value: p.gasLimb },
-    uGasDeep:       { value: v3(p.gasColorDeep) },
-    uGasBase:       { value: v3(p.gasColorBase) },
-    uGasSwirl:      { value: v3(p.gasColorSwirl) },
+    uGasZone:       { value: v3(p.gasColorZone) },
+    uGasBelt:       { value: v3(p.gasColorBelt) },
+    uGasAccent:     { value: v3(p.gasColorAccent) },
     uGasStorm:      { value: v3(p.gasColorStorm) },
+    uGasPolar:      { value: v3(p.gasColorPolar) },
+    uGasRingOn:     { value: p.gasRingsEnabled ? 1 : 0 },
+    uGasRingInner:  { value: p.gasRingInner },
+    uGasRingOuter:  { value: p.gasRingOuter },
+    uGasRingOpacity:{ value: p.gasRingOpacity },
+    uGasRingColor:  { value: v3(p.gasRingColor) },
+    uGasAxis:       { value: new THREE.Vector3(0, 1, 0) },   // set by Engine (tilt)
 
-    // star mode
-    uStarCore:       { value: v3(p.starColorCore) },
-    uStarMid:        { value: v3(p.starColorMid) },
-    uStarEdge:       { value: v3(p.starColorEdge) },
-    uStarSpotCol:    { value: v3(p.starSpotColor) },
+    // star mode — surface (star.js) + halo (composite pass)
+    uStarTemp:       { value: p.starTemperature },
+    uStarTint:       { value: v3(p.starTint) },
+    uStarBright:     { value: p.starBrightness },
     uStarScale:      { value: p.starNoiseScale },
     uStarWarp:       { value: p.starTurbulence },
     uStarGranules:   { value: p.starGranules },
     uStarFlow:       { value: p.starFlowSpeed },
+    uStarFaculae:    { value: p.starFaculae },
     uStarSpots:      { value: p.starSpotsEnabled ? p.starSpots : 0 },
     uStarSpotScale:  { value: p.starSpotScale },
     uStarLimb:       { value: p.starLimbDarken },
-    uStarBands:      { value: p.starBands },
-    uStarGlow:       { value: p.starGlow },
     uStarPulseAmt:   { value: p.starPulseAmount },
     uStarPulseSpeed: { value: p.starPulseSpeed },
+    uStarCoronaOn:   { value: p.starCoronaEnabled ? 1 : 0 },
     uStarCoronaCol:  { value: v3(p.starCoronaColor) },
+    uStarCoronaSize: { value: p.starCoronaSize },
     uStarCoronaStr:  { value: p.starCoronaStrength },
     uStarFlares:     { value: p.starFlares },
+    uStarProm:       { value: p.starProminences },
+    uStarChromo:     { value: v3(p.starChromoColor) },
   };
 }
 
@@ -168,24 +179,24 @@ export const UNIFORM_MAP = {
   cloudColor: 'uCloudColor', cloudShadow: 'uCloudShadow',
   // cloudShadowStrength is gated by cloudsEnabled — handled in Engine.setParam
   atmoColor: 'uAtmoColor', atmoStrength: 'uAtmoStrength',
-  // gas giant surface (mode toggles visibility — Engine.setParam)
-  gasScale: 'uGasScale', gasWarp: 'uGasWarp', gasContrast: 'uGasContrast',
-  gasFlowSpeed: 'uGasFlow', gasBands: 'uGasBands', gasStretch: 'uGasStretch',
-  // gasStorms is gated by gasStormsEnabled — handled in Engine.setParam
-  gasStormScale: 'uGasStormScale', gasLimb: 'uGasLimb',
-  gasColorDeep: 'uGasDeep', gasColorBase: 'uGasBase',
-  gasColorSwirl: 'uGasSwirl', gasColorStorm: 'uGasStorm',
-  // star mode (starCoronaSize scales the corona shell — Engine.setParam)
-  starColorCore: 'uStarCore', starColorMid: 'uStarMid', starColorEdge: 'uStarEdge',
-  starSpotColor: 'uStarSpotCol', starNoiseScale: 'uStarScale',
-  starTurbulence: 'uStarWarp', starGranules: 'uStarGranules',
-  starFlowSpeed: 'uStarFlow',
-  // starSpots is gated by starSpotsEnabled — handled in Engine.setParam
+  // gas giant (mode toggles visibility; gasStorms / gasGreatSpot are gated
+  // by gasStormsEnabled, gasTilt / rings / gasAtmo* — Engine.setParam)
+  gasBandCount: 'uGasBandCount', gasContrast: 'uGasContrast', gasBandWarp: 'uGasBandWarp',
+  gasWarp: 'uGasTurb', gasScale: 'uGasScale', gasFlowSpeed: 'uGasFlow',
+  gasPolarHaze: 'uGasPolarHaze', gasStormScale: 'uGasStormScale', gasLimb: 'uGasLimb',
+  gasColorZone: 'uGasZone', gasColorBelt: 'uGasBelt', gasColorAccent: 'uGasAccent',
+  gasColorStorm: 'uGasStorm', gasColorPolar: 'uGasPolar',
+  gasRingInner: 'uGasRingInner', gasRingOuter: 'uGasRingOuter',
+  gasRingOpacity: 'uGasRingOpacity', gasRingColor: 'uGasRingColor',
+  // star mode (starSpots is gated by starSpotsEnabled — Engine.setParam)
+  starTemperature: 'uStarTemp', starTint: 'uStarTint', starBrightness: 'uStarBright',
+  starNoiseScale: 'uStarScale', starTurbulence: 'uStarWarp', starGranules: 'uStarGranules',
+  starFlowSpeed: 'uStarFlow', starFaculae: 'uStarFaculae',
   starSpotScale: 'uStarSpotScale', starLimbDarken: 'uStarLimb',
-  starBands: 'uStarBands', starGlow: 'uStarGlow',
   starPulseAmount: 'uStarPulseAmt', starPulseSpeed: 'uStarPulseSpeed',
-  starCoronaColor: 'uStarCoronaCol', starCoronaStrength: 'uStarCoronaStr',
-  starFlares: 'uStarFlares',
+  starCoronaColor: 'uStarCoronaCol', starCoronaSize: 'uStarCoronaSize',
+  starCoronaStrength: 'uStarCoronaStr', starFlares: 'uStarFlares',
+  starProminences: 'uStarProm', starChromoColor: 'uStarChromo',
 };
 
 // ---------------------------------------------------------------------------

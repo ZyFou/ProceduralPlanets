@@ -5,49 +5,66 @@
 // ============================================================================
 
 // Star-mode parameters (flat, star-prefixed so the two domains never collide).
+// The photosphere colour is physical: a blackbody at starTemperature, tinted.
 export const STAR_DEFAULTS = {
-  starColorCore: [1.000, 0.930, 0.550],
-  starColorMid:  [1.000, 0.550, 0.100],
-  starColorEdge: [0.860, 0.220, 0.020],
-  starSpotColor: [0.420, 0.100, 0.020],
-  starNoiseScale: 3.0,
-  starTurbulence: 0.55,    // domain warp of the granulation
-  starGranules: 0.60,      // granulation contrast
-  starFlowSpeed: 1.0,      // how fast the surface boils
+  starTemperature: 5772,   // effective temperature (K) — the Sun
+  // artistic filter over the blackbody colour: a real 5772 K disc is a pale
+  // peach-white on screen; this warms it toward the familiar golden Sun
+  starTint: [1.000, 0.980, 0.700],
+  starBrightness: 1.0,     // emitted radiance (drives glare / bloom)
+  starNoiseScale: 3.0,     // granulation scale
+  starTurbulence: 0.6,     // supergranulation network / mottling
+  starGranules: 0.9,       // granulation contrast
+  starFlowSpeed: 1.0,      // convection + rotation speed
+  starFaculae: 0.8,        // bright network toward the limb
   starSpotsEnabled: true,
-  starSpots: 0.35,         // sunspot coverage
-  starSpotScale: 2.4,
-  starLimbDarken: 0.55,
-  starBands: 5,            // posterize levels (0 = smooth)
-  starGlow: 0.5,           // additive hot rim on the disc
-  starPulseAmount: 0.015,  // radius breathing / surface wobble
+  starSpots: 0.4,          // sunspot coverage
+  starSpotScale: 2.4,      // active-region size (frequency)
+  starLimbDarken: 1.0,     // 1 = solar limb darkening
+  starBloom: 1.0,          // glare / bloom strength
+  starPulseAmount: 0.0,    // radius breathing (pulsating variables)
   starPulseSpeed: 1.2,
-  starCoronaEnabled: false,
-  starCoronaColor: [1.000, 0.550, 0.120],
-  starCoronaSize: 0.0,     // halo extent (fraction of radius)
-  starCoronaStrength: 1.0,
-  starFlares: 0.7,         // wispy streaks in the corona
+  starCoronaEnabled: true,
+  starCoronaColor: [1.000, 0.940, 0.860],
+  starCoronaSize: 0.6,     // halo extent (fraction of radius)
+  starCoronaStrength: 0.6,
+  starFlares: 0.7,         // streamer contrast in the corona
+  starProminences: 0.5,    // limb prominences
+  starChromoColor: [1.000, 0.300, 0.220],  // H-alpha chromosphere / prominences
 };
 
 export const STAR_KEYS = new Set(Object.keys(STAR_DEFAULTS));
 
 // Gas-mode parameters (flat, gas-prefixed — own domain like the star's, so
-// planet presets never clobber gas customization and vice versa).
+// planet presets never clobber gas customization and vice versa). Palette
+// colours are sRGB albedos, like the planet's.
 export const GAS_DEFAULTS = {
-  gasScale: 2.4,
-  gasWarp: 0.9,            // swirl turbulence (two-pass domain warp)
-  gasContrast: 0.65,
-  gasFlowSpeed: 1.0,
-  gasBands: 5,             // posterize levels (0 = smooth)
-  gasStretch: 0.0,         // 0 = free swirls, >0 pulls toward latitude stripes
+  gasBandCount: 18,        // belts + zones, pole to pole
+  gasContrast: 0.6,        // belt / zone contrast
+  gasBandWarp: 0.5,        // band edge waviness
+  gasWarp: 0.75,           // eddy turbulence in the shear zones
+  gasScale: 3.0,           // eddy size (frequency)
+  gasFlowSpeed: 1.0,       // jet + churn speed
+  gasPolarHaze: 0.55,      // polar region extent / haze
+  gasLimb: 0.5,            // Minnaert limb darkening
+  gasTilt: 8,              // axial tilt (degrees)
   gasStormsEnabled: true,
-  gasStorms: 0.45,         // storm oval coverage
-  gasStormScale: 1.5,
-  gasLimb: 0.55,
-  gasColorDeep:  [0.340, 0.160, 0.100],
-  gasColorBase:  [0.760, 0.540, 0.330],
-  gasColorSwirl: [0.950, 0.860, 0.660],
-  gasColorStorm: [0.820, 0.300, 0.160],
+  gasGreatSpot: 0.65,      // great storm size (0 = none)
+  gasStorms: 0.5,          // small oval count
+  gasStormScale: 1.0,      // small oval size
+  gasColorZone:   [0.820, 0.740, 0.600],
+  gasColorBelt:   [0.560, 0.400, 0.290],
+  gasColorAccent: [0.680, 0.380, 0.230],
+  gasColorStorm:  [0.700, 0.330, 0.200],
+  gasColorPolar:  [0.520, 0.530, 0.560],
+  gasAtmoColor: [0.55, 0.68, 1.00],  // high haze Rayleigh tint
+  gasAtmoStrength: 0.15,   // air above the cloud tops
+  gasAtmoHaze: 0.5,        // aerosol haze (Mie)
+  gasRingsEnabled: false,
+  gasRingInner: 1.25,      // x radius
+  gasRingOuter: 2.25,
+  gasRingOpacity: 1.0,     // optical depth scale
+  gasRingColor: [0.860, 0.800, 0.690],
 };
 
 export const GAS_KEYS = new Set(Object.keys(GAS_DEFAULTS));
@@ -57,7 +74,7 @@ export const DEFAULT_PARAMS = {
   mode: 'planet',
   // bumped when the look model changes; older projects get their look keys
   // migrated (see migrateParams)
-  renderVersion: 2,
+  renderVersion: 3,
   ...STAR_DEFAULTS,
   ...GAS_DEFAULTS,
 
@@ -320,52 +337,90 @@ const LOOK_KEY_PATTERN = /^(col|bio|water|wave|foam|whitecaps|cloud|atmo|toon)/;
 const LOOK_KEYS_EXTRA = ['sunIntensity', 'ambient', 'exposure', 'bandSoftness', 'snowLine',
   'polarCaps', 'biomeAmount', 'tempBias'];
 
-export function migrateParams(params = {}, presetKey = 'terran') {
-  if ((params.renderVersion ?? 1) >= DEFAULT_PARAMS.renderVersion) return params;
-  const patch = PLANET_PRESETS[presetKey]?.patch ?? {};
+export function migrateParams(params = {}, presetKey = 'terran', modePreset = {}) {
+  const version = params.renderVersion ?? 1;
+  if (version >= DEFAULT_PARAMS.renderVersion) return params;
   const out = { ...params, renderVersion: DEFAULT_PARAMS.renderVersion };
-  for (const key of Object.keys(DEFAULT_PARAMS)) {
-    if (key.endsWith('Enabled')) continue;
-    if (LOOK_KEY_PATTERN.test(key) || LOOK_KEYS_EXTRA.includes(key)) {
-      out[key] = key in patch ? patch[key] : DEFAULT_PARAMS[key];
+  if (version < 2) {
+    const patch = PLANET_PRESETS[presetKey]?.patch ?? {};
+    for (const key of Object.keys(DEFAULT_PARAMS)) {
+      if (key.endsWith('Enabled')) continue;
+      if (LOOK_KEY_PATTERN.test(key) || LOOK_KEYS_EXTRA.includes(key)) {
+        out[key] = key in patch ? patch[key] : DEFAULT_PARAMS[key];
+      }
     }
+    // the old default relief was tuned for the old height curve
+    if (params.heightScale === 130) out.heightScale = patch.heightScale ?? DEFAULT_PARAMS.heightScale;
   }
-  // the old default relief was tuned for the old height curve
-  if (params.heightScale === 130) out.heightScale = patch.heightScale ?? DEFAULT_PARAMS.heightScale;
+  if (version < 3) {
+    // gas + star moved from posterized toon shaders to physically based ones:
+    // their whole domains are reset (to the project's template preset if any)
+    // and the retired keys dropped
+    for (const key of Object.keys(out)) {
+      if ((key.startsWith('gas') || key.startsWith('star')) && !(key in DEFAULT_PARAMS)) delete out[key];
+    }
+    const gasPatch = GAS_PRESETS[modePreset.gas]?.patch ?? {};
+    const starPatch = STAR_PRESETS[modePreset.star]?.patch ?? {};
+    Object.assign(out, GAS_DEFAULTS, gasPatch, STAR_DEFAULTS, starPatch);
+  }
   return out;
 }
 
 // Gas giant style presets — patches over GAS_DEFAULTS (gas keys only).
 export const GAS_PRESETS = {
   gasGiant: {
-    label: 'Gas Giant',
-    patch: {}, // the defaults ARE a warm marbled amber giant
+    label: 'Jovian',
+    patch: {}, // the defaults ARE a banded Jupiter-like giant with a great spot
+  },
+  ringed: {
+    label: 'Ringed',
+    patch: {
+      gasBandCount: 20, gasContrast: 0.3, gasBandWarp: 0.3, gasWarp: 0.35, gasScale: 2.6,
+      gasGreatSpot: 0.0, gasStorms: 0.15, gasPolarHaze: 0.7, gasLimb: 0.65, gasTilt: 26.7,
+      gasColorZone: [0.930, 0.860, 0.700], gasColorBelt: [0.780, 0.660, 0.480],
+      gasColorAccent: [0.800, 0.620, 0.420], gasColorStorm: [0.950, 0.920, 0.840],
+      gasColorPolar: [0.620, 0.660, 0.680],
+      gasAtmoColor: [0.80, 0.78, 0.70], gasAtmoStrength: 0.3, gasAtmoHaze: 0.85,
+      gasRingsEnabled: true, gasRingInner: 1.24, gasRingOuter: 2.3, gasRingOpacity: 1.0,
+      gasRingColor: [0.880, 0.820, 0.700],
+    },
   },
   iceGiant: {
     label: 'Ice Giant',
     patch: {
-      gasScale: 2.0, gasWarp: 1.25, gasContrast: 0.55, gasFlowSpeed: 0.7,
-      gasBands: 4, gasStorms: 0.22, gasStormScale: 1.2, gasLimb: 0.65,
-      gasColorDeep: [0.030, 0.090, 0.240], gasColorBase: [0.130, 0.340, 0.600],
-      gasColorSwirl: [0.550, 0.880, 0.920], gasColorStorm: [0.880, 0.960, 1.000],
+      gasBandCount: 7, gasContrast: 0.22, gasBandWarp: 0.6, gasWarp: 0.35, gasScale: 2.2,
+      gasFlowSpeed: 0.7, gasGreatSpot: 0.4, gasStorms: 0.25, gasStormScale: 1.2,
+      gasPolarHaze: 0.4, gasLimb: 0.8, gasTilt: 28,
+      gasColorZone: [0.500, 0.680, 0.940], gasColorBelt: [0.260, 0.430, 0.820],
+      gasColorAccent: [0.200, 0.320, 0.700], gasColorStorm: [0.100, 0.150, 0.400],
+      gasColorPolar: [0.560, 0.720, 0.920],
+      gasAtmoColor: [0.30, 0.55, 1.00], gasAtmoStrength: 1.1, gasAtmoHaze: 0.35,
+      gasRingsEnabled: true, gasRingInner: 1.7, gasRingOuter: 2.0, gasRingOpacity: 0.05,
+      gasRingColor: [0.500, 0.500, 0.520],
     },
   },
   toxic: {
     label: 'Toxic',
     patch: {
-      gasScale: 2.8, gasWarp: 1.1, gasContrast: 0.75, gasFlowSpeed: 1.3,
-      gasBands: 5, gasStorms: 0.55, gasStormScale: 2.0, gasLimb: 0.5,
-      gasColorDeep: [0.070, 0.120, 0.040], gasColorBase: [0.330, 0.460, 0.130],
-      gasColorSwirl: [0.780, 0.870, 0.340], gasColorStorm: [0.850, 0.640, 0.120],
+      gasBandCount: 11, gasContrast: 0.55, gasWarp: 0.9, gasScale: 3.4, gasFlowSpeed: 1.3,
+      gasGreatSpot: 0.5, gasStorms: 0.6, gasPolarHaze: 0.6,
+      gasColorZone: [0.780, 0.820, 0.480], gasColorBelt: [0.380, 0.460, 0.200],
+      gasColorAccent: [0.600, 0.520, 0.140], gasColorStorm: [0.860, 0.680, 0.220],
+      gasColorPolar: [0.420, 0.480, 0.380],
+      gasAtmoColor: [0.60, 0.85, 0.45], gasAtmoStrength: 0.5, gasAtmoHaze: 0.9,
     },
   },
   nebular: {
     label: 'Nebular',
     patch: {
-      gasScale: 2.2, gasWarp: 1.4, gasContrast: 0.6, gasFlowSpeed: 0.9,
-      gasBands: 6, gasStorms: 0.35, gasStormScale: 1.1, gasLimb: 0.7,
-      gasColorDeep: [0.130, 0.030, 0.220], gasColorBase: [0.380, 0.150, 0.520],
-      gasColorSwirl: [0.850, 0.550, 0.950], gasColorStorm: [1.000, 0.750, 0.400],
+      gasBandCount: 16, gasContrast: 0.5, gasWarp: 1.0, gasScale: 2.8, gasFlowSpeed: 0.9,
+      gasGreatSpot: 0.55, gasStorms: 0.45, gasTilt: 18,
+      gasColorZone: [0.820, 0.700, 0.900], gasColorBelt: [0.420, 0.250, 0.560],
+      gasColorAccent: [0.700, 0.300, 0.520], gasColorStorm: [0.950, 0.720, 0.460],
+      gasColorPolar: [0.360, 0.300, 0.520],
+      gasAtmoColor: [0.70, 0.55, 1.00], gasAtmoStrength: 0.45, gasAtmoHaze: 0.5,
+      gasRingsEnabled: true, gasRingInner: 1.35, gasRingOuter: 2.0, gasRingOpacity: 0.55,
+      gasRingColor: [0.780, 0.700, 0.820],
     },
   },
 };
@@ -375,64 +430,60 @@ export const GAS_PRESETS = {
 export const STAR_PRESETS = {
   sun: {
     label: 'Sun',
-    patch: {}, // the defaults ARE a G-type toon sun
+    patch: {}, // the defaults ARE a G2V star
   },
   redGiant: {
     label: 'Red Giant',
     patch: {
-      starColorCore: [1.000, 0.600, 0.250], starColorMid: [0.950, 0.300, 0.050],
-      starColorEdge: [0.550, 0.080, 0.020], starSpotColor: [0.250, 0.040, 0.010],
-      starNoiseScale: 2.0, starGranules: 0.50, starSpots: 0.55, starSpotScale: 1.6,
-      starFlowSpeed: 0.5, starPulseAmount: 0.035, starPulseSpeed: 0.6,
-      starCoronaEnabled: true, starCoronaColor: [1.000, 0.350, 0.080], starCoronaSize: 0.9,
-      starCoronaStrength: 1.2, starFlares: 1.0, starLimbDarken: 0.7,
+      starTint: [1.000, 1.000, 1.000],
+      starTemperature: 3500, starBrightness: 1.4, starNoiseScale: 1.1, starTurbulence: 1.2,
+      starGranules: 1.0, starFlowSpeed: 0.4, starFaculae: 0.4, starSpots: 0.3, starSpotScale: 1.4,
+      starLimbDarken: 1.3, starPulseAmount: 0.01, starPulseSpeed: 0.3,
+      starCoronaColor: [1.000, 0.700, 0.500], starCoronaSize: 1.0, starCoronaStrength: 0.45,
+      starFlares: 0.5, starProminences: 0.2, starChromoColor: [1.000, 0.350, 0.200],
     },
   },
   blueGiant: {
     label: 'Blue Giant',
     patch: {
-      starColorCore: [0.880, 0.960, 1.000], starColorMid: [0.450, 0.650, 1.000],
-      starColorEdge: [0.130, 0.240, 0.850], starSpotColor: [0.060, 0.100, 0.450],
-      starNoiseScale: 3.6, starFlowSpeed: 1.5, starGranules: 0.7,
-      starSpots: 0.15, starLimbDarken: 0.4, starGlow: 0.8,
-      starCoronaEnabled: true, starCoronaColor: [0.500, 0.700, 1.000], starCoronaSize: 0.6,
-      starCoronaStrength: 1.1, starFlares: 0.8,
+      starTint: [1.000, 1.000, 1.000],
+      starTemperature: 22000, starBrightness: 2.4, starNoiseScale: 4.5, starGranules: 0.35,
+      starTurbulence: 0.4, starFlowSpeed: 1.6, starSpots: 0.0, starFaculae: 0.3,
+      starLimbDarken: 0.7, starBloom: 1.4,
+      starCoronaColor: [0.780, 0.860, 1.000], starCoronaSize: 1.0, starCoronaStrength: 0.8,
+      starFlares: 0.9, starProminences: 0.15, starChromoColor: [0.700, 0.550, 1.000],
     },
   },
   whiteDwarf: {
     label: 'White Dwarf',
     patch: {
-      starColorCore: [1.000, 1.000, 1.000], starColorMid: [0.850, 0.920, 1.000],
-      starColorEdge: [0.600, 0.720, 0.950], starSpotColor: [0.400, 0.480, 0.700],
-      starNoiseScale: 5.0, starGranules: 0.30, starSpots: 0.08,
-      starFlowSpeed: 0.7, starGlow: 0.9, starBands: 3,
-      starPulseAmount: 0.006, starPulseSpeed: 2.5,
-      starCoronaEnabled: true, starCoronaColor: [0.750, 0.850, 1.000], starCoronaSize: 0.25,
-      starCoronaStrength: 0.9, starFlares: 0.4, starLimbDarken: 0.35,
+      starTint: [1.000, 1.000, 1.000],
+      starTemperature: 12000, starBrightness: 3.0, starNoiseScale: 7.0, starGranules: 0.15,
+      starTurbulence: 0.15, starSpots: 0.0, starFaculae: 0.1, starLimbDarken: 0.55,
+      starBloom: 1.6,
+      starCoronaColor: [0.850, 0.900, 1.000], starCoronaSize: 0.25, starCoronaStrength: 0.35,
+      starFlares: 0.3, starProminences: 0.0,
     },
   },
   ember: {
-    label: 'Ember',
+    label: 'Red Dwarf',
     patch: {
-      starColorCore: [1.000, 0.450, 0.150], starColorMid: [0.500, 0.120, 0.040],
-      starColorEdge: [0.120, 0.030, 0.020], starSpotColor: [0.040, 0.015, 0.010],
-      starNoiseScale: 2.6, starGranules: 0.85, starSpots: 0.75, starSpotScale: 1.8,
-      starFlowSpeed: 0.3, starGlow: 0.25, starLimbDarken: 0.85,
-      starCoronaEnabled: true, starCoronaColor: [0.900, 0.250, 0.060], starCoronaSize: 0.3,
-      starCoronaStrength: 0.5, starFlares: 0.5,
-      starPulseAmount: 0.02, starPulseSpeed: 0.4,
+      starTint: [1.000, 1.000, 1.000],
+      starTemperature: 3000, starBrightness: 0.75, starNoiseScale: 2.4, starGranules: 0.8,
+      starTurbulence: 0.8, starFlowSpeed: 0.6, starSpots: 0.75, starSpotScale: 1.8,
+      starFaculae: 1.0, starLimbDarken: 1.2,
+      starCoronaColor: [1.000, 0.600, 0.420], starCoronaSize: 0.35, starCoronaStrength: 0.4,
+      starFlares: 1.0, starProminences: 1.0, starChromoColor: [1.000, 0.300, 0.180],
     },
   },
   eldritch: {
     label: 'Eldritch',
     patch: {
-      starColorCore: [0.750, 1.000, 0.550], starColorMid: [0.200, 0.850, 0.450],
-      starColorEdge: [0.050, 0.300, 0.350], starSpotColor: [0.300, 0.050, 0.450],
-      starNoiseScale: 3.4, starTurbulence: 1.3, starGranules: 0.8,
-      starFlowSpeed: 1.6, starSpots: 0.45, starSpotScale: 3.2,
-      starCoronaEnabled: true, starCoronaColor: [0.450, 1.000, 0.500], starCoronaSize: 0.8,
-      starCoronaStrength: 1.4, starFlares: 1.3, starBands: 4,
-      starPulseAmount: 0.03, starPulseSpeed: 1.8,
+      starTemperature: 7000, starTint: [0.550, 1.000, 0.600], starBrightness: 1.8,
+      starNoiseScale: 2.6, starTurbulence: 1.3, starGranules: 1.0, starFlowSpeed: 1.6,
+      starSpots: 0.55, starSpotScale: 3.2, starPulseAmount: 0.015, starPulseSpeed: 1.8,
+      starCoronaColor: [0.500, 1.000, 0.550], starCoronaSize: 1.2, starCoronaStrength: 1.0,
+      starFlares: 1.3, starProminences: 0.8, starChromoColor: [0.450, 1.000, 0.300],
     },
   },
 };

@@ -86,64 +86,81 @@ const SETTINGS_INDEX = [
   { panelId: 'clouds', sectionLabel: 'Colors', settingId: 'clouds.cloudShadow', label: 'Sky-lit tint', keywords: 'cloud shadow ambient color tint' },
 
   // Gas — Flow
-  { panelId: 'gasFlow', sectionLabel: 'Preset', settingId: 'gasFlow.preset', label: 'Gas preset', keywords: 'gas preset giant style' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasScale', label: 'Scale', keywords: 'gas flow scale frequency noise' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasWarp', label: 'Turbulence', keywords: 'gas flow turbulence swirl warp' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasContrast', label: 'Contrast', keywords: 'gas flow contrast noise' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasFlowSpeed', label: 'Flow speed', keywords: 'gas flow speed rotation churn' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasBands', label: 'Bands', keywords: 'gas flow bands posterize gradient' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasStretch', label: 'Striping', keywords: 'gas flow striping latitude stripes swirls' },
-  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasLimb', label: 'Limb darkening', keywords: 'gas flow limb darkening edge' },
+  { panelId: 'gasFlow', sectionLabel: 'Preset', settingId: 'gasFlow.preset', label: 'Gas preset', keywords: 'gas preset giant style jupiter saturn neptune' },
+  { panelId: 'gasFlow', sectionLabel: 'Bands', settingId: 'gasFlow.gasBandCount', label: 'Band count', keywords: 'gas bands belts zones stripes count latitude' },
+  { panelId: 'gasFlow', sectionLabel: 'Bands', settingId: 'gasFlow.gasContrast', label: 'Contrast', keywords: 'gas bands belts zones contrast' },
+  { panelId: 'gasFlow', sectionLabel: 'Bands', settingId: 'gasFlow.gasBandWarp', label: 'Waviness', keywords: 'gas bands edges waviness meander warp' },
+  { panelId: 'gasFlow', sectionLabel: 'Bands', settingId: 'gasFlow.gasPolarHaze', label: 'Polar haze', keywords: 'gas poles polar haze cyclones' },
+  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasWarp', label: 'Turbulence', keywords: 'gas flow turbulence eddies swirl shear' },
+  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasScale', label: 'Eddy scale', keywords: 'gas flow eddy scale frequency noise' },
+  { panelId: 'gasFlow', sectionLabel: 'Flow', settingId: 'gasFlow.gasFlowSpeed', label: 'Flow speed', keywords: 'gas flow speed jets rotation churn' },
+  { panelId: 'gasFlow', sectionLabel: 'Body', settingId: 'gasFlow.gasTilt', label: 'Axial tilt', keywords: 'gas axial tilt obliquity axis rings' },
+  { panelId: 'gasFlow', sectionLabel: 'Body', settingId: 'gasFlow.gasLimb', label: 'Limb darkening', keywords: 'gas limb darkening edge minnaert' },
 
   // Gas — Storms
   { panelId: 'gasStorms', sectionLabel: 'Storms', settingId: 'gasStorms.gasStormsEnabled', label: 'Storms enabled', keywords: 'gas storm enable disable toggle' },
-  { panelId: 'gasStorms', sectionLabel: 'Storms', settingId: 'gasStorms.gasStorms', label: 'Coverage', keywords: 'gas storm coverage oval' },
-  { panelId: 'gasStorms', sectionLabel: 'Storms', settingId: 'gasStorms.gasStormScale', label: 'Storm scale', keywords: 'gas storm scale size' },
+  { panelId: 'gasStorms', sectionLabel: 'Storms', settingId: 'gasStorms.gasGreatSpot', label: 'Great spot', keywords: 'gas storm great red spot vortex anticyclone size' },
+  { panelId: 'gasStorms', sectionLabel: 'Storms', settingId: 'gasStorms.gasStorms', label: 'Oval count', keywords: 'gas storm ovals count vortices' },
+  { panelId: 'gasStorms', sectionLabel: 'Storms', settingId: 'gasStorms.gasStormScale', label: 'Oval size', keywords: 'gas storm ovals scale size' },
 
   // Gas — Colors
-  { panelId: 'gasColors', sectionLabel: 'Colors', settingId: 'gasColors.gasColorDeep', label: 'Deep', keywords: 'gas color deep palette' },
-  { panelId: 'gasColors', sectionLabel: 'Colors', settingId: 'gasColors.gasColorBase', label: 'Base', keywords: 'gas color base palette' },
-  { panelId: 'gasColors', sectionLabel: 'Colors', settingId: 'gasColors.gasColorSwirl', label: 'Swirl', keywords: 'gas color swirl palette' },
-  { panelId: 'gasColors', sectionLabel: 'Colors', settingId: 'gasColors.gasColorStorm', label: 'Storm', keywords: 'gas color storm palette' },
+  { panelId: 'gasColors', sectionLabel: 'Cloud colors', settingId: 'gasColors.gasColorZone', label: 'Zones', keywords: 'gas color zones bright palette' },
+  { panelId: 'gasColors', sectionLabel: 'Cloud colors', settingId: 'gasColors.gasColorBelt', label: 'Belts', keywords: 'gas color belts dark palette' },
+  { panelId: 'gasColors', sectionLabel: 'Cloud colors', settingId: 'gasColors.gasColorAccent', label: 'Accent', keywords: 'gas color accent chromophore palette' },
+  { panelId: 'gasColors', sectionLabel: 'Cloud colors', settingId: 'gasColors.gasColorStorm', label: 'Great spot', keywords: 'gas color storm great spot palette' },
+  { panelId: 'gasColors', sectionLabel: 'Cloud colors', settingId: 'gasColors.gasColorPolar', label: 'Polar haze', keywords: 'gas color polar haze palette' },
+  { panelId: 'gasColors', sectionLabel: 'Atmosphere', settingId: 'gasColors.gasAtmoColor', label: 'Scattering tint', keywords: 'gas atmosphere scattering tint rayleigh limb' },
+  { panelId: 'gasColors', sectionLabel: 'Atmosphere', settingId: 'gasColors.gasAtmoStrength', label: 'Density', keywords: 'gas atmosphere density haze limb glow' },
+  { panelId: 'gasColors', sectionLabel: 'Atmosphere', settingId: 'gasColors.gasAtmoHaze', label: 'Haze', keywords: 'gas atmosphere haze aerosol mie' },
+
+  // Gas — Rings
+  { panelId: 'gasRings', sectionLabel: 'Rings', settingId: 'gasRings.gasRingsEnabled', label: 'Rings enabled', keywords: 'gas rings enable disable toggle saturn' },
+  { panelId: 'gasRings', sectionLabel: 'Rings', settingId: 'gasRings.gasRingInner', label: 'Inner radius', keywords: 'gas rings inner radius' },
+  { panelId: 'gasRings', sectionLabel: 'Rings', settingId: 'gasRings.gasRingOuter', label: 'Outer radius', keywords: 'gas rings outer radius' },
+  { panelId: 'gasRings', sectionLabel: 'Rings', settingId: 'gasRings.gasRingOpacity', label: 'Opacity', keywords: 'gas rings opacity optical depth' },
+  { panelId: 'gasRings', sectionLabel: 'Rings', settingId: 'gasRings.gasRingColor', label: 'Ring color', keywords: 'gas rings color' },
 
   // Gas — Lighting
   { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.sunAzimuth', label: 'Sun azimuth', keywords: 'gas sun lighting direction azimuth' },
   { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.sunElevation', label: 'Sun elevation', keywords: 'gas sun lighting direction elevation' },
   { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.sunIntensity', label: 'Sun intensity', keywords: 'gas sun lighting brightness' },
   { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.ambient', label: 'Ambient', keywords: 'gas ambient lighting bounce' },
+  { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.exposure', label: 'Exposure', keywords: 'gas exposure brightness tone' },
   { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.toonEnabled', label: 'Toon shading', keywords: 'gas toon cartoon shading' },
   { panelId: 'gasLighting', sectionLabel: 'Lighting', settingId: 'gasLighting.toonBands', label: 'Toon bands', keywords: 'gas toon cartoon bands posterize' },
 
   // Star — Surface
   { panelId: 'starSurface', sectionLabel: 'Preset', settingId: 'starSurface.preset', label: 'Star preset', keywords: 'star preset sun style' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starNoiseScale', label: 'Scale', keywords: 'star surface scale granulation frequency' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starTurbulence', label: 'Turbulence', keywords: 'star surface turbulence warp boiling' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starGranules', label: 'Granules', keywords: 'star surface granules contrast' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starFlowSpeed', label: 'Flow speed', keywords: 'star surface flow speed boiling' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starBands', label: 'Bands', keywords: 'star surface bands posterize gradient' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starLimbDarken', label: 'Limb darkening', keywords: 'star surface limb darkening edge' },
-  { panelId: 'starSurface', sectionLabel: 'Surface', settingId: 'starSurface.starGlow', label: 'Rim glow', keywords: 'star surface rim glow hot edge disc' },
+  { panelId: 'starSurface', sectionLabel: 'Photosphere', settingId: 'starSurface.starTemperature', label: 'Temperature', keywords: 'star temperature kelvin blackbody color spectral' },
+  { panelId: 'starSurface', sectionLabel: 'Photosphere', settingId: 'starSurface.starBrightness', label: 'Brightness', keywords: 'star brightness emission glow' },
+  { panelId: 'starSurface', sectionLabel: 'Photosphere', settingId: 'starSurface.starLimbDarken', label: 'Limb darkening', keywords: 'star surface limb darkening edge' },
+  { panelId: 'starSurface', sectionLabel: 'Convection', settingId: 'starSurface.starNoiseScale', label: 'Granule scale', keywords: 'star surface scale granulation cells frequency' },
+  { panelId: 'starSurface', sectionLabel: 'Convection', settingId: 'starSurface.starGranules', label: 'Granulation', keywords: 'star surface granules contrast convection' },
+  { panelId: 'starSurface', sectionLabel: 'Convection', settingId: 'starSurface.starTurbulence', label: 'Network', keywords: 'star supergranulation network mottling turbulence' },
+  { panelId: 'starSurface', sectionLabel: 'Convection', settingId: 'starSurface.starFaculae', label: 'Faculae', keywords: 'star faculae bright limb network plage' },
+  { panelId: 'starSurface', sectionLabel: 'Convection', settingId: 'starSurface.starFlowSpeed', label: 'Flow speed', keywords: 'star surface flow speed boiling convection' },
 
   // Star — Colors
-  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starColorCore', label: 'Core (hot)', keywords: 'star color core hot palette' },
-  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starColorMid', label: 'Mid', keywords: 'star color mid palette' },
-  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starColorEdge', label: 'Edge (cool)', keywords: 'star color edge cool palette' },
-  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starSpotColor', label: 'Sunspots color', keywords: 'star color sunspots palette' },
+  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starTint', label: 'Tint', keywords: 'star color tint palette' },
+  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starChromoColor', label: 'Chromosphere', keywords: 'star color chromosphere prominences h-alpha' },
+  { panelId: 'starColors', sectionLabel: 'Colors', settingId: 'starColors.starCoronaColor', label: 'Corona color', keywords: 'star color corona halo' },
 
   // Star — Sunspots
   { panelId: 'starSunspots', sectionLabel: 'Sunspots', settingId: 'starSunspots.starSpotsEnabled', label: 'Sunspots enabled', keywords: 'star sunspots enable disable toggle' },
-  { panelId: 'starSunspots', sectionLabel: 'Sunspots', settingId: 'starSunspots.starSpots', label: 'Amount', keywords: 'star sunspots amount coverage' },
-  { panelId: 'starSunspots', sectionLabel: 'Sunspots', settingId: 'starSunspots.starSpotScale', label: 'Spot scale', keywords: 'star sunspots scale size' },
+  { panelId: 'starSunspots', sectionLabel: 'Sunspots', settingId: 'starSunspots.starSpots', label: 'Amount', keywords: 'star sunspots amount coverage activity' },
+  { panelId: 'starSunspots', sectionLabel: 'Sunspots', settingId: 'starSunspots.starSpotScale', label: 'Region size', keywords: 'star sunspots scale size active region' },
 
   // Star — Corona
   { panelId: 'starCorona', sectionLabel: 'Corona', settingId: 'starCorona.starCoronaEnabled', label: 'Corona enabled', keywords: 'star corona enable disable toggle halo' },
-  { panelId: 'starCorona', sectionLabel: 'Corona', settingId: 'starCorona.starCoronaColor', label: 'Color', keywords: 'star corona color halo' },
   { panelId: 'starCorona', sectionLabel: 'Corona', settingId: 'starCorona.starCoronaSize', label: 'Size', keywords: 'star corona size halo extent' },
   { panelId: 'starCorona', sectionLabel: 'Corona', settingId: 'starCorona.starCoronaStrength', label: 'Strength', keywords: 'star corona strength halo' },
-  { panelId: 'starCorona', sectionLabel: 'Corona', settingId: 'starCorona.starFlares', label: 'Flares', keywords: 'star corona flares streaks halo' },
+  { panelId: 'starCorona', sectionLabel: 'Corona', settingId: 'starCorona.starFlares', label: 'Streamers', keywords: 'star corona streamers flares streaks halo' },
+  { panelId: 'starCorona', sectionLabel: 'Limb', settingId: 'starCorona.starProminences', label: 'Prominences', keywords: 'star prominences loops limb plasma' },
+  { panelId: 'starCorona', sectionLabel: 'Glare', settingId: 'starCorona.starBloom', label: 'Bloom', keywords: 'star bloom glare glow' },
+  { panelId: 'starCorona', sectionLabel: 'Glare', settingId: 'starCorona.exposure', label: 'Exposure', keywords: 'star exposure brightness tone' },
 
   // Star — Motion
-  { panelId: 'starMotion', sectionLabel: 'Motion', settingId: 'starMotion.starPulseAmount', label: 'Pulse amount', keywords: 'star motion pulse breathing simmer' },
+  { panelId: 'starMotion', sectionLabel: 'Motion', settingId: 'starMotion.starPulseAmount', label: 'Pulse amount', keywords: 'star motion pulse breathing variable' },
   { panelId: 'starMotion', sectionLabel: 'Motion', settingId: 'starMotion.starPulseSpeed', label: 'Pulse speed', keywords: 'star motion pulse speed' },
 
   // Performance

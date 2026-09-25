@@ -96,3 +96,24 @@ Replaced the toon look with a physically based, planet-scaled pipeline
   and POST canvas JPEG from page. Occluded tab: rAF frozen → drive
   `engine.renderOnce()` manually before toDataURL; canvas may be size 0 —
   `renderer.setSize(w,h,false)` first.
+
+## Checkpoint 6 — Realistic gas giants + stars  ✅
+Replaced the posterized toon gas / star shaders with physically motivated ones
+(renderVersion 3: saved projects get their gas + star domains reset to their
+template preset).
+- [x] Gas giant: belts / zones from a noisy latitude phase with the zonal jets
+      on the belt-zone boundaries (+ equatorial super-rotation); flow-map
+      advected shear turbulence; drifting vortex lattice (Kelvin-Helmholtz
+      curls); great spot + ovals that swirl the flow; polar haze; Minnaert
+      limb darkening; lit through the HDR pipeline with its own haze
+      atmosphere (LUT reddening at the terminator); screen-space cloud relief.
+- [x] Rings: C / B / Cassini / A / Encke optical-depth profile + filtered
+      ringlets, slab single scattering (lit + unlit face), planet shadow on the
+      rings, ring shadow on the planet, axial tilt. Scene alpha carries the
+      background transmittance so stars show through the gaps.
+- [x] Star: blackbody colour from temperature (Planckian locus fit, T^4 spot
+      intensities), animated granulation cells, supergranular network +
+      faculae, sunspots with umbra / filamented penumbra / plage in active
+      belts, chromatic limb darkening; chromosphere, prominences and a
+      streamer corona in the composite; dual-filter HDR bloom and a
+      hue-preserving tone map.

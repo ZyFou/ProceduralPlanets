@@ -172,14 +172,20 @@ export function GasFlowPanel({ params: p, onParam, onGasPreset }) {
           ))}
         </div>
       </Section>
+      <Section title="Bands">
+        <Slider label="Band count" value={p.gasBandCount} min={2} max={32} step={1} digits={0} onChange={(v) => onParam('gasBandCount', v)} title="Belts + zones from pole to pole" />
+        <Slider label="Contrast" value={p.gasContrast} min={0} max={1} step={0.05} onChange={(v) => onParam('gasContrast', v)} title="Brightness difference between dark belts and bright zones" />
+        <Slider label="Waviness" value={p.gasBandWarp} min={0} max={1.5} step={0.05} onChange={(v) => onParam('gasBandWarp', v)} title="How much the band edges meander" />
+        <Slider label="Polar haze" value={p.gasPolarHaze} min={0} max={1} step={0.05} onChange={(v) => onParam('gasPolarHaze', v)} title="Banding dissolves into cyclones under a haze toward the poles" />
+      </Section>
       <Section title="Flow">
-        <Slider label="Scale" value={p.gasScale} min={0.8} max={6} step={0.1} digits={1} onChange={(v) => onParam('gasScale', v)} title="Base frequency of the flow field" />
-        <Slider label="Turbulence" value={p.gasWarp} min={0} max={2} step={0.05} onChange={(v) => onParam('gasWarp', v)} title="Swirl strength of the two-pass domain warp" />
-        <Slider label="Contrast" value={p.gasContrast} min={0} max={1} step={0.05} onChange={(v) => onParam('gasContrast', v)} />
-        <Slider label="Flow speed" value={p.gasFlowSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('gasFlowSpeed', v)} title="Churn + differential rotation speed" />
-        <Slider label="Bands" value={p.gasBands} min={0} max={8} step={1} digits={0} onChange={(v) => onParam('gasBands', v)} title="Posterize levels — 0 = smooth gradient" />
-        <Slider label="Striping" value={p.gasStretch} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStretch', v)} title="0 = free swirls; raise only if you want the classic latitude stripes" />
-        <Slider label="Limb darkening" value={p.gasLimb} min={0} max={1} step={0.05} onChange={(v) => onParam('gasLimb', v)} />
+        <Slider label="Turbulence" value={p.gasWarp} min={0} max={1.5} step={0.05} onChange={(v) => onParam('gasWarp', v)} title="Eddies in the shear zones between belts and zones" />
+        <Slider label="Eddy scale" value={p.gasScale} min={0.8} max={8} step={0.1} digits={1} onChange={(v) => onParam('gasScale', v)} title="Frequency of the turbulent eddies" />
+        <Slider label="Flow speed" value={p.gasFlowSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('gasFlowSpeed', v)} title="Zonal jet + churn speed" />
+      </Section>
+      <Section title="Body">
+        <Slider label="Axial tilt" value={p.gasTilt} min={0} max={90} step={0.5} digits={1} onChange={(v) => onParam('gasTilt', v)} title="Tilt of the spin axis (and the ring plane), degrees" />
+        <Slider label="Limb darkening" value={p.gasLimb} min={0} max={1} step={0.05} onChange={(v) => onParam('gasLimb', v)} title="Minnaert limb darkening of the hazy cloud tops" />
       </Section>
     </>
   );
@@ -190,8 +196,9 @@ export function GasStormsPanel({ params: p, onParam }) {
     <>
       <Section title="Storms">
         <Toggle label="Enabled" value={p.gasStormsEnabled} onChange={(v) => onParam('gasStormsEnabled', v)} />
-        <Slider label="Coverage" value={p.gasStorms} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStorms', v)} title="Storm oval coverage" />
-        <Slider label="Storm scale" value={p.gasStormScale} min={0.5} max={5} step={0.1} digits={1} onChange={(v) => onParam('gasStormScale', v)} />
+        <Slider label="Great spot" value={p.gasGreatSpot} min={0} max={1} step={0.05} onChange={(v) => onParam('gasGreatSpot', v)} title="Size of the giant anticyclone (0 = none)" />
+        <Slider label="Oval count" value={p.gasStorms} min={0} max={1} step={0.05} onChange={(v) => onParam('gasStorms', v)} title="Number of smaller vortices (white ovals, dark barges)" />
+        <Slider label="Oval size" value={p.gasStormScale} min={0.3} max={3} step={0.05} onChange={(v) => onParam('gasStormScale', v)} />
       </Section>
     </>
   );
@@ -200,11 +207,31 @@ export function GasStormsPanel({ params: p, onParam }) {
 export function GasColorsPanel({ params: p, onParam }) {
   return (
     <>
-      <Section title="Colors">
-        <ColorRow label="Deep" value={p.gasColorDeep} onChange={(v) => onParam('gasColorDeep', v)} />
-        <ColorRow label="Base" value={p.gasColorBase} onChange={(v) => onParam('gasColorBase', v)} />
-        <ColorRow label="Swirl" value={p.gasColorSwirl} onChange={(v) => onParam('gasColorSwirl', v)} />
-        <ColorRow label="Storm" value={p.gasColorStorm} onChange={(v) => onParam('gasColorStorm', v)} />
+      <Section title="Cloud colors">
+        <ColorRow label="Zones" value={p.gasColorZone} onChange={(v) => onParam('gasColorZone', v)} />
+        <ColorRow label="Belts" value={p.gasColorBelt} onChange={(v) => onParam('gasColorBelt', v)} />
+        <ColorRow label="Accent" value={p.gasColorAccent} onChange={(v) => onParam('gasColorAccent', v)} />
+        <ColorRow label="Great spot" value={p.gasColorStorm} onChange={(v) => onParam('gasColorStorm', v)} />
+        <ColorRow label="Polar haze" value={p.gasColorPolar} onChange={(v) => onParam('gasColorPolar', v)} />
+      </Section>
+      <Section title="Atmosphere">
+        <ColorRow label="Scattering tint" value={p.gasAtmoColor} onChange={(v) => onParam('gasAtmoColor', v)} />
+        <Slider label="Density" value={p.gasAtmoStrength} min={0} max={2} step={0.05} onChange={(v) => onParam('gasAtmoStrength', v)} title="Air above the cloud tops: limb glow and blue haze" />
+        <Slider label="Haze" value={p.gasAtmoHaze} min={0} max={1} step={0.05} onChange={(v) => onParam('gasAtmoHaze', v)} title="Aerosol haze (Mie scattering)" />
+      </Section>
+    </>
+  );
+}
+
+export function GasRingsPanel({ params: p, onParam }) {
+  return (
+    <>
+      <Section title="Rings">
+        <Toggle label="Enabled" value={p.gasRingsEnabled} onChange={(v) => onParam('gasRingsEnabled', v)} />
+        <Slider label="Inner radius" value={p.gasRingInner} min={1.05} max={3} step={0.01} onChange={(v) => onParam('gasRingInner', Math.min(v, p.gasRingOuter - 0.05))} title="Inner edge, in planet radii" />
+        <Slider label="Outer radius" value={p.gasRingOuter} min={1.2} max={4} step={0.01} onChange={(v) => onParam('gasRingOuter', Math.max(v, p.gasRingInner + 0.05))} title="Outer edge, in planet radii" />
+        <Slider label="Opacity" value={p.gasRingOpacity} min={0} max={2} step={0.02} onChange={(v) => onParam('gasRingOpacity', v)} title="Optical depth of the ring particles" />
+        <ColorRow label="Color" value={p.gasRingColor} onChange={(v) => onParam('gasRingColor', v)} />
       </Section>
     </>
   );
@@ -218,6 +245,7 @@ export function GasLightingPanel({ params: p, onParam }) {
         <Slider label="Sun elevation" value={p.sunElevation} min={-30} max={90} step={1} digits={0} onChange={(v) => onParam('sunElevation', v)} />
         <Slider label="Sun intensity" value={p.sunIntensity} min={0.2} max={2.5} step={0.05} onChange={(v) => onParam('sunIntensity', v)} />
         <Slider label="Ambient" value={p.ambient} min={0} max={0.8} step={0.02} onChange={(v) => onParam('ambient', v)} />
+        <Slider label="Exposure" value={p.exposure} min={0.2} max={3} step={0.05} onChange={(v) => onParam('exposure', v)} />
         <Toggle label="Toon shading" value={p.toonEnabled} onChange={(v) => onParam('toonEnabled', v)} />
         <Slider label="Toon bands" value={p.toonBands} min={2} max={8} step={1} digits={0} onChange={(v) => onParam('toonBands', v)} />
       </Section>
@@ -237,14 +265,17 @@ export function StarSurfacePanel({ params: p, onParam, onStarPreset }) {
           ))}
         </div>
       </Section>
-      <Section title="Surface">
-        <Slider label="Scale" value={p.starNoiseScale} min={1} max={8} step={0.1} digits={1} onChange={(v) => onParam('starNoiseScale', v)} title="Granulation frequency" />
-        <Slider label="Turbulence" value={p.starTurbulence} min={0} max={2} step={0.05} onChange={(v) => onParam('starTurbulence', v)} title="Domain warp of the boiling surface" />
-        <Slider label="Granules" value={p.starGranules} min={0} max={1} step={0.05} onChange={(v) => onParam('starGranules', v)} title="Granulation contrast" />
-        <Slider label="Flow speed" value={p.starFlowSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('starFlowSpeed', v)} title="How fast the surface boils" />
-        <Slider label="Bands" value={p.starBands} min={0} max={8} step={1} digits={0} onChange={(v) => onParam('starBands', v)} title="Posterize levels — 0 = smooth gradient" />
-        <Slider label="Limb darkening" value={p.starLimbDarken} min={0} max={1} step={0.05} onChange={(v) => onParam('starLimbDarken', v)} />
-        <Slider label="Rim glow" value={p.starGlow} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starGlow', v)} title="Additive hot rim on the disc edge" />
+      <Section title="Photosphere">
+        <Slider label="Temperature" value={p.starTemperature} min={2000} max={30000} step={100} digits={0} onChange={(v) => onParam('starTemperature', v)} title="Effective temperature in kelvin — sets the blackbody colour" />
+        <Slider label="Brightness" value={p.starBrightness} min={0.2} max={5} step={0.05} onChange={(v) => onParam('starBrightness', v)} title="Emitted radiance: higher overexposes the disc into glare" />
+        <Slider label="Limb darkening" value={p.starLimbDarken} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starLimbDarken', v)} title="1 = solar; the limb also reddens" />
+      </Section>
+      <Section title="Convection">
+        <Slider label="Granule scale" value={p.starNoiseScale} min={0.5} max={8} step={0.1} digits={1} onChange={(v) => onParam('starNoiseScale', v)} title="Size of the convection cells (larger = smaller cells)" />
+        <Slider label="Granulation" value={p.starGranules} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starGranules', v)} title="Contrast between bright cells and dark lanes" />
+        <Slider label="Network" value={p.starTurbulence} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starTurbulence', v)} title="Supergranulation network and large-scale mottling" />
+        <Slider label="Faculae" value={p.starFaculae} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starFaculae', v)} title="Bright magnetic network, strongest toward the limb" />
+        <Slider label="Flow speed" value={p.starFlowSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('starFlowSpeed', v)} title="Convection + rotation speed" />
       </Section>
     </>
   );
@@ -254,10 +285,9 @@ export function StarColorsPanel({ params: p, onParam }) {
   return (
     <>
       <Section title="Colors">
-        <ColorRow label="Core (hot)" value={p.starColorCore} onChange={(v) => onParam('starColorCore', v)} />
-        <ColorRow label="Mid" value={p.starColorMid} onChange={(v) => onParam('starColorMid', v)} />
-        <ColorRow label="Edge (cool)" value={p.starColorEdge} onChange={(v) => onParam('starColorEdge', v)} />
-        <ColorRow label="Sunspots" value={p.starSpotColor} onChange={(v) => onParam('starSpotColor', v)} />
+        <ColorRow label="Tint" value={p.starTint} onChange={(v) => onParam('starTint', v)} />
+        <ColorRow label="Chromosphere" value={p.starChromoColor} onChange={(v) => onParam('starChromoColor', v)} />
+        <ColorRow label="Corona" value={p.starCoronaColor} onChange={(v) => onParam('starCoronaColor', v)} />
       </Section>
     </>
   );
@@ -268,8 +298,8 @@ export function StarSunspotsPanel({ params: p, onParam }) {
     <>
       <Section title="Sunspots">
         <Toggle label="Enabled" value={p.starSpotsEnabled} onChange={(v) => onParam('starSpotsEnabled', v)} />
-        <Slider label="Amount" value={p.starSpots} min={0} max={1} step={0.05} onChange={(v) => onParam('starSpots', v)} />
-        <Slider label="Spot scale" value={p.starSpotScale} min={0.5} max={8} step={0.1} digits={1} onChange={(v) => onParam('starSpotScale', v)} />
+        <Slider label="Amount" value={p.starSpots} min={0} max={1} step={0.05} onChange={(v) => onParam('starSpots', v)} title="Magnetic activity: spot coverage in the active belts" />
+        <Slider label="Region size" value={p.starSpotScale} min={0.5} max={8} step={0.1} digits={1} onChange={(v) => onParam('starSpotScale', v)} title="Frequency of the active regions (larger = smaller groups)" />
       </Section>
     </>
   );
@@ -280,10 +310,16 @@ export function StarCoronaPanel({ params: p, onParam }) {
     <>
       <Section title="Corona">
         <Toggle label="Enabled" value={p.starCoronaEnabled} onChange={(v) => onParam('starCoronaEnabled', v)} />
-        <ColorRow label="Color" value={p.starCoronaColor} onChange={(v) => onParam('starCoronaColor', v)} />
-        <Slider label="Size" value={p.starCoronaSize} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starCoronaSize', v)} title="Halo extent beyond the disc" />
+        <Slider label="Size" value={p.starCoronaSize} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starCoronaSize', v)} title="Extent of the outer corona" />
         <Slider label="Strength" value={p.starCoronaStrength} min={0} max={2} step={0.05} onChange={(v) => onParam('starCoronaStrength', v)} />
-        <Slider label="Flares" value={p.starFlares} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starFlares', v)} title="Wispy streaks drifting through the halo" />
+        <Slider label="Streamers" value={p.starFlares} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starFlares', v)} title="Contrast of the radial streamers" />
+      </Section>
+      <Section title="Limb">
+        <Slider label="Prominences" value={p.starProminences} min={0} max={1.5} step={0.05} onChange={(v) => onParam('starProminences', v)} title="Glowing plasma loops rising off the limb" />
+      </Section>
+      <Section title="Glare">
+        <Slider label="Bloom" value={p.starBloom} min={0} max={3} step={0.05} onChange={(v) => onParam('starBloom', v)} title="Glare spreading from the overexposed disc" />
+        <Slider label="Exposure" value={p.exposure} min={0.2} max={3} step={0.05} onChange={(v) => onParam('exposure', v)} />
       </Section>
     </>
   );
@@ -293,7 +329,7 @@ export function StarMotionPanel({ params: p, onParam }) {
   return (
     <>
       <Section title="Motion">
-        <Slider label="Pulse amount" value={p.starPulseAmount} min={0} max={0.08} step={0.002} digits={3} onChange={(v) => onParam('starPulseAmount', v)} title="Radius breathing / silhouette simmer" />
+        <Slider label="Pulse amount" value={p.starPulseAmount} min={0} max={0.08} step={0.002} digits={3} onChange={(v) => onParam('starPulseAmount', v)} title="Radius breathing of a pulsating variable (0 = quiet star)" />
         <Slider label="Pulse speed" value={p.starPulseSpeed} min={0} max={4} step={0.1} digits={1} onChange={(v) => onParam('starPulseSpeed', v)} />
       </Section>
     </>
@@ -458,6 +494,7 @@ export const PANELS = [
   { id: 'gasFlow', label: 'Flow', component: GasFlowPanel, modes: ['gas'] },
   { id: 'gasStorms', label: 'Storms', component: GasStormsPanel, modes: ['gas'] },
   { id: 'gasColors', label: 'Colors', component: GasColorsPanel, modes: ['gas'] },
+  { id: 'gasRings', label: 'Rings', component: GasRingsPanel, modes: ['gas'] },
   { id: 'gasLighting', label: 'Lighting', component: GasLightingPanel, modes: ['gas'] },
   { id: 'starSurface', label: 'Surface', component: StarSurfacePanel, modes: ['star'] },
   { id: 'starColors', label: 'Colors', component: StarColorsPanel, modes: ['star'] },

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  Disc3,
   Camera,
   Circle,
   Cloud,
@@ -36,6 +37,7 @@ const ICONS = {
   gasFlow: Waves,
   gasStorms: Sparkles,
   gasColors: Palette,
+  gasRings: Disc3,
   gasLighting: Sun,
   perf: Gauge,
   export: Download,
@@ -78,7 +80,8 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
     // older projects carry the toon-era look: migrate it, keep the shape
     const template = getProjectTemplate(project.metadata?.templateId);
     const presetKey = template.mode === 'planet' ? template.preset : 'terran';
-    const next = { ...DEFAULT_PARAMS, ...migrateParams(project.params, presetKey) };
+    const modePreset = { [template.mode]: template.preset };
+    const next = { ...DEFAULT_PARAMS, ...migrateParams(project.params, presetKey, modePreset) };
     skipPersistRef.current = true;
     Object.entries(next).forEach(([key, value]) => engine.setParam(key, value));
     setParams(next);

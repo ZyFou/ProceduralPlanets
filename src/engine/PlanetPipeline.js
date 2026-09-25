@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
+import { STAR_CORONA_GLSL } from './star.js';
 
 // ============================================================================
 // PlanetPipeline — deferred, physically based planet rendering.
@@ -12,14 +13,20 @@ import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL } from './su
 //                   real seabed depth, GGX glint with footprint-filtered wave
 //                   slopes, shore foam + whitecaps), clouds, single-scattering
 //                   Rayleigh/Mie/ozone atmosphere, stars, ACES tone map, sRGB
+//   4. bloom        (star mode) the composite stays linear HDR; a dual-filter
+//                   mip chain spreads the overexposed disc into glare, then
+//                   the final pass tone maps
 //
 // Baked helpers (re-baked only when their inputs change):
 //   transmittance LUT (256x64)   sun colour through the air at any altitude
 //   weather cubemap (512/face)   cloud field — also drives terrain shadows
 //   noise volume (128^3)         tileable Perlin-Worley + Worley fbm detail
 //
-// Gas / star modes keep their own display-referred shaders: the composite
-// passes them through untouched (plus the starfield).
+// Gas mode goes through the same path as the planet (no ocean / clouds): its
+// sphere and rings write linear HDR and the atmosphere uniforms describe the
+// giant's haze layer. Star mode adds the chromosphere / prominences / corona
+// around the disc, then bloom. The scene target's alpha holds how much of the
+// background shows through (1 - ring coverage) so stars dim behind the rings.
 // ============================================================================
 
 const FULLSCREEN_VERTEX = /* glsl */ `
@@ -27,6 +34,17 @@ varying vec2 vUv;
 void main() {
   vUv = uv;
   gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+const TONEMAP_GLSL = /* glsl */ `
+vec3 aces(vec3 x) {
+  const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
+
+vec3 linearToSrgb(vec3 c) {
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 `;
 
@@ -354,6 +372,7 @@ ${TOON_GLSL}
 ${ATMOSPHERE_GLSL}
 ${CLOUD_FIELD_GLSL}
 ${SURFACE_GLSL}
+${STAR_CORONA_GLSL}
 
 uniform sampler2D tScene;
 uniform sampler2D tDepth;
@@ -362,7 +381,8 @@ uniform mat4 uInvProj;
 uniform mat4 uCamWorld;
 uniform vec3 uCamPos;
 uniform float uPixelAngle;
-uniform float uPlanetMode;
+uniform float uMode;            // 0 planet, 1 gas, 2 star
+uniform float uHDROut;          // 1 = write linear HDR (bloom follows)
 uniform float uWaterOn;
 uniform float uCloudsOn;
 uniform float uExposure;
@@ -603,17 +623,11 @@ vec3 shadeOcean(vec3 ro, vec3 rd, float tW, float tExit, float sceneT, bool noFl
   return col;
 }
 
-vec3 aces(vec3 x) {
-  const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
-  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-}
-
-vec3 linearToSrgb(vec3 c) {
-  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
-}
+${TONEMAP_GLSL}
 
 void main() {
-  vec3 scene = texture2D(tScene, vUv).rgb;
+  vec4 sceneS = texture2D(tScene, vUv);
+  vec3 scene = sceneS.rgb;
   float depth = texture2D(tDepth, vUv).x;
   bool bg = depth >= 1.0;
   vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, bg ? 1.0 : depth * 2.0 - 1.0, 1.0);
@@ -623,11 +637,18 @@ void main() {
   vec3 rd = normalize(wp - ro);
   float sceneT = bg ? 1e20 : length(wp - ro);
 
-  if (uPlanetMode < 0.5) {
-    // gas / star shaders are display-referred already
+  if (uMode > 1.5) {
+    // star: emissive disc; around it the chromosphere, prominences, corona
     vec3 c = scene;
-    if (bg) c += min(starField(rd) * 1.6, vec3(1.0));
-    gl_FragColor = vec4(c, 1.0);
+    if (bg) {
+      float tc = max(-dot(ro, rd), 0.0);
+      vec3 pc = ro + rd * tc;
+      float b = length(pc) / uRadius;
+      c += starHalo(pc, b) + starField(rd) * 0.6;
+    }
+    if (uHDROut > 0.5) { gl_FragColor = vec4(c, 1.0); return; }
+    c = aces(c * uExposure * 0.85);
+    gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0, 1.0);
     return;
   }
 
@@ -645,7 +666,8 @@ void main() {
     }
   }
 
-  if (surfT > 1e19) col = starField(rd) + sunDisc(rd);
+  // background shows through whatever the scene left uncovered (ring gaps)
+  if (surfT > 1e19) col = scene + (starField(rd) + sunDisc(rd)) * sceneS.a;
 
   if (uCloudsOn > 0.5) {
     // tent-filtered upsample of the reduced-res cloud pass: hides the
@@ -661,11 +683,85 @@ void main() {
   vec3 ins = atmosphere(ro, rd, surfT, T);
   col = col * T + ins;
 
+  if (uHDROut > 0.5) { gl_FragColor = vec4(col, 1.0); return; }
   col = aces(col * uExposure * 0.85);
   col = linearToSrgb(col) + (ign(gl_FragCoord.xy) - 0.5) / 255.0;
   gl_FragColor = vec4(col, 1.0);
 }
 `;
+
+// ---------------------------------------------------------------------------
+// Bloom: dual-filter (Kawase / Bjorge) mip chain. Down taps 5, up taps 8;
+// every level adds into the next larger one, the final pass tone maps
+// scene + bloom.
+// ---------------------------------------------------------------------------
+const BLOOM_DOWN_FRAGMENT = /* glsl */ `
+precision highp float;
+uniform sampler2D tSrc;
+uniform vec2 uTexel;       // source texel
+uniform float uFirst;      // clamp fireflies on the first (full-res) level
+varying vec2 vUv;
+vec3 tap(vec2 uv) {
+  vec3 c = texture2D(tSrc, uv).rgb;
+  if (uFirst > 0.5) c = min(c, vec3(60.0));
+  return c;
+}
+void main() {
+  vec2 o = uTexel;
+  vec3 c = tap(vUv) * 4.0 + tap(vUv + vec2(-o.x, -o.y)) + tap(vUv + vec2(o.x, -o.y))
+         + tap(vUv + vec2(-o.x, o.y)) + tap(vUv + vec2(o.x, o.y));
+  gl_FragColor = vec4(c / 8.0, 1.0);
+}
+`;
+
+const BLOOM_UP_FRAGMENT = /* glsl */ `
+precision highp float;
+uniform sampler2D tSrc;
+uniform vec2 uTexel;       // source (smaller level) texel
+varying vec2 vUv;
+void main() {
+  vec2 o = uTexel;
+  vec3 c = texture2D(tSrc, vUv + vec2(-2.0 * o.x, 0.0)).rgb
+         + texture2D(tSrc, vUv + vec2( 2.0 * o.x, 0.0)).rgb
+         + texture2D(tSrc, vUv + vec2(0.0, -2.0 * o.y)).rgb
+         + texture2D(tSrc, vUv + vec2(0.0,  2.0 * o.y)).rgb
+         + (texture2D(tSrc, vUv + vec2(-o.x, -o.y)).rgb + texture2D(tSrc, vUv + vec2(o.x, -o.y)).rgb
+          + texture2D(tSrc, vUv + vec2(-o.x,  o.y)).rgb + texture2D(tSrc, vUv + vec2(o.x,  o.y)).rgb) * 2.0;
+  gl_FragColor = vec4(c / 12.0, 1.0);
+}
+`;
+
+const FINAL_FRAGMENT = /* glsl */ `
+precision highp float;
+uniform sampler2D tHDR;
+uniform sampler2D tBloom;
+uniform float uBloom;
+uniform float uBloomNorm;
+uniform float uExposure;
+varying vec2 vUv;
+float ign(vec2 p) {
+  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+${TONEMAP_GLSL}
+float sat01(float x) { return clamp(x, 0.0, 1.0); }
+void main() {
+  vec3 c = texture2D(tHDR, vUv).rgb;
+  vec3 b = texture2D(tBloom, vUv).rgb * uBloomNorm;
+  // wide soft glare + a tighter core halo around overexposed pixels
+  c += b * 0.1 * uBloom;
+  // hue-preserving tone map: per-channel ACES would clip the red of a cool
+  // star first and turn it yellow. Map luminance, keep the chromaticity, and
+  // only let what still overflows bleach toward white.
+  c *= uExposure * 0.85;
+  float L = max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 1e-6);
+  c *= aces(vec3(L)).x / L;
+  float m = max(max(c.r, c.g), c.b);
+  if (m > 1.0) c = mix(c / m, vec3(1.0), sat01((m - 1.0) * 0.6));
+  gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0, 1.0);
+}
+`;
+
+const BLOOM_LEVELS = 7;
 
 // ============================================================================
 
@@ -760,11 +856,89 @@ export class PlanetPipeline {
       tScene: { value: this.sceneRT.texture },
       tClouds: { value: this.cloudRT.texture },
       uPixelAngle: { value: 0.001 },
-      uPlanetMode: { value: 1 },
+      uMode: { value: 0 },
+      uHDROut: { value: 0 },
       uWaterOn: { value: 1 },
       uCloudsOn: { value: 1 },
       uCloudTexel: { value: new THREE.Vector2(1, 1) },
     });
+
+    // bloom (allocated on first use)
+    this._halfLinear = halfLinear;
+    this.hdrRT = null;
+    this.bloomRTs = [];
+    const post = (fragmentShader, uniformsIn) => new THREE.ShaderMaterial({
+      uniforms: uniformsIn,
+      vertexShader: FULLSCREEN_VERTEX,
+      fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.bloomDownMat = post(BLOOM_DOWN_FRAGMENT, {
+      tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uFirst: { value: 0 },
+    });
+    this.bloomUpMat = post(BLOOM_UP_FRAGMENT, {
+      tSrc: { value: null }, uTexel: { value: new THREE.Vector2() },
+    });
+    this.bloomUpMat.blending = THREE.AdditiveBlending;
+    this.bloomUpMat.transparent = true;
+    this.finalMat = post(FINAL_FRAGMENT, {
+      tHDR: { value: null },
+      tBloom: { value: null },
+      uBloom: { value: 1 },
+      uBloomNorm: { value: 1 / BLOOM_LEVELS },
+      uExposure: uniforms.uExposure,
+    });
+  }
+
+  _ensureBloomTargets() {
+    const w = this.width, h = this.height;
+    if (this.hdrRT && this.hdrRT.width === w && this.hdrRT.height === h) return;
+    this._disposeBloom();
+    this.hdrRT = new THREE.WebGLRenderTarget(w, h, this._halfLinear);
+    let bw = w, bh = h;
+    for (let i = 0; i < BLOOM_LEVELS; i++) {
+      bw = Math.max(1, bw >> 1);
+      bh = Math.max(1, bh >> 1);
+      const rt = new THREE.WebGLRenderTarget(bw, bh, this._halfLinear);
+      rt.texture.wrapS = rt.texture.wrapT = THREE.ClampToEdgeWrapping;
+      this.bloomRTs.push(rt);
+    }
+  }
+
+  _disposeBloom() {
+    this.hdrRT?.dispose();
+    this.hdrRT = null;
+    for (const rt of this.bloomRTs) rt.dispose();
+    this.bloomRTs = [];
+  }
+
+  _renderBloom(target, strength) {
+    const r = this.renderer;
+    const levels = this.bloomRTs;
+    const dm = this.bloomDownMat.uniforms;
+    let src = this.hdrRT;
+    for (let i = 0; i < levels.length; i++) {
+      dm.tSrc.value = src.texture;
+      dm.uTexel.value.set(1 / src.width, 1 / src.height);
+      dm.uFirst.value = i === 0 ? 1 : 0;
+      this._blit(this.bloomDownMat, levels[i]);
+      src = levels[i];
+    }
+    // accumulate upward: level i += upsample(level i+1)
+    const um = this.bloomUpMat.uniforms;
+    r.autoClear = false;
+    for (let i = levels.length - 2; i >= 0; i--) {
+      um.tSrc.value = levels[i + 1].texture;
+      um.uTexel.value.set(1 / levels[i + 1].width, 1 / levels[i + 1].height);
+      this._blit(this.bloomUpMat, levels[i]);
+    }
+    r.autoClear = true;
+    const fu = this.finalMat.uniforms;
+    fu.tHDR.value = this.hdrRT.texture;
+    fu.tBloom.value = levels[0].texture;
+    fu.uBloom.value = strength;
+    this._blit(this.finalMat, target);
   }
 
   setCloudResolution(scale) {
@@ -827,21 +1001,25 @@ export class PlanetPipeline {
   }
 
   /**
-   * Render one frame. opts: { planet, water, clouds, cloudSteps, weatherTime }
+   * Render one frame.
+   * opts: { mode: 'planet'|'gas'|'star', water, clouds, cloudSteps, weatherTime, bloom }
    */
   render(scene, camera, opts, target = null) {
     const r = this.renderer;
     const prevAutoClear = r.autoClear;
     r.autoClear = true;
 
-    const planet = !!opts.planet;
+    const mode = opts.mode || 'planet';
+    const planet = mode === 'planet';
     const clouds = planet && !!opts.clouds;
+    const bloom = opts.bloom > 0.001;
 
+    // the transmittance LUT lights the terrain AND the gas giant
+    if (mode !== 'star' && this.lutDirty) {
+      this._blit(this.lutMat, this.lutRT);
+      this.lutDirty = false;
+    }
     if (planet) {
-      if (this.lutDirty) {
-        this._blit(this.lutMat, this.lutRT);
-        this.lutDirty = false;
-      }
       if (clouds || this.uniforms.uCloudShadowStr.value > 0) {
         if (!this._noiseBaked) this._bakeNoise();
         // evolve the weather a few times per second; drift is a free rotation
@@ -875,10 +1053,17 @@ export class PlanetPipeline {
 
     // 3. composite
     const u = this.compositeMat.uniforms;
-    u.uPlanetMode.value = planet ? 1 : 0;
+    u.uMode.value = mode === 'star' ? 2 : mode === 'gas' ? 1 : 0;
     u.uWaterOn.value = planet && opts.water ? 1 : 0;
     u.uCloudsOn.value = clouds ? 1 : 0;
-    this._blit(this.compositeMat, target);
+    u.uHDROut.value = bloom ? 1 : 0;
+    if (bloom) {
+      this._ensureBloomTargets();
+      this._blit(this.compositeMat, this.hdrRT);
+      this._renderBloom(target, opts.bloom);
+    } else {
+      this._blit(this.compositeMat, target);
+    }
 
     r.autoClear = prevAutoClear;
   }
@@ -886,7 +1071,9 @@ export class PlanetPipeline {
   dispose() {
     for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, this.weatherRT, this.noiseRT]) rt.dispose();
     this.sceneRT.depthTexture?.dispose();
-    for (const m of [this.lutMat, this.weatherMat, this.noiseMat, this.cloudMat, this.compositeMat]) m.dispose();
+    this._disposeBloom();
+    for (const m of [this.lutMat, this.weatherMat, this.noiseMat, this.cloudMat, this.compositeMat,
+      this.bloomDownMat, this.bloomUpMat, this.finalMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }
