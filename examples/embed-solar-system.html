@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar system — procedural-planets</title>
+<link rel="stylesheet" href="./example.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="info">
+  <h1>Planets inside an existing three.js scene</h1>
+  <p>A star, a terrestrial planet and a ringed gas giant (procedural-planets) share the scene with
+  ordinary meshes: a moon and a ship that occlude, and are occluded by, the planets. Drag to orbit.</p>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Planet, PlanetRenderer } from 'procedural-planets';
+
+// --- a regular three.js setup ------------------------------------------------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020306);
+const camera = new THREE.PerspectiveCamera(50, 1, 1, 1e6);
+camera.position.set(3200, 1300, 5600);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+// --- procedural bodies: plain Object3Ds you position like anything else -----
+const sun = new Planet({ type: 'star', preset: 'sun', radius: 2500 });
+sun.position.set(90000, 14000, 40000);
+
+const earth = new Planet({ preset: 'terran', seed: 2024, lightSource: sun });
+
+const giant = new Planet({ preset: 'ringed', radius: 4500, lightSource: sun });
+giant.position.set(-16000, 1800, -24000);
+
+scene.add(sun, earth, giant);
+
+// --- ordinary meshes, lit by an ordinary light at the star ------------------
+const light = new THREE.DirectionalLight(0xfff4e0, 2.5);
+light.position.copy(sun.position);
+scene.add(light, new THREE.AmbientLight(0x223344, 0.4));
+
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(420, 64, 32),
+  new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.95 })
+);
+moon.position.set(-2600, 900, -2600);
+scene.add(moon);
+
+const ship = new THREE.Group();
+const hull = new THREE.Mesh(new THREE.BoxGeometry(160, 40, 60), new THREE.MeshStandardMaterial({ color: 0xd0d6de, metalness: 0.6, roughness: 0.35 }));
+const wing = new THREE.Mesh(new THREE.BoxGeometry(50, 8, 220), new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.4, roughness: 0.5 }));
+ship.add(hull, wing);
+ship.position.set(2150, 700, 3450);
+scene.add(ship);
+
+// --- one PlanetRenderer per WebGLRenderer ------------------------------------
+const planets = new PlanetRenderer(renderer);
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const clock = new THREE.Clock();
+function frame(delta) {
+  const t = clock.elapsedTime;
+  earth.rotation.y = t * 0.01;
+  moon.position.set(Math.cos(t * 0.05) * -3700, 900, Math.sin(t * 0.05) * -3700);
+  ship.rotation.y = t * 0.3;
+  controls.update();
+  renderer.render(scene, camera);          // your scene first (fills depth)...
+  planets.render(scene, camera, { delta }); // ...then the planets on top, depth-tested
+}
+renderer.setAnimationLoop(() => frame(clock.getDelta()));
+
+// hooks for automated checks
+window.__example = { THREE, renderer, scene, camera, controls, planets, earth, giant, sun, moon, ship, frame };
+</script>
+</body>
+</html>

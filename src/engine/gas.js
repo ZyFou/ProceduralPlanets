@@ -621,3 +621,33 @@ void main() {
 }
 `;
 }
+
+/**
+ * Ring profile bake (1D strip, u = inner -> outer radius): sRGB ring albedo
+ * in rgb, coverage for a ~60 degree view in alpha. Used by the baked /
+ * standard-material tier (PlanetBaker), the live rings stay analytic.
+ */
+export function buildRingBakeFragment(width) {
+  return /* glsl */ `
+precision highp float;
+
+${NOISE_UNIFORMS_GLSL}
+${NOISE_FUNCTIONS_GLSL}
+${TOON_GLSL}
+${ATMOSPHERE_GLSL}
+${GAS_UNIFORMS_GLSL}
+${RING_GLSL}
+
+varying vec2 vUv;
+
+void main() {
+  float u = vUv.x;
+  float rr = mix(uGasRingInner, uGasRingOuter, u);
+  float tau = ringDepth(rr, 1.0 / ${width.toFixed(1)});
+  vec3 alb = uGasRingColor * mix(0.55, 1.0, smoothstep(0.1, 0.35, u))
+           * (1.0 + gnoise(vec3(u * 9.0, uSeedOffset.z * 0.03, 2.0)) * 0.25);
+  float alpha = 1.0 - exp(-tau / 0.5);
+  gl_FragColor = vec4(clamp(alb, 0.0, 1.0), clamp(alpha, 0.0, 1.0));
+}
+`;
+}

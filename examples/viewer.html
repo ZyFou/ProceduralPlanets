@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlanetViewer — procedural-planets</title>
+<link rel="stylesheet" href="./example.css">
+<style>
+  #view { position: fixed; inset: 0; }
+  .bar { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .bar button { background: #111722; color: #c9d1dc; border: 1px solid #263041; border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  .bar button:hover { border-color: #3b82f6; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div class="info">
+  <h1>PlanetViewer</h1>
+  <p>A self-contained viewer (own renderer, camera, orbit controls, starfield) in a few lines.</p>
+</div>
+<div class="bar" id="bar"></div>
+<script type="module">
+import { PlanetViewer, listPresets } from 'procedural-planets';
+
+const viewer = new PlanetViewer({
+  container: document.getElementById('view'),
+  planet: { preset: 'terran', seed: 42 },
+});
+
+// one button per preset: swap the planet, keep the viewer
+const bar = document.getElementById('bar');
+for (const [type, names] of Object.entries(listPresets())) {
+  for (const name of names) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.title = type;
+    b.onclick = () => viewer.setPlanet({ preset: name, seed: viewer.planet.get('seed') });
+    bar.appendChild(b);
+  }
+}
+const dice = document.createElement('button');
+dice.textContent = 'new seed';
+dice.onclick = () => viewer.planet.randomizeSeed();
+bar.appendChild(dice);
+
+window.__example = {
+  renderer: viewer.renderer, viewer, planets: viewer.planetRenderer,
+  frame: (dt) => { viewer.controls.update(); viewer._renderFrame(dt); },
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EffectComposer — procedural-planets</title>
+<link rel="stylesheet" href="./example.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="info">
+  <h1>Inside an EffectComposer chain</h1>
+  <p>RenderPass → PlanetPass → UnrealBloomPass → OutputPass. The planet is written as linear HDR
+  into the composer's buffer, so your bloom and tone mapping apply to it like to the rest of the scene.</p>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { Planet, PlanetPass } from 'procedural-planets';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 1, 1e6);
+camera.position.set(-2600, 900, 4600);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+const planet = new Planet({ preset: 'lava', seed: 99, sunAzimuth: 150, sunElevation: 10 });
+scene.add(planet);
+
+// emissive host geometry that the bloom picks up next to the planet
+const beacon = new THREE.Mesh(new THREE.IcosahedronGeometry(90, 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.2, 0.6) }));
+beacon.position.set(-1500, 800, 2400);
+scene.add(beacon);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new PlanetPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.4, 0.85));
+composer.addPass(new OutputPass());
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+function frame(dt) {
+  controls.update();
+  composer.render(dt);
+}
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => frame(clock.getDelta()));
+window.__example = { THREE, renderer, scene, camera, controls, planet, composer, frame };
+</script>
+</body>
+</html>

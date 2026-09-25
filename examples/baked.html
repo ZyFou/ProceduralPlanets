@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baked planets — procedural-planets</title>
+<link rel="stylesheet" href="./example.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="info">
+  <h1>Baked planets</h1>
+  <p>bakePlanet() turns planets into plain meshes with baked textures and standard materials,
+  lit by the scene's own lights: cheap, static, glTF-exportable. <span id="status">Baking…</span></p>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { bakePlanet } from 'procedural-planets';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070a);
+const camera = new THREE.PerspectiveCamera(45, 1, 10, 1e6);
+camera.position.set(0, 3500, 17000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+const sunLight = new THREE.DirectionalLight(0xffffff, 3);
+sunLight.position.set(-1, 0.4, 0.6);
+scene.add(sunLight, new THREE.AmbientLight(0x404a60, 0.35));
+
+const specs = [
+  { preset: 'terran', seed: 11, x: -8000 },
+  { preset: 'desert', seed: 7, x: -3200 },
+  { preset: 'ringed', seed: 3, x: 2800, radius: 1600 },
+  { preset: 'sun', x: 8200, radius: 1400 },
+];
+const bodies = [];
+for (const { x, ...options } of specs) {
+  const group = await bakePlanet(renderer, { ...options, meshResolution: 96, textureSize: 512 });
+  group.position.x = x;
+  scene.add(group);
+  bodies.push(group);
+}
+document.getElementById('status').textContent = '';
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+function frame(dt) {
+  for (const b of bodies) b.rotation.y += dt * 0.05;
+  controls.update();
+  renderer.render(scene, camera);
+}
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => frame(clock.getDelta()));
+window.__example = { THREE, renderer, scene, camera, controls, bodies, frame };
+</script>
+</body>
+</html>
