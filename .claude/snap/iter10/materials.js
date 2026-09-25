@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
-import {
-  TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL, CLIMATE_NOISE_GLSL,
-} from './surfaceGLSL.js';
+import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { seedToOffset } from './presets.js';
 
 // ============================================================================
@@ -211,7 +209,6 @@ export const UNIFORM_MAP = {
 const TERRAIN_VERTEX = /* glsl */ `
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
-${CLIMATE_NOISE_GLSL}
 
 uniform vec3 uFaceOrigin;
 uniform vec3 uFaceU;
@@ -233,8 +230,6 @@ varying vec3 vQJ;                 // q * JwT, q = dir * uNoiseScale
 varying vec4 vCont;               // HeightLow.cont
 varying vec4 vBelt;               // HeightLow.belt
 varying vec3 vLowGp;              // x: cont grad . (pw - seed), y: belt grad . (pw - seed), z: cLow2
-varying vec4 vClim;               // jitterNoise, moistNoise, their grad . dir
-varying vec3 vJitG, vMoistG;      // their gradients
 #endif
 
 void main() {
@@ -258,10 +253,6 @@ void main() {
   vCont = L.cont;
   vBelt = L.belt;
   vLowGp = vec3(dot(L.cont.yzw, pws), dot(L.belt.yzw, pws) * 0.55, L.cLow2);
-  vec4 jn = jitterNoiseD(dir), mn = moistNoiseD(dir);
-  vClim = vec4(jn.x, mn.x, dot(jn.yzw, dir), dot(mn.yzw, dir));
-  vJitG = jn.yzw;
-  vMoistG = mn.yzw;
   float clr;
   vec4 C = continentFbmFrom(pw, L, clr);
   float h = heightFromContinents(dir, pw, JwT, C, clr, true, L.belt, g, cl, mt) * uHeightScale;
@@ -299,8 +290,6 @@ varying vec3 vQJ;                 // q * JwT, q = dir * uNoiseScale
 varying vec4 vCont;               // HeightLow.cont
 varying vec4 vBelt;               // HeightLow.belt
 varying vec3 vLowGp;              // x: cont grad . (pw - seed), y: belt grad . (pw - seed), z: cLow2
-varying vec4 vClim;               // jitterNoise, moistNoise, their grad . dir
-varying vec3 vJitG, vMoistG;      // their gradients
 #endif
 
 void main() {
@@ -347,14 +336,7 @@ void main() {
   float det = surfaceDetail(vWorldPos, fp, dSlope);
 
   float rock, snow;
-#ifdef LOW_VARYING
-  // climate noises: same corrected interpolation, in dir space
-  float jitN = vClim.x + 0.5 * (dot(vJitG, dir) - vClim.z);
-  float moistN = vClim.y + 0.5 * (dot(vMoistG, dir) - vClim.w);
-  vec3 albedo = surfaceAlbedoN(dir, h, slope, cLow, mtn, det, true, jitN, moistN, rock, snow);
-#else
   vec3 albedo = surfaceAlbedo(dir, h, slope, cLow, mtn, det, rock, snow);
-#endif
 
   // detail bump: rough rock, softer vegetation, smooth snow
   float bump = h < uSeaLevel ? 0.12 : mix(0.22, 0.55, rock) * (1.0 - snow * 0.65);

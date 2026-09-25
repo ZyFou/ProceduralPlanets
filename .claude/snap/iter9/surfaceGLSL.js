@@ -170,33 +170,6 @@ float cloudShadow(vec3 p) {
 `;
 
 // ---------------------------------------------------------------------------
-// Climate noises — also included by the terrain VERTEX shader (which cannot
-// take SURFACE_GLSL: it uses screen-space derivatives).
-// ---------------------------------------------------------------------------
-export const CLIMATE_NOISE_GLSL = /* glsl */ `
-uniform float uMoistScale;    // frequency of the moisture field
-
-// Low-frequency climate noises (biome jitter, moisture field). The terrain
-// can evaluate them per vertex and interpolate (see materials.js), so they
-// also come with their gradient w.r.t. dir (x = value, yzw = gradient).
-float jitterNoise(vec3 dir) { return gnoise(dir * 11.0 + uSeedOffset * 0.53); }
-vec4 jitterNoiseD(vec3 dir) {
-  vec4 n = gnoised(dir * 11.0 + uSeedOffset * 0.53);
-  return vec4(n.x, n.yzw * 11.0);
-}
-float moistNoise(vec3 dir) {
-  vec3 q = dir * uMoistScale + uSeedOffset * 1.31 + 31.7;
-  return gnoise(q) + 0.5 * gnoise(q * 2.07 + 13.1) + 0.25 * gnoise(q * 4.3 + 5.7);
-}
-vec4 moistNoiseD(vec3 dir) {
-  vec3 q = dir * uMoistScale + uSeedOffset * 1.31 + 31.7;
-  vec4 a = gnoised(q), b = gnoised(q * 2.07 + 13.1), c = gnoised(q * 4.3 + 5.7);
-  return vec4(a.x + 0.5 * b.x + 0.25 * c.x,
-              (a.yzw + b.yzw * (0.5 * 2.07) + c.yzw * (0.25 * 4.3)) * uMoistScale);
-}
-`;
-
-// ---------------------------------------------------------------------------
 // Surface: climate-driven biomes (temperature from latitude + altitude lapse,
 // moisture from the Hadley/Ferrel cell pattern + continentality + noise),
 // slope-driven rock, temperature-driven snow, and multi-octave world-space
@@ -204,12 +177,12 @@ vec4 moistNoiseD(vec3 dir) {
 // detail instead of aliasing, at any planet size.
 // ---------------------------------------------------------------------------
 export const SURFACE_GLSL = /* glsl */ `
-${CLIMATE_NOISE_GLSL}
 uniform float uBandSoftness;  // width of biome transitions
 uniform float uSnowLine;
 uniform float uPolarCaps;
 uniform float uBiomeAmount;   // 0 = plain altitude ramp, 1 = full biome map
 uniform float uTempBias;      // -1 frozen .. +1 scorching
+uniform float uMoistScale;    // frequency of the moisture field
 uniform vec3 uColDeep;
 uniform vec3 uColShallow;
 uniform vec3 uColSand;
@@ -262,11 +235,12 @@ float climateTemp(vec3 dir, float rel, float jit) {
 }
 
 // moisture: wet equator, dry subtropics (~30 deg), wet storm tracks (~60
-// deg), dry poles — then continental interiors dry out, coasts stay humid.
-// n = moistNoise(dir)
-float climateMoist(vec3 dir, float cLow, float jit, float n) {
+// deg), dry poles — then continental interiors dry out, coasts stay humid
+float climateMoist(vec3 dir, float cLow, float jit) {
   float latA = asin(clamp(dir.y, -1.0, 1.0));
   float cells = cos(latA * 6.0);
+  vec3 q = dir * uMoistScale + uSeedOffset * 1.31 + 31.7;
+  float n = gnoise(q) + 0.5 * gnoise(q * 2.07 + 13.1) + 0.25 * gnoise(q * 4.3 + 5.7);
   float interior = smoothstep(0.50, 0.66, cLow);
   return sat(0.50 + cells * 0.2 + n * 0.62 - interior * 0.24 + jit * 0.06);
 }
@@ -290,14 +264,11 @@ float polarIce(vec3 dir, float jit) {
   return smoothstep(edge - 0.03, edge + 0.03, lat) * step(0.01, uPolarCaps);
 }
 
-// linear albedo. det = surfaceDetail value, returns rock/snow cover for
-// shading. noiseGiven: jitN / moistN are jitterNoise / moistNoise(dir)
-// supplied by the caller (else evaluated here, moisture on land only).
-vec3 surfaceAlbedoN(vec3 dir, float h, float slope, float cLow, float mtn, float det,
-                    bool noiseGiven, float jitN, float moistN,
-                    out float rockOut, out float snowOut) {
+// linear albedo. det = surfaceDetail value, returns rock/snow cover for shading
+vec3 surfaceAlbedo(vec3 dir, float h, float slope, float cLow, float mtn, float det,
+                   out float rockOut, out float snowOut) {
   float sea = uSeaLevel;
-  float jit = (noiseGiven ? jitN : jitterNoise(dir)) * 0.7 + det * 0.6;
+  float jit = gnoise(dir * 11.0 + uSeedOffset * 0.53) * 0.7 + det * 0.6;
   rockOut = 0.0;
   snowOut = 0.0;
 
@@ -311,7 +282,7 @@ vec3 surfaceAlbedoN(vec3 dir, float h, float slope, float cLow, float mtn, float
   float rel = (h - sea) / max(1.0 - sea, 1e-4);
 
   float temp = climateTemp(dir, rel, jit);
-  float moist = climateMoist(dir, cLow, jit, noiseGiven ? moistN : moistNoise(dir));
+  float moist = climateMoist(dir, cLow, jit);
   vec3 plain = mix(lin(uColGrass), lin(uColForest), smoothstep(0.02, 0.25, rel + jit * 0.03));
   vec3 col = mix(plain, biomeAlbedo(temp, moist), sat(uBiomeAmount));
 
@@ -347,10 +318,5 @@ vec3 surfaceAlbedoN(vec3 dir, float h, float slope, float cLow, float mtn, float
   col = mix(col, lin(uColSnow) * (1.0 + det * 0.05), snow);
   snowOut = snow;
   return col;
-}
-
-vec3 surfaceAlbedo(vec3 dir, float h, float slope, float cLow, float mtn, float det,
-                   out float rockOut, out float snowOut) {
-  return surfaceAlbedoN(dir, h, slope, cLow, mtn, det, false, 0.0, 0.0, rockOut, snowOut);
 }
 `;

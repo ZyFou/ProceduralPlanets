@@ -220,69 +220,6 @@ vec4 continentFbm(vec3 p, out float cLow) {
   return vec4(sum, octaveFrameToDomain() * grad) / max(norm, 1e-5);
 }
 
-// The continent fbm's first CONT_LOW octaves and the mountain-belt noise are
-// smooth at the vertex spacing of the terrain chunks: the terrain evaluates
-// them per vertex and interpolates (see materials.js). HeightLow carries
-// them: cont = partial fbm sum + its gradient (w.r.t. the warped point),
-// cLow2 = the two-octave partial sum behind cLow, belt = belt noise value +
-// gradient (w.r.t. its own input).
-const int CONT_LOW = OCTAVES < 3 ? OCTAVES : 3;
-
-struct HeightLow { vec4 cont; float cLow2; vec4 belt; };
-
-// R^(CONT_LOW-1): the frame of the last low octave
-mat3 contLowFrame() {
-  mat3 m = mat3(1.0);
-  for (int i = 1; i < CONT_LOW; i++) m = m * OCT_ROT;
-  return m;
-}
-
-HeightLow heightLow(vec3 pw) {
-  HeightLow L;
-  float sum = 0.0, amp = 0.5, lac = 1.0;
-  vec3 H = vec3(0.0);
-  vec3 q = pw;
-  L.cLow2 = 0.0;
-  for (int i = 0; i < CONT_LOW; i++) {
-    vec4 n = gnoised(q);
-    sum += amp * n.x;
-    H = OCT_ROT * H + (amp * lac) * n.yzw;
-    if (i == 1) L.cLow2 = sum;
-    amp *= uPersistence;
-    lac *= uLacunarity;
-    q = OCT_ROT * q * uLacunarity;
-  }
-  L.cont = vec4(sum, transpose(contLowFrame()) * H);
-  L.belt = gnoised(pw * 0.55 + vec3(5.3, 1.7, 9.1));
-  return L;
-}
-
-// continentFbm continued from (interpolated) low octaves
-vec4 continentFbmFrom(vec3 pw, HeightLow L, out float cLow) {
-  float amp = 0.5, norm = 0.0, lac = 1.0;
-  vec3 q = pw;
-  cLow = 0.0;
-  for (int i = 0; i < CONT_LOW; i++) {
-    norm += amp;
-    if (i == 1) cLow = L.cLow2 / norm;
-    amp *= uPersistence;
-    lac *= uLacunarity;
-    q = OCT_ROT * q * uLacunarity;
-  }
-  float sum = L.cont.x;
-  vec3 H = contLowFrame() * L.cont.yzw;
-  for (int i = CONT_LOW; i < OCTAVES; i++) {
-    vec4 n = gnoised(q);
-    sum += amp * n.x;
-    H = OCT_ROT * H + (amp * lac) * n.yzw;
-    norm += amp;
-    amp *= uPersistence;
-    lac *= uLacunarity;
-    q = OCT_ROT * q * uLacunarity;
-  }
-  return vec4(sum, octaveFrameToDomain() * H) / max(norm, 1e-5);
-}
-
 // Musgrave ridged multifractal with gradient: sharp crests, and each octave is
 // weighted by the previous one so detail piles onto ridgelines while valley
 // floors stay smooth (reads like drainage-eroded ranges).
@@ -368,17 +305,14 @@ vec3 warpDomain(vec3 dir, out mat3 JwT) {
   return p + vec3(wx.x, wy.x, wz.x) * uWarp;
 }
 
-// dir: unit sphere direction, pw / JwT: its warpDomain(), C / cLowRaw: the
-// continent fbm at pw. beltN = the belt noise when beltGiven (else evaluated
-// here, on land only). Returns the height fraction in [0,1]; grad =
-// d(height)/d(dir) in 3D (take the tangential part for normals). cLow =
-// low-pass continent value (continentality), mtn = mountain mask.
-float heightFromContinents(vec3 dir, vec3 pw, mat3 JwT, vec4 C, float cLowRaw,
-                           bool beltGiven, vec4 beltIn,
-                           out vec3 grad, out float cLow, out float mtn) {
+// dir: unit sphere direction, pw / JwT: its warpDomain(). Returns the height
+// fraction in [0,1]; grad = d(height)/d(dir) in 3D (take the tangential part
+// for normals). cLow = low-pass continent value (continentality), mtn =
+// mountain mask.
+float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cLow, out float mtn) {
   // continents: fbm pushed through a shelf curve so oceans are broad basins
   // and land masses have coherent interiors
-  cLow = cLowRaw;
+  vec4 C = continentFbm(pw, cLow);
   float c = 0.465 + C.x * CONT_GAIN;
   vec3 dc = C.yzw * CONT_GAIN;
   cLow = 0.465 + cLow * CONT_GAIN;
@@ -402,7 +336,7 @@ float heightFromContinents(vec3 dir, vec3 pw, mat3 JwT, vec4 C, float cLowRaw,
   mtn = 0.0;
   if (land.x > 0.0 && amt > 0.0) {
     vec3 dLand = land.y * dc;
-    vec4 beltN = beltGiven ? beltIn : gnoised(pw * 0.55 + vec3(5.3, 1.7, 9.1));
+    vec4 beltN = gnoised(pw * 0.55 + vec3(5.3, 1.7, 9.1));
     float beltSgn = beltN.x >= 0.0 ? 1.0 : -1.0;
     float belt = 1.0 - abs(beltN.x) * 4.5;
     vec3 dBelt = -4.5 * beltSgn * beltN.yzw * 0.55;
@@ -439,12 +373,6 @@ float heightFromContinents(vec3 dir, vec3 pw, mat3 JwT, vec4 C, float cLowRaw,
 
   if (h <= 0.0 || h >= 1.0) grad = vec3(0.0);
   return clamp(h, 0.0, 1.0);
-}
-
-float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cLow, out float mtn) {
-  float cl;
-  vec4 C = continentFbm(pw, cl);
-  return heightFromContinents(dir, pw, JwT, C, cl, false, vec4(0.0), grad, cLow, mtn);
 }
 
 float heightField(vec3 dir, out vec3 grad, out float cLow, out float mtn) {

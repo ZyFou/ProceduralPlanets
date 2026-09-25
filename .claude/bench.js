@@ -268,6 +268,50 @@ export async function paired({ versions = ['baseline', 'live'], tag = 'paired', 
   return out;
 }
 
+// ---------------------------------------------------------------- animated
+// Time advances 1/60 s per frame (the weather evolves and re-bakes like in
+// the live app); per-frame GPU time over `frames` frames -> mean / p99 / max.
+export async function animated({ versions = ['baseline', 'live'], frames = 360, scenario = 'orbit', tag = 'anim' } = {}) {
+  const out = {};
+  const sc = scenarios(DEFAULT_PARAMS.radius).find((s) => s.name === scenario);
+  for (const v of versions) {
+    const e = v === 'live' ? window.planetStudio : await snapEngine(v);
+    setup(e);
+    place(e, sc);
+    for (let i = 0; i < 10; i++) frame(e);
+    const r = e.renderer;
+    const gl = r.getContext();
+    const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    const qs = [];
+    for (let i = 0; i < frames; i++) {
+      e.uniforms.uTime.value += 1 / 60;
+      const q = gl.createQuery();
+      gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
+      frame(e);
+      gl.endQuery(ext.TIME_ELAPSED_EXT);
+      qs.push(q);
+      if (i % 30 === 29) await sleep();
+    }
+    const ms = [];
+    for (const q of qs) {
+      while (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) await sleep();
+      ms.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+      gl.deleteQuery(q);
+    }
+    const s = [...ms].sort((a, b) => a - b);
+    out[v] = {
+      mean: +(ms.reduce((a, b) => a + b, 0) / ms.length).toFixed(2),
+      p50: +s[Math.floor(s.length * 0.5)].toFixed(2),
+      p99: +s[Math.floor(s.length * 0.99)].toFixed(2),
+      max: +s[s.length - 1].toFixed(2),
+      over2xMedian: ms.filter((x) => x > 2 * s[Math.floor(s.length * 0.5)]).length,
+    };
+  }
+  await fetch(STORE, { method: 'POST', body: JSON.stringify({ name: tag, json: out }) });
+  return out;
+}
+export const startAnimated = (opts) => launch(animated(opts));
+
 // quick experiment helper: set up a scenario, then GPU-time `fn` (median ms)
 export async function timeFn(fn, { scenario = 'orbit', n = 20, engine = null } = {}) {
   const e = engine || window.planetStudio;

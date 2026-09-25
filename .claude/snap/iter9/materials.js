@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
-import {
-  TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL, CLIMATE_NOISE_GLSL,
-} from './surfaceGLSL.js';
+import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { seedToOffset } from './presets.js';
 
 // ============================================================================
@@ -211,7 +209,6 @@ export const UNIFORM_MAP = {
 const TERRAIN_VERTEX = /* glsl */ `
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
-${CLIMATE_NOISE_GLSL}
 
 uniform vec3 uFaceOrigin;
 uniform vec3 uFaceU;
@@ -229,13 +226,6 @@ varying vec3 vWarp;               // warp displacement pw - p
 varying vec3 vJw0, vJw1, vJw2;    // its Jacobian (JwT columns)
 varying vec3 vQJ;                 // q * JwT, q = dir * uNoiseScale
 #endif
-#ifdef LOW_VARYING
-varying vec4 vCont;               // HeightLow.cont
-varying vec4 vBelt;               // HeightLow.belt
-varying vec3 vLowGp;              // x: cont grad . (pw - seed), y: belt grad . (pw - seed), z: cLow2
-varying vec4 vClim;               // jitterNoise, moistNoise, their grad . dir
-varying vec3 vJitG, vMoistG;      // their gradients
-#endif
 
 void main() {
   vec2 uv2 = uUV0 + position.xy * uUVSize;
@@ -246,28 +236,11 @@ void main() {
   vec3 pw = warpDomain(dir, JwT);
   vec3 g;
   float cl, mt;
+  float h = heightFieldWarped(dir, pw, JwT, g, cl, mt) * uHeightScale;
   vec3 q = dir * uNoiseScale;
   vWarp = pw - (q + uSeedOffset);
   vJw0 = JwT[0]; vJw1 = JwT[1]; vJw2 = JwT[2];
   vQJ = q * JwT;
-#ifdef LOW_VARYING
-  // the height continues from the same low octaves (identical sums: the
-  // vertex position is bit-for-bit heightField's)
-  HeightLow L = heightLow(pw);
-  vec3 pws = q + vWarp;           // pw - seed (seed-free for precision)
-  vCont = L.cont;
-  vBelt = L.belt;
-  vLowGp = vec3(dot(L.cont.yzw, pws), dot(L.belt.yzw, pws) * 0.55, L.cLow2);
-  vec4 jn = jitterNoiseD(dir), mn = moistNoiseD(dir);
-  vClim = vec4(jn.x, mn.x, dot(jn.yzw, dir), dot(mn.yzw, dir));
-  vJitG = jn.yzw;
-  vMoistG = mn.yzw;
-  float clr;
-  vec4 C = continentFbmFrom(pw, L, clr);
-  float h = heightFromContinents(dir, pw, JwT, C, clr, true, L.belt, g, cl, mt) * uHeightScale;
-#else
-  float h = heightFieldWarped(dir, pw, JwT, g, cl, mt) * uHeightScale;
-#endif
 #else
   float h = terrainHeight(dir);
 #endif
@@ -295,13 +268,6 @@ varying vec3 vWarp;               // warp displacement pw - p
 varying vec3 vJw0, vJw1, vJw2;    // its Jacobian (JwT columns)
 varying vec3 vQJ;                 // q * JwT, q = dir * uNoiseScale
 #endif
-#ifdef LOW_VARYING
-varying vec4 vCont;               // HeightLow.cont
-varying vec4 vBelt;               // HeightLow.belt
-varying vec3 vLowGp;              // x: cont grad . (pw - seed), y: belt grad . (pw - seed), z: cLow2
-varying vec4 vClim;               // jitterNoise, moistNoise, their grad . dir
-varying vec3 vJitG, vMoistG;      // their gradients
-#endif
 
 void main() {
   vec3 dir = normalize(vDir);
@@ -319,20 +285,7 @@ void main() {
   mat3 JwT = mat3(vJw0, vJw1, vJw2);
   vec3 q = dir * uNoiseScale;
   vec3 warp = vWarp + 0.5 * ((q * JwT - q) - (vQJ - vDir * uNoiseScale));
-  vec3 pw = q + uSeedOffset + warp;
-#ifdef LOW_VARYING
-  // same second-order-corrected interpolation for the smooth low octaves
-  vec3 pws = q + warp;
-  HeightLow L;
-  L.cont = vec4(vCont.x + 0.5 * (dot(vCont.yzw, pws) - vLowGp.x), vCont.yzw);
-  L.belt = vec4(vBelt.x + 0.5 * (dot(vBelt.yzw, pws) * 0.55 - vLowGp.y), vBelt.yzw);
-  L.cLow2 = vLowGp.z;
-  float cl;
-  vec4 C = continentFbmFrom(pw, L, cl);
-  float h = heightFromContinents(dir, pw, JwT, C, cl, true, L.belt, grad, cLow, mtn);
-#else
-  float h = heightFieldWarped(dir, pw, JwT, grad, cLow, mtn);
-#endif
+  float h = heightFieldWarped(dir, q + uSeedOffset + warp, JwT, grad, cLow, mtn);
 #else
   float h = heightField(dir, grad, cLow, mtn);
 #endif
@@ -347,14 +300,7 @@ void main() {
   float det = surfaceDetail(vWorldPos, fp, dSlope);
 
   float rock, snow;
-#ifdef LOW_VARYING
-  // climate noises: same corrected interpolation, in dir space
-  float jitN = vClim.x + 0.5 * (dot(vJitG, dir) - vClim.z);
-  float moistN = vClim.y + 0.5 * (dot(vMoistG, dir) - vClim.w);
-  vec3 albedo = surfaceAlbedoN(dir, h, slope, cLow, mtn, det, true, jitN, moistN, rock, snow);
-#else
   vec3 albedo = surfaceAlbedo(dir, h, slope, cLow, mtn, det, rock, snow);
-#endif
 
   // detail bump: rough rock, softer vegetation, smooth snow
   float bump = h < uSeaLevel ? 0.12 : mix(0.22, 0.55, rock) * (1.0 - snow * 0.65);
@@ -372,15 +318,10 @@ void main() {
 }
 `;
 
-// lowVarying: also interpolate the low continent octaves + belt noise. Only
-// for chunks fine enough (quadtree level >= 2) that their vertex spacing
-// resolves those octaves; coarse chunks evaluate them per pixel.
-export function createTerrainMaterial(shared, octaves, chunkUniforms, lowVarying = false) {
-  const defines = { OCTAVES: octaves, WARP_VARYING: 1 };
-  if (lowVarying) defines.LOW_VARYING = 1;
+export function createTerrainMaterial(shared, octaves, chunkUniforms) {
   return new THREE.ShaderMaterial({
     uniforms: { ...shared, uSkirtDepth: { value: 0 }, ...chunkUniforms },
-    defines,
+    defines: { OCTAVES: octaves, WARP_VARYING: 1 },
     vertexShader: TERRAIN_VERTEX,
     fragmentShader: TERRAIN_FRAGMENT,
     side: THREE.FrontSide,

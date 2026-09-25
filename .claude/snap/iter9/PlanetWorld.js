@@ -247,7 +247,7 @@ export class PlanetWorld {
       uUV0:        { value: new THREE.Vector2(node.u0, node.v0) },
       uUVSize:     { value: node.size },
     };
-    const mat = createTerrainMaterial(this.shared, this.opts.octaves, chunkUniforms, node.level >= 2);
+    const mat = createTerrainMaterial(this.shared, this.opts.octaves, chunkUniforms);
     // skirt depth scales with node size so coarse chunks hide bigger cracks
     mat.uniforms.uSkirtDepth = { value: Math.max(this.heightScale * 0.6, node.size * this.radius * 0.05) };
     mat.wireframe = this.wireframe;

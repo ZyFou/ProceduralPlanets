@@ -111,7 +111,7 @@ export class Engine {
     const top = ground + R * (gas ? GAS_ATMO_HEIGHT : p.atmoHeight);
     const H = top - ground;
     const HR = H * 0.11;
-    const HM = HR / 5;   // exactly 1/5: the composite's view ray uses dMie = dRayleigh^5
+    const HM = H * 0.022;
     const s = gas ? p.gasAtmoStrength : p.atmoEnabled ? p.atmoStrength : 0;
     const haze = gas ? p.gasAtmoHaze : p.atmoHaze;
 

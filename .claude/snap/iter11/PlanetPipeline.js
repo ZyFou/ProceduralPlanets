@@ -427,11 +427,8 @@ vec3 starField(vec3 rd) {
   // faint galactic band
   vec3 gp = normalize(vec3(0.35, 0.82, -0.45));
   float band = exp(-pow(dot(rd, gp) / 0.22, 2.0));
-  // off the band its dust is far below one display level: skip the noise
-  if (band > 0.01) {
-    float dust = 0.5 + 0.5 * gnoise(rd * 9.0) + 0.25 * gnoise(rd * 23.0);
-    col += vec3(0.55, 0.6, 0.75) * band * dust * 0.012;
-  }
+  float dust = 0.5 + 0.5 * gnoise(rd * 9.0) + 0.25 * gnoise(rd * 23.0);
+  col += vec3(0.55, 0.6, 0.75) * band * dust * 0.012;
   return col * 0.25;
 }
 
@@ -456,7 +453,6 @@ vec3 atmosphere(vec3 ro, vec3 rd, float tMax, out vec3 transmittance) {
   const int N = 24;
   float ds = (t1 - t0) / float(N);
   float jit = ign(gl_FragCoord.xy + 17.0);
-  // optical depths and sums in units of ds (scaled once at the end)
   vec3 od = vec3(0.0);
   vec3 sumR = vec3(0.0), sumM = vec3(0.0);
   for (int i = 0; i < N; i++) {
@@ -465,17 +461,15 @@ vec3 atmosphere(vec3 ro, vec3 rd, float tMax, out vec3 transmittance) {
     float r = length(p);
     float h = max(r - uAtmoGround, 0.0);
     float dR = exp(-h / uAtmoHR);
-    float dR2 = dR * dR;
-    float dM = dR2 * dR2 * dR;            // exp(-h / uAtmoHM): HM = HR / 5 (Engine)
-    vec3 stepOD = uAtmoRayleigh * dR + vec3(uAtmoMie * 1.11 * dM) + uAtmoOzone * ozoneDensity(h);
-    vec3 w = exp(-(od + stepOD * 0.5) * ds) * atmoTransmittance(r, dot(p, uSunDir) / r);
-    sumR += dR * w;
-    sumM += dM * w;
+    float dM = exp(-h / uAtmoHM);
+    vec3 stepOD = (uAtmoRayleigh * dR + vec3(uAtmoMie * 1.11 * dM) + uAtmoOzone * ozoneDensity(h)) * ds;
+    vec3 Tv = exp(-(od + stepOD * 0.5));
+    vec3 Ts = atmoTransmittance(r, dot(p, uSunDir) / r);
+    sumR += dR * Tv * Ts * ds;
+    sumM += dM * Tv * Ts * ds;
     od += stepOD;
   }
-  sumR *= ds;
-  sumM *= ds;
-  transmittance = exp(-od * ds);
+  transmittance = exp(-od);
   float mu = dot(rd, uSunDir);
   vec3 E = vec3(SUN_E * uSunIntensity);
   return E * (uAtmoRayleigh * sumR * phaseRayleigh(mu) + uAtmoMie * sumM * phaseHG(mu, 0.76));
