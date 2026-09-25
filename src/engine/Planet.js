@@ -93,6 +93,12 @@ function toColorArray(value) {
     return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
   }
   if (typeof value === 'string') {
+    const hex = value.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+      const h = hex[1].length === 3 ? hex[1].replace(/./g, '$&$&') : hex[1];
+      return toColorArray(parseInt(h, 16));
+    }
+    // any other CSS colour (names, rgb(), hsl()) through three's parser
     _color.setStyle(value, THREE.SRGBColorSpace);
     _color.getRGB(_rgb, THREE.SRGBColorSpace);
     return [_rgb.r, _rgb.g, _rgb.b];
