@@ -76,7 +76,6 @@ export function createSharedUniforms(p) {
     // clouds — weather cubemap + noise volume are baked by PlanetPipeline
     uWeatherMap:    { value: null },
     uCloudNoise:    { value: null },
-    uCloudErosion:  { value: null },
     uCloudCoverage: { value: p.cloudCoverage },
     uCloudSoftness: { value: p.cloudSoftness },
     uCloudDensity:  { value: p.cloudDensity },
@@ -130,7 +129,6 @@ export function createSharedUniforms(p) {
     uGasRingOpacity:{ value: p.gasRingOpacity },
     uGasRingColor:  { value: v3(p.gasRingColor) },
     uGasAxis:       { value: new THREE.Vector3(0, 1, 0) },   // set by Engine (tilt)
-    uGasJets:       { value: null },                         // GasJetTable (gas.js)
 
     // star mode — surface (star.js) + halo (composite pass)
     uStarTemp:       { value: p.starTemperature },
@@ -221,29 +219,12 @@ attribute float aSkirt;
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
-#ifdef WARP_VARYING
-varying vec3 vWarp;               // warp displacement pw - p
-varying vec3 vJw0, vJw1, vJw2;    // its Jacobian (JwT columns)
-varying vec3 vQJ;                 // q * JwT, q = dir * uNoiseScale
-#endif
 
 void main() {
   vec2 uv2 = uUV0 + position.xy * uUVSize;
   vec3 cube = uFaceOrigin + uv2.x * uFaceU + uv2.y * uFaceV;
   vec3 dir = normalize(cube);
-#ifdef WARP_VARYING
-  mat3 JwT;
-  vec3 pw = warpDomain(dir, JwT);
-  vec3 g;
-  float cl, mt;
-  float h = heightFieldWarped(dir, pw, JwT, g, cl, mt) * uHeightScale;
-  vec3 q = dir * uNoiseScale;
-  vWarp = pw - (q + uSeedOffset);
-  vJw0 = JwT[0]; vJw1 = JwT[1]; vJw2 = JwT[2];
-  vQJ = q * JwT;
-#else
   float h = terrainHeight(dir);
-#endif
   vec3 wp = dir * (uRadius + h - aSkirt * uSkirtDepth);
   vDir = dir;
   vWorldPos = wp;
@@ -263,11 +244,6 @@ ${SURFACE_GLSL}
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
-#ifdef WARP_VARYING
-varying vec3 vWarp;               // warp displacement pw - p
-varying vec3 vJw0, vJw1, vJw2;    // its Jacobian (JwT columns)
-varying vec3 vQJ;                 // q * JwT, q = dir * uNoiseScale
-#endif
 
 void main() {
   vec3 dir = normalize(vDir);
@@ -275,20 +251,7 @@ void main() {
   // exact normal from the analytic height gradient (one evaluation)
   vec3 grad;
   float cLow, mtn;
-#ifdef WARP_VARYING
-  // The domain warp is smooth at the vertex spacing: interpolated from the
-  // vertices instead of 6 noise evaluations per pixel. Linear interpolation
-  // and the average of the vertices' first-order Taylor expansions err by
-  // the same second-order term with opposite signs, so their mean is exact
-  // to third order. Interpolated in seed-free coordinates (the seed offset
-  // is up to 256) to keep float precision.
-  mat3 JwT = mat3(vJw0, vJw1, vJw2);
-  vec3 q = dir * uNoiseScale;
-  vec3 warp = vWarp + 0.5 * ((q * JwT - q) - (vQJ - vDir * uNoiseScale));
-  float h = heightFieldWarped(dir, q + uSeedOffset + warp, JwT, grad, cLow, mtn);
-#else
   float h = heightField(dir, grad, cLow, mtn);
-#endif
   float r = uRadius + h * uHeightScale;
   vec3 gt = grad - dir * dot(grad, dir);
   vec3 n = normalize(dir - gt * (uHeightScale / r));
@@ -321,7 +284,7 @@ void main() {
 export function createTerrainMaterial(shared, octaves, chunkUniforms) {
   return new THREE.ShaderMaterial({
     uniforms: { ...shared, uSkirtDepth: { value: 0 }, ...chunkUniforms },
-    defines: { OCTAVES: octaves, WARP_VARYING: 1 },
+    defines: { OCTAVES: octaves },
     vertexShader: TERRAIN_VERTEX,
     fragmentShader: TERRAIN_FRAGMENT,
     side: THREE.FrontSide,

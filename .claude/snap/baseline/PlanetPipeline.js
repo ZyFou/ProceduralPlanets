@@ -19,8 +19,7 @@ import { STAR_CORONA_GLSL } from './star.js';
 //
 // Baked helpers (re-baked only when their inputs change):
 //   transmittance LUT (256x64)   sun colour through the air at any altitude
-//   weather cubemap (512/face)   cloud field — also drives terrain shadows;
-//                                re-baked one face per frame as it evolves
+//   weather cubemap (512/face)   cloud field — also drives terrain shadows
 //   noise volume (128^3)         tileable Perlin-Worley + Worley fbm detail
 //
 // Gas mode goes through the same path as the planet (no ocean / clouds): its
@@ -49,8 +48,7 @@ vec3 linearToSrgb(vec3 c) {
 }
 `;
 
-const NOISE_VOLUME_SIZE = 64;
-const EROSION_VOLUME_SIZE = 64;
+const NOISE_VOLUME_SIZE = 128;
 const WEATHER_SIZE = 512;
 const MAX_CLOUD_STEPS = 128;
 
@@ -153,23 +151,21 @@ void main() {
 
   // cloud type: tall convective cells (tropics) vs flat stratiform decks
   float type = clamp(0.45 + gnoise(p * 1.6 + 31.0) * 1.3 + (1.0 - abs(d.y)) * 0.25 - 0.12, 0.0, 1.0);
+  // cirrus: thin high streaks, strongly stretched zonally
+  float ci = fbmN(d * uCloudScale * vec3(0.8, 5.0, 0.8) + pw * 0.25 + 71.0, 4);
 
-  gl_FragColor = vec4(clamp(v, 0.0, 1.0), type, 0.0, 1.0);
+  gl_FragColor = vec4(clamp(v, 0.0, 1.0), type, clamp(0.5 + ci * 2.0, 0.0, 1.0), 1.0);
 }
 `;
 
 // ---------------------------------------------------------------------------
-// Tileable 3D noise volumes (one layer per draw). The shaders only ever use
-// the Worley octaves as one weighted sum, so it is baked pre-summed:
-//   r = Worley fbm (4 / 8 / 16 cells, 0.625 / 0.25 / 0.125), g = Perlin-Worley
-// The shape volume is RG8 (both), the detail volume R8 (Worley fbm only):
-// 2 and 1 bytes per texel instead of 4 keep the raymarch's scattered fetches
-// in cache.
+// Tileable 3D noise volume (one layer per draw):
+//   r = Perlin-Worley (billowy base shape), gba = Worley fbm at 3 scales
 // ---------------------------------------------------------------------------
 const NOISE_VOLUME_FRAGMENT = /* glsl */ `
 precision highp float;
 uniform float uLayer;
-uniform float uSize;
+const float SIZE = ${NOISE_VOLUME_SIZE}.0;
 
 vec3 hash33(vec3 p3) {
   p3 = fract(p3 * vec3(0.1031, 0.1030, 0.0973));
@@ -213,14 +209,13 @@ float worleyFbm(vec3 p, float F) {
 }
 
 void main() {
-  vec3 p = vec3(gl_FragCoord.xy, uLayer + 0.5) / uSize;
+  vec3 p = vec3(gl_FragCoord.xy, uLayer + 0.5) / SIZE;
   float perlin = gradTile(p, 4.0) + 0.5 * gradTile(p, 8.0) + 0.25 * gradTile(p, 16.0);
   perlin = clamp(0.5 + perlin * 0.75, 0.0, 1.0);
   float w1 = worleyFbm(p, 4.0);
   // Perlin dilated by Worley: billowy cells with connected bodies
   float pw = clamp((perlin - (w1 - 1.0)) / (2.0 - w1), 0.0, 1.0);
-  float low = w1 * 0.625 + worleyFbm(p, 8.0) * 0.25 + worleyFbm(p, 16.0) * 0.125;
-  gl_FragColor = vec4(low, pw, 0.0, 1.0);
+  gl_FragColor = vec4(pw, w1, worleyFbm(p, 8.0), worleyFbm(p, 16.0));
 }
 `;
 
@@ -259,7 +254,7 @@ float cloudDensity(vec3 p, bool detail, out float hf) {
   hf = (r - uCloudBottom) / (uCloudTop - uCloudBottom);
   if (hf <= 0.0 || hf >= 1.0) return 0.0;
   vec3 dr = cloudRotate(p / r);
-  vec4 w = textureLod(uWeatherMap, dr, 0.0);
+  vec4 w = textureCube(uWeatherMap, dr);
   float cov = cloudCover(w);
   if (cov < 0.01) return 0.0;
 
@@ -270,8 +265,9 @@ float cloudDensity(vec3 p, bool detail, out float hf) {
   if (prof <= 0.0) return 0.0;
 
   vec3 pr = dr * r;   // move the detail with the weather
-  vec2 n = textureLod(uCloudNoise, pr * uCloudShapeFreq + uCloudWind * 0.35, 0.0).rg;
-  float base = sat(remap(n.y, n.x - 1.0, 1.0, 0.0, 1.0));
+  vec4 n = texture(uCloudNoise, pr * uCloudShapeFreq + uCloudWind * 0.35);
+  float low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
+  float base = sat(remap(n.r, low - 1.0, 1.0, 0.0, 1.0));
   // profile BEFORE the coverage remap: each column gets its own top height
   // (cauliflower tops); coverage thresholds the billows so system fringes
   // break into cumulus fields, and scales density so they turn translucent
@@ -279,14 +275,15 @@ float cloudDensity(vec3 p, bool detail, out float hf) {
   if (!detail || dens <= 0.0) return dens;
 
   // erosion: wispy bottoms, billowy tops
-  float hfb = textureLod(uCloudErosion, pr * uCloudDetailFreq + uCloudWind, 0.0).r;
+  vec3 dn = texture(uCloudNoise, pr * uCloudDetailFreq + uCloudWind).gba;
+  float hfb = dn.x * 0.625 + dn.y * 0.25 + dn.z * 0.125;
   float m = mix(hfb, 1.0 - hfb, sat(hf * 4.0));
   return sat(remap(dens, m * 0.8 * uCloudDetail, 1.0, 0.0, 1.0));
 }
 
 void main() {
   vec2 uv = gl_FragCoord.xy / uCloudRes;
-  float depth = textureLod(tDepth, uv, 0.0).x;
+  float depth = texture2D(tDepth, uv).x;
   vec4 vp = uInvProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
   vp /= vp.w;
   vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
@@ -317,12 +314,6 @@ void main() {
   float cosT = dot(rd, uSunDir);
   vec3 tint = srgbToLinear(uCloudColor);
   vec3 ambTint = srgbToLinear(uCloudShadow);
-  // multiple-scattering octaves (Wrenninge): light survives deep inside,
-  // forward lobe gives silver linings, back lobe keeps sides lit. The phase
-  // of each octave only depends on the view / sun angle: evaluated once.
-  vec3 msPh = vec3(mix(phaseHG(cosT, 0.7), phaseHG(cosT, -0.25), 0.4),
-                   mix(phaseHG(cosT, 0.35), phaseHG(cosT, -0.125), 0.4) * 0.5,
-                   mix(phaseHG(cosT, 0.175), phaseHG(cosT, -0.0625), 0.4) * 0.25);
 
   float T = 1.0;
   vec3 L = vec3(0.0);
@@ -344,7 +335,15 @@ void main() {
       }
       odL *= sigma;
 
-      float ms = dot(msPh, exp(-odL * vec3(1.0, 0.55, 0.3025)));
+      // multiple-scattering octaves (Wrenninge): light survives deep inside,
+      // forward lobe gives silver linings, back lobe keeps sides lit
+      float ms = 0.0;
+      float a = 1.0, b = 1.0, c = 1.0;
+      for (int k = 0; k < 3; k++) {
+        float ph = mix(phaseHG(cosT, 0.7 * b), phaseHG(cosT, -0.25 * b), 0.4);
+        ms += a * exp(-odL * c) * ph;
+        a *= 0.5; b *= 0.5; c *= 0.55;
+      }
       // powder: dark crevices where light has not diffused in yet
       float powder = 1.0 - exp(-dens * sigma * thick * 0.15);
       vec3 sunC = sunIrradiance(p);
@@ -491,14 +490,6 @@ vec3 oceanNormal(vec3 P, vec3 N, float fp, float wind, out float rough, out floa
   for (int i = 0; i < 6; i++) {
     float f = 1.0 / wl;
     float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
-    if (fade <= 0.0) {
-      // sub-pixel octave (and all finer ones): only its slope variance
-      // survives, folded into the roughness
-      lost += amp * amp;
-      wl *= 0.53;
-      amp *= 0.9;
-      continue;
-    }
     float travel = sqrt(wl) * t * 0.9;
     vec3 q = (P - windDir * travel) * f + float(i) * vec3(7.13, 3.31, 5.97)
            + N * (t * 0.22 * sqrt(uWaveSize * f));
@@ -524,12 +515,9 @@ float foamPattern(vec3 P, float fp, float t) {
   float a = 1.0;
   for (int i = 0; i < 3; i++) {
     float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
-    float n = 0.0;
-    if (fade > 0.0) {
-      n = 1.0 - abs(gnoise(P * f + vec3(t * 0.05, t * 0.03, 0.0) + float(i) * 11.7) * 2.2);
-      n = clamp(n, 0.0, 1.0);
-      n *= n;
-    }
+    float n = 1.0 - abs(gnoise(P * f + vec3(t * 0.05, t * 0.03, 0.0) + float(i) * 11.7) * 2.2);
+    n = clamp(n, 0.0, 1.0);
+    n *= n;
     s += a * mix(0.42, n, fade);
     wsum += a;
     f *= 2.4;
@@ -608,10 +596,8 @@ vec3 shadeOcean(vec3 ro, vec3 rd, float tW, float tExit, float sceneT, bool noFl
     foam = max(shore, surf * 0.85) * smoothstep(0.2, 0.55, tex + shore * 0.3);
   }
   // whitecaps: small blotches streaked along the wind on the big crests
-  float capFade = 1.0 - smoothstep(0.18, 0.45, fp * 2.2 / max(uWaveSize, 0.01));
-  float capN = capFade > 0.0
-    ? gnoise(P * (2.2 / max(uWaveSize, 0.01)) + vec3(t * 0.1, 0.0, 0.0)) * 0.5 + 0.5 : 0.0;
-  capN = mix(0.35, capN, capFade);
+  float capN = gnoise(P * (2.2 / max(uWaveSize, 0.01)) + vec3(t * 0.1, 0.0, 0.0)) * 0.5 + 0.5;
+  capN = mix(0.35, capN, 1.0 - smoothstep(0.18, 0.45, fp * 2.2 / max(uWaveSize, 0.01)));
   float caps = smoothstep(0.25, 0.55, crest) * smoothstep(0.55, 0.95, wind) * uWhitecaps
              * smoothstep(0.62, 0.8, capN + crest * 0.2);
   foam = sat((foam + caps) * uFoamAmount);
@@ -814,35 +800,22 @@ export class PlanetPipeline {
     this.lutRT.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.lutRT.texture.wrapT = THREE.ClampToEdgeWrapping;
 
-    // r = cloud field, g = cloud type. Double buffered: while the weather
-    // evolves, the next state is baked one face per frame into the back
-    // buffer (no multi-millisecond hitch), then the two swap.
-    const weather = { ...halfLinear, format: THREE.RGFormat };
-    this.weatherRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather);
-    this.weatherBackRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather);
-    this._weatherFace = -1;   // next face of the back-buffer bake (-1 = idle)
-    this._weatherNext = 0;    // weather time being baked into the back buffer
+    this.weatherRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, halfLinear);
 
-    const volume = (format, size) => {
-      const rt = new THREE.WebGL3DRenderTarget(size, size, size, {
-        depthBuffer: false,
-      });
-      const t = rt.texture;
-      t.format = format;
-      t.type = THREE.UnsignedByteType;
-      t.minFilter = THREE.LinearFilter;
-      t.magFilter = THREE.LinearFilter;
-      t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
-      t.generateMipmaps = false;
-      return rt;
-    };
-    this.noiseRT = volume(THREE.RGFormat, NOISE_VOLUME_SIZE);
-    this.erosionRT = volume(THREE.RedFormat, EROSION_VOLUME_SIZE);
+    this.noiseRT = new THREE.WebGL3DRenderTarget(NOISE_VOLUME_SIZE, NOISE_VOLUME_SIZE, NOISE_VOLUME_SIZE, {
+      depthBuffer: false,
+    });
+    const nt = this.noiseRT.texture;
+    nt.format = THREE.RGBAFormat;
+    nt.type = THREE.UnsignedByteType;
+    nt.minFilter = THREE.LinearFilter;
+    nt.magFilter = THREE.LinearFilter;
+    nt.wrapS = nt.wrapT = nt.wrapR = THREE.RepeatWrapping;
+    nt.generateMipmaps = false;
 
     uniforms.uTransmittanceLUT.value = this.lutRT.texture;
     uniforms.uWeatherMap.value = this.weatherRT.texture;
-    uniforms.uCloudNoise.value = this.noiseRT.texture;
-    uniforms.uCloudErosion.value = this.erosionRT.texture;
+    uniforms.uCloudNoise.value = nt;
 
     // ---- passes
     this.quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -865,7 +838,7 @@ export class PlanetPipeline {
       uFaceSize: { value: WEATHER_SIZE },
       uWeatherTime: { value: 0 },
     });
-    this.noiseMat = screen(NOISE_VOLUME_FRAGMENT, { uLayer: { value: 0 }, uSize: { value: 1 } });
+    this.noiseMat = screen(NOISE_VOLUME_FRAGMENT, { uLayer: { value: 0 } });
 
     this.view = {
       uInvProj: { value: new THREE.Matrix4() },
@@ -1011,18 +984,13 @@ export class PlanetPipeline {
   }
 
   _bakeNoise() {
-    const nu = this.noiseMat.uniforms;
-    for (const rt of [this.noiseRT, this.erosionRT]) {
-      nu.uSize.value = rt.depth;
-      for (let z = 0; z < rt.depth; z++) {
-        nu.uLayer.value = z;
-        this._blit(this.noiseMat, rt, z);
-      }
+    for (let z = 0; z < NOISE_VOLUME_SIZE; z++) {
+      this.noiseMat.uniforms.uLayer.value = z;
+      this._blit(this.noiseMat, this.noiseRT, z);
     }
     this._noiseBaked = true;
   }
 
-  /** Bake the whole weather cubemap now (seed / scale changes). */
   _bakeWeather(time) {
     this.weatherMat.uniforms.uWeatherTime.value = time;
     for (let f = 0; f < 6; f++) {
@@ -1030,20 +998,6 @@ export class PlanetPipeline {
       this._blit(this.weatherMat, this.weatherRT, f);
     }
     this.weatherDirty = false;
-    this._weatherFace = -1;
-  }
-
-  /** One face of the evolving weather into the back buffer; swap when done. */
-  _stepWeather() {
-    const wu = this.weatherMat.uniforms;
-    wu.uWeatherTime.value = this._weatherNext;
-    wu.uFace.value = this._weatherFace;
-    this._blit(this.weatherMat, this.weatherBackRT, this._weatherFace);
-    if (++this._weatherFace === 6) {
-      [this.weatherRT, this.weatherBackRT] = [this.weatherBackRT, this.weatherRT];
-      this.uniforms.uWeatherMap.value = this.weatherRT.texture;
-      this._weatherFace = -1;
-    }
   }
 
   /**
@@ -1068,16 +1022,10 @@ export class PlanetPipeline {
     if (planet) {
       if (clouds || this.uniforms.uCloudShadowStr.value > 0) {
         if (!this._noiseBaked) this._bakeNoise();
-        // evolve the weather every couple of seconds; drift is a free rotation
-        if (this.weatherDirty) {
+        // evolve the weather a few times per second; drift is a free rotation
+        if (this.weatherDirty || Math.abs(opts.weatherTime - this._weatherClock) > 0.004) {
           this._weatherClock = opts.weatherTime;
           this._bakeWeather(opts.weatherTime);
-        } else if (this._weatherFace >= 0) {
-          this._stepWeather();
-        } else if (Math.abs(opts.weatherTime - this._weatherClock) > 0.004) {
-          this._weatherClock = this._weatherNext = opts.weatherTime;
-          this._weatherFace = 0;
-          this._stepWeather();
         }
       }
     }
@@ -1121,8 +1069,7 @@ export class PlanetPipeline {
   }
 
   dispose() {
-    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, this.weatherRT, this.weatherBackRT,
-      this.noiseRT, this.erosionRT]) rt.dispose();
+    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, this.weatherRT, this.noiseRT]) rt.dispose();
     this.sceneRT.depthTexture?.dispose();
     this._disposeBloom();
     for (const m of [this.lutMat, this.weatherMat, this.noiseMat, this.cloudMat, this.compositeMat,

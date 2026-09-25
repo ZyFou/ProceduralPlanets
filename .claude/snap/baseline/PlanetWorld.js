@@ -14,10 +14,6 @@ import { createTerrainMaterial } from './materials.js';
 //
 // Culling: horizon test — a chunk whose center direction lies beyond the
 // planet horizon from the camera (with a height margin) cannot be visible.
-// Chunks the tree keeps are then hidden (not destroyed) every frame when they
-// are outside the view frustum or entirely below the true horizon: the
-// vertex shader evaluates the full height field, so off-screen chunks are
-// not free.
 // ============================================================================
 
 const FACES = [
@@ -92,9 +88,6 @@ export class PlanetWorld {
     this._desired = new Map();   // key -> node desc (rebuilt every update)
     this._camPos = new THREE.Vector3();
     this._v = new THREE.Vector3();
-    this._frustum = new THREE.Frustum();
-    this._projView = new THREE.Matrix4();
-    this._sphere = new THREE.Sphere();
     this.chunkCount = 0;
     this.wireframe = false;
   }
@@ -119,8 +112,7 @@ export class PlanetWorld {
     this.geometry = buildChunkGeometry(this.opts.chunkRes);
   }
 
-  /** Rebuild the LOD tree for the camera; `camera` (optional) enables culling. */
-  update(cameraPos, camera = null) {
+  update(cameraPos) {
     this._camPos.copy(cameraPos);
     this._desired.clear();
 
@@ -151,53 +143,6 @@ export class PlanetWorld {
       if (!this.chunks.has(key)) this._createChunk(key, node);
     }
     this.chunkCount = this.chunks.size;
-
-    // draw front to back so early-z rejects hidden terrain before its (heavy)
-    // fragment shader runs. Every chunk owns a material, so three would
-    // otherwise sort by material id (creation order).
-    for (const mesh of this.chunks.values()) {
-      const c = mesh.userData.center;
-      const dx = this._camPos.x - c[0] * R, dy = this._camPos.y - c[1] * R, dz = this._camPos.z - c[2] * R;
-      mesh.renderOrder = dx * dx + dy * dy + dz * dz;
-    }
-    this._cull(camera, camDist, camDirN);
-  }
-
-  // Hide chunks that cannot put a pixel on screen. Both tests are
-  // conservative: a chunk spans directions within `alpha` of its center and
-  // radii from R - skirt to R + heightScale.
-  //   horizon: every point of it (radius <= R + H) is behind the sphere of
-  //            radius R (terrain never dips below it) as seen from the camera
-  //   frustum: its bounding sphere is outside a side plane (near / far move
-  //            with the camera every frame, so they are left out)
-  _cull(camera, camDist, camDirN) {
-    const R = this.radius;
-    const H = this.heightScale;
-    const thetaMax = camDist > R ? Math.acos(R / camDist) + Math.acos(R / (R + H)) : Math.PI;
-    let planes = null;
-    if (camera) {
-      camera.updateMatrixWorld();
-      this._projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      planes = this._frustum.setFromProjectionMatrix(this._projView).planes;
-    }
-    const s = this._sphere;
-    for (const mesh of this.chunks.values()) {
-      const { center: c, alpha } = mesh.userData;
-      const cosT = c[0] * camDirN.x + c[1] * camDirN.y + c[2] * camDirN.z;
-      let vis = Math.acos(Math.min(Math.max(cosT, -1), 1)) - alpha <= thetaMax + 1e-3;
-      if (vis && planes) {
-        const r0 = R - mesh.material.uniforms.uSkirtDepth.value;
-        const r1 = R + H;
-        const rm = 0.5 * (r0 + r1);
-        const ca = Math.cos(alpha);
-        const d0 = r0 * r0 + rm * rm - 2 * r0 * rm * ca;
-        const d1 = r1 * r1 + rm * rm - 2 * r1 * rm * ca;
-        s.center.set(c[0] * rm, c[1] * rm, c[2] * rm);
-        s.radius = Math.sqrt(Math.max(d0, d1)) * 1.01 + 1;
-        for (let i = 0; i < 4 && vis; i++) vis = planes[i].distanceToPoint(s.center) >= -s.radius;
-      }
-      mesh.visible = vis;
-    }
   }
 
   _centerDir(f, u, v) {
@@ -252,17 +197,7 @@ export class PlanetWorld {
     mat.uniforms.uSkirtDepth = { value: Math.max(this.heightScale * 0.6, node.size * this.radius * 0.05) };
     mat.wireframe = this.wireframe;
     const mesh = new THREE.Mesh(this.geometry, mat);
-    mesh.frustumCulled = false;  // culled in update() instead (shader-displaced)
-    const u0 = node.u0, v0 = node.v0, s = node.size;
-    const c = this._centerDir(node.f, u0 + s / 2, v0 + s / 2);
-    // angular radius: farthest corner / edge midpoint from the center
-    let cosA = 1;
-    for (const [du, dv] of [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]]) {
-      const d = this._centerDir(node.f, u0 + du * s, v0 + dv * s);
-      cosA = Math.min(cosA, d[0] * c[0] + d[1] * c[1] + d[2] * c[2]);
-    }
-    mesh.userData.center = c;
-    mesh.userData.alpha = Math.acos(Math.max(-1, Math.min(1, cosA)));
+    mesh.frustumCulled = false;  // horizon-culled in update() instead
     this.group.add(mesh);
     this.chunks.set(key, mesh);
   }

@@ -83,7 +83,7 @@ vec3 atmoTransmittance(float r, float mu) {
   float y = sat((r - uAtmoGround) / max(uAtmoTop - uAtmoGround, 1e-4));
   vec2 uv = vec2(mu * 0.5 + 0.5, y);
   uv = (uv * (LUT_SIZE - 1.0) + 0.5) / LUT_SIZE;
-  return textureLod(uTransmittanceLUT, uv, 0.0).rgb;
+  return texture2D(uTransmittanceLUT, uv).rgb;
 }
 
 // direct sun irradiance reaching world point p (planet shadow + reddening)
@@ -118,9 +118,8 @@ float phaseHG(float mu, float g) {
 // terrain program light on ANGLE/D3D.
 // ---------------------------------------------------------------------------
 export const CLOUD_FIELD_GLSL = /* glsl */ `
-uniform samplerCube uWeatherMap;   // r: cloud field, g: cloud type
-uniform highp sampler3D uCloudNoise;   // tileable Worley fbm (r) + Perlin-Worley (g)
-uniform highp sampler3D uCloudErosion; // the same Worley fbm alone (detail taps)
+uniform samplerCube uWeatherMap;   // r: cloud field, g: cloud type, b: cirrus
+uniform highp sampler3D uCloudNoise; // tileable Perlin-Worley (r) + Worley fbm (gba)
 uniform float uCloudShapeFreq;     // world-space noise frequencies
 uniform float uCloudDetailFreq;
 uniform vec3  uCloudWind;
@@ -138,7 +137,7 @@ vec3 cloudRotate(vec3 d) {
 }
 
 vec4 weatherAt(vec3 dir) {
-  return textureLod(uWeatherMap, cloudRotate(dir), 0.0);
+  return textureCube(uWeatherMap, cloudRotate(dir));
 }
 
 // 0..1 cloud cover from the weather field and the coverage slider
@@ -160,10 +159,11 @@ float cloudShadow(vec3 p) {
   float tt = t.x > 0.0 ? t.x : t.y;
   vec3 q = p + uSunDir * tt;
   vec3 dr = cloudRotate(normalize(q));
-  float cov = cloudCover(textureLod(uWeatherMap, dr, 0.0));
+  float cov = cloudCover(textureCube(uWeatherMap, dr));
   if (cov < 0.01) return 0.0;
-  vec2 n = textureLod(uCloudNoise, dr * rm * uCloudShapeFreq + uCloudWind * 0.35, 0.0).rg;
-  float base = sat((n.y - (n.x - 1.0)) / (2.0 - n.x));
+  vec4 n = texture(uCloudNoise, dr * rm * uCloudShapeFreq + uCloudWind * 0.35);
+  float low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
+  float base = sat((n.r - (low - 1.0)) / (2.0 - low));
   float dens = sat((base - (1.0 - cov)) / max(cov, 1e-3)) * cov;
   return (1.0 - exp(-dens * 9.0 * uCloudDensity)) * uCloudShadowStr;
 }
@@ -208,7 +208,6 @@ float soft01(float edge, float v, float w) {
 // World-space fractal detail. Octave periods run from ~14 world units down to
 // sub-unit; each fades out once it drops below ~2-4 pixels (fp = world units
 // per pixel). slope is the self-similar bump gradient (per-octave unit slope).
-// Octaves only get finer, so the first fully faded one ends the sum.
 float surfaceDetail(vec3 wp, float fp, out vec3 slope) {
   float v = 0.0;
   slope = vec3(0.0);
@@ -216,7 +215,6 @@ float surfaceDetail(vec3 wp, float fp, out vec3 slope) {
   float a = 0.5;
   for (int i = 0; i < 5; i++) {
     float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
-    if (fade <= 0.0) break;
     vec4 n = gnoised(wp * f + float(i) * 17.31);
     v += n.x * a * fade;
     slope += n.yzw * fade * 0.55;

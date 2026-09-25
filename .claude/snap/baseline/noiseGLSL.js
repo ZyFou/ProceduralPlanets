@@ -178,16 +178,6 @@ const mat3 OCT_ROT = mat3( 0.00,  0.80,  0.60,
                           -0.80,  0.36, -0.48,
                           -0.60, -0.48,  0.64);
 
-// (OCT_ROT^T)^(OCTAVES-1): the fractal sums accumulate their gradients in the
-// frame of the latest octave (one mat-vec per octave instead of carrying the
-// full Jacobian) and rotate back to the domain frame once at the end.
-// Constant-folded by the compiler.
-mat3 octaveFrameToDomain() {
-  mat3 m = mat3(1.0);
-  for (int i = 1; i < OCTAVES; i++) m = m * OCT_ROT;
-  return transpose(m);
-}
-
 // smoothstep + derivative: x = value, y = d/dt
 vec2 smoothstepD(float a, float b, float t) {
   float x = clamp((t - a) / (b - a), 0.0, 1.0);
@@ -202,40 +192,38 @@ const float RIDGE_GAIN = 3.3;
 // fbm of gradient noise with gradient; cLow = continental low-pass (2 octaves)
 vec4 continentFbm(vec3 p, out float cLow) {
   float sum = 0.0;
-  vec3 grad = vec3(0.0);   // in the frame of the current octave
+  vec3 grad = vec3(0.0);
   float amp = 0.5, norm = 0.0;
-  float lac = 1.0;         // d(q)/d(p) scale of the current octave
   vec3 q = p;
+  mat3 J = mat3(1.0);
   cLow = 0.0;
   for (int i = 0; i < OCTAVES; i++) {
     vec4 n = gnoised(q);
     sum += amp * n.x;
-    grad = OCT_ROT * grad + (amp * lac) * n.yzw;
+    grad += amp * (transpose(J) * n.yzw);
     norm += amp;
     if (i == 1) cLow = sum / norm;
     amp *= uPersistence;
-    lac *= uLacunarity;
     q = OCT_ROT * q * uLacunarity;
+    J = OCT_ROT * J * uLacunarity;
   }
-  return vec4(sum, octaveFrameToDomain() * grad) / max(norm, 1e-5);
+  return vec4(sum, grad) / max(norm, 1e-5);
 }
 
 // Musgrave ridged multifractal with gradient: sharp crests, and each octave is
 // weighted by the previous one so detail piles onto ridgelines while valley
 // floors stay smooth (reads like drainage-eroded ranges).
-// Gradients (grad, dw) are carried in the frame of the current octave, like
-// continentFbm's.
 vec4 ridgedMF(vec3 p) {
   float sum = 0.0;
   vec3 grad = vec3(0.0);
   float amp = 0.5, norm = 0.0;
   float w = 1.0;
   vec3 dw = vec3(0.0);
-  float lac = 1.0;
   vec3 q = p;
+  mat3 J = mat3(1.0);
   for (int i = 0; i < OCTAVES; i++) {
     vec4 n = gnoised(q);
-    vec3 gn = lac * n.yzw;
+    vec3 gn = transpose(J) * n.yzw;
     float sgn = n.x >= 0.0 ? 1.0 : -1.0;
     float r = 1.0 - abs(n.x);
     float s = r * r;
@@ -243,16 +231,16 @@ vec4 ridgedMF(vec3 p) {
     float sw = s * w;
     vec3 dsw = ds * w + s * dw;
     sum += amp * sw;
-    grad = OCT_ROT * grad + amp * dsw;
+    grad += amp * dsw;
     norm += amp;
     float wr = sw * 2.0;
     w = clamp(wr, 0.0, 1.0);
-    dw = (wr > 0.0 && wr < 1.0) ? OCT_ROT * (dsw * 2.0) : vec3(0.0);
+    dw = (wr > 0.0 && wr < 1.0) ? dsw * 2.0 : vec3(0.0);
     amp *= uPersistence;
-    lac *= uLacunarity;
     q = OCT_ROT * q * uLacunarity;
+    J = OCT_ROT * J * uLacunarity;
   }
-  return vec4(sum, octaveFrameToDomain() * grad) / max(norm, 1e-5);
+  return vec4(sum, grad) / max(norm, 1e-5);
 }
 
 // worley F1 with gradient (crater bowls)
@@ -294,22 +282,20 @@ vec4 warpAxis(vec3 p, vec3 o1, vec3 o2) {
   return vec4(a.x + 0.5 * b.x, a.yzw * 0.9 + b.yzw * 0.95);
 }
 
-// domain warp (2 octaves per axis) — organic coastlines. Returns the warped
-// noise-space point; JwT = (dpw/dp)^T keeps gradients exact through the warp.
-vec3 warpDomain(vec3 dir, out mat3 JwT) {
+// dir: unit sphere direction. Returns the height fraction in [0,1];
+// grad = d(height)/d(dir) in 3D (take the tangential part for normals).
+// cLow = low-pass continent value (continentality), mtn = mountain mask.
+float heightField(vec3 dir, out vec3 grad, out float cLow, out float mtn) {
   vec3 p = dir * uNoiseScale + uSeedOffset;
+
+  // domain warp (2 octaves per axis) — organic coastlines. Jacobian kept so
+  // gradients stay exact through the warp.
   vec4 wx = warpAxis(p, vec3(11.3, 0.0, 0.0), vec3(21.7, 3.1, 0.0));
   vec4 wy = warpAxis(p, vec3(0.0, 47.9, 0.0), vec3(0.0, 57.3, 7.7));
   vec4 wz = warpAxis(p, vec3(0.0, 0.0, 83.1), vec3(5.9, 0.0, 91.3));
-  JwT = mat3(1.0) + uWarp * mat3(wx.yzw, wy.yzw, wz.yzw);
-  return p + vec3(wx.x, wy.x, wz.x) * uWarp;
-}
+  vec3 pw = p + vec3(wx.x, wy.x, wz.x) * uWarp;
+  mat3 JwT = mat3(1.0) + uWarp * mat3(wx.yzw, wy.yzw, wz.yzw);   // (dpw/dp)^T
 
-// dir: unit sphere direction, pw / JwT: its warpDomain(). Returns the height
-// fraction in [0,1]; grad = d(height)/d(dir) in 3D (take the tangential part
-// for normals). cLow = low-pass continent value (continentality), mtn =
-// mountain mask.
-float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cLow, out float mtn) {
   // continents: fbm pushed through a shelf curve so oceans are broad basins
   // and land masses have coherent interiors
   vec4 C = continentFbm(pw, cLow);
@@ -327,33 +313,27 @@ float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cL
 
   // mountain ranges: ridged multifractal, strongest along winding belts
   // (zero-lines of a low-frequency field, like orogenic chains) and faded
-  // out below the shoreline so ranges don't spike the ocean floor. The land
-  // mask (and its slope) is exactly 0 over the deep ocean: skip the ranges.
+  // out below the shoreline so ranges don't spike the ocean floor
   vec2 land = smoothstepD(0.40, 0.50, c);
+  vec3 dLand = land.y * dc;
+  vec4 beltN = gnoised(pw * 0.55 + vec3(5.3, 1.7, 9.1));
+  float beltSgn = beltN.x >= 0.0 ? 1.0 : -1.0;
+  float belt = 1.0 - abs(beltN.x) * 4.5;
+  vec3 dBelt = -4.5 * beltSgn * beltN.yzw * 0.55;
+  vec2 bm = smoothstepD(0.15, 0.9, belt);
+  float beltW = mix(0.12, 1.0, bm.x);
+  vec3 dBeltW = 0.88 * bm.y * dBelt;
+
+  vec4 R = ridgedMF(pw * uMountainScale + 7.7);
+  // squared ramp: gentle foothills, sharp high peaks
+  float mt = max(R.x - RIDGE_BIAS, 0.0) * RIDGE_GAIN;
+  float m = mt * mt;
+  vec3 dm = R.x > RIDGE_BIAS ? 2.0 * mt * R.yzw * uMountainScale * RIDGE_GAIN : vec3(0.0);
+
   float amt = uRidge * 0.8;
-  float mountains = 0.0;
-  vec3 dMountains = vec3(0.0);
-  mtn = 0.0;
-  if (land.x > 0.0 && amt > 0.0) {
-    vec3 dLand = land.y * dc;
-    vec4 beltN = gnoised(pw * 0.55 + vec3(5.3, 1.7, 9.1));
-    float beltSgn = beltN.x >= 0.0 ? 1.0 : -1.0;
-    float belt = 1.0 - abs(beltN.x) * 4.5;
-    vec3 dBelt = -4.5 * beltSgn * beltN.yzw * 0.55;
-    vec2 bm = smoothstepD(0.15, 0.9, belt);
-    float beltW = mix(0.12, 1.0, bm.x);
-    vec3 dBeltW = 0.88 * bm.y * dBelt;
-
-    vec4 R = ridgedMF(pw * uMountainScale + 7.7);
-    // squared ramp: gentle foothills, sharp high peaks
-    float mt = max(R.x - RIDGE_BIAS, 0.0) * RIDGE_GAIN;
-    float m = mt * mt;
-    vec3 dm = R.x > RIDGE_BIAS ? 2.0 * mt * R.yzw * uMountainScale * RIDGE_GAIN : vec3(0.0);
-
-    mountains = m * land.x * beltW * amt;
-    dMountains = (dm * land.x * beltW + m * dLand * beltW + m * land.x * dBeltW) * amt;
-    mtn = clamp(mt * land.x * beltW, 0.0, 1.0);
-  }
+  float mountains = m * land.x * beltW * amt;
+  vec3 dMountains = (dm * land.x * beltW + m * dLand * beltW + m * land.x * dBeltW) * amt;
+  mtn = clamp(mt * land.x * beltW, 0.0, 1.0);
 
   float h = c + mountains;
   vec3 gp = dc + dMountains;
@@ -373,12 +353,6 @@ float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cL
 
   if (h <= 0.0 || h >= 1.0) grad = vec3(0.0);
   return clamp(h, 0.0, 1.0);
-}
-
-float heightField(vec3 dir, out vec3 grad, out float cLow, out float mtn) {
-  mat3 JwT;
-  vec3 pw = warpDomain(dir, JwT);
-  return heightFieldWarped(dir, pw, JwT, grad, cLow, mtn);
 }
 
 float height01(vec3 dir) {

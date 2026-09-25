@@ -24,18 +24,6 @@ import { TOON_GLSL, ATMOSPHERE_GLSL } from './surfaceGLSL.js';
 
 export const GAS_OCTAVES = 5;
 
-// Jet table: the zonal jet speed at each storm's latitude and at each row of
-// the vortex lattice only depends on the band layout, not on the pixel. The
-// live material reads them from a small float texture baked once per frame
-// (GasJetTable) instead of re-evaluating the band profile (7 noise calls) ten
-// times per pixel. Texels [0, 12) = storms, then one per vortex row.
-const GAS_STORM_COUNT = 12;
-const GAS_ROW_SPAN = 512;                 // rows -256..255 (slider max needs ±83)
-const GAS_JETS_W = GAS_STORM_COUNT + GAS_ROW_SPAN;
-const GAS_JET_DEFINES = {
-  GAS_STORM_COUNT, GAS_ROW0: GAS_STORM_COUNT + GAS_ROW_SPAN / 2, GAS_JETS_W,
-};
-
 const GAS_UNIFORMS_GLSL = /* glsl */ `
 uniform vec3  uGasZone;        // bright zones (sRGB albedo)
 uniform vec3  uGasBelt;        // dark belts
@@ -149,33 +137,6 @@ vec4 gasBands(float y) {
 }
 
 // ---- storms: elliptical vortices ------------------------------------------
-vec3 gasStormHash(int i) {
-  return hash33(vec3(float(i) * 7.13, 3.1, 1.7) + uSeedOffset * 0.01) * 0.5 + 0.5;
-}
-
-float gasStormLat(int i, vec3 h) {
-  if (i == 0) return -0.2 - h.x * 0.12;
-  float lat = (h.x * 2.0 - 1.0) * 0.72;
-  return lat + sign(lat) * 0.06;
-}
-
-// vortex lattice: columns around a latitude circle (rows are twice as dense)
-float gasVortexN() { return floor(10.0 + uGasBandCount * 1.6 * uGasScale / 3.0); }
-float gasRowLat(float row, float N) { return (row + 0.5) / (N * 2.2) * 6.2831853; }
-
-// zonal jet at storm i (latitude lat) and at vortex row "row" (latitude rowLat)
-#ifdef GAS_JET_TABLE
-uniform highp sampler2D uGasJets;
-float gasStormJet(int i, float lat) { return texelFetch(uGasJets, ivec2(i, 0), 0).r; }
-float gasRowJet(float row, float rowLat) {
-  int x = clamp(int(row) + GAS_ROW0, GAS_STORM_COUNT, GAS_JETS_W - 1);
-  return texelFetch(uGasJets, ivec2(x, 0), 0).r;
-}
-#else
-float gasStormJet(int i, float lat) { return gasBands(lat).y; }
-float gasRowJet(float row, float rowLat) { return gasBands(rowLat / 1.5707963).y; }
-#endif
-
 // Each vortex rotates the sampling direction inside its ellipse, so whatever
 // flows past (bands, eddies) is wound into it. mask = storm body, ring = its
 // bright collar, kind: 0 great spot, 1 white oval, 2 dark barge.
@@ -183,18 +144,21 @@ vec3 gasStorms(vec3 d, float T, out float mask, out float ring, out float kind) 
   mask = 0.0; ring = 0.0; kind = 1.0;
   for (int i = 0; i < 12; i++) {
     float fi = float(i);
-    vec3 h = gasStormHash(i);
+    vec3 h = hash33(vec3(fi * 7.13, 3.1, 1.7) + uSeedOffset * 0.01) * 0.5 + 0.5;
     float size;
+    float lat;
     if (i == 0) {
       if (uGasGreatSpot < 0.01) continue;
       size = 0.07 + 0.12 * uGasGreatSpot;
+      lat = -0.2 - h.x * 0.12;
     } else {
       if (fi > uGasStorms * 11.0) break;
       size = (0.018 + 0.032 * h.z) * uGasStormScale;
+      lat = (h.x * 2.0 - 1.0) * 0.72;
+      lat += sign(lat) * 0.06;
     }
-    float lat = gasStormLat(i, h);
     // drift with the local jet
-    float jet = gasStormJet(i, lat);
+    float jet = gasBands(lat).y;
     float lon = h.y * 6.2831853 - T * jet * 0.5;
     float cl = cos(lat * 1.5707963);
     vec3 c = vec3(cl * cos(lon), sin(lat * 1.5707963), cl * sin(lon));
@@ -229,15 +193,15 @@ vec3 gasStorms(vec3 d, float T, out float mask, out float ring, out float kind) 
 vec3 gasVortices(vec3 d, float T) {
   float lat = asin(clamp(d.y, -1.0, 1.0));
   float lon = atan(d.z, d.x);
-  float N = gasVortexN();
+  float N = floor(10.0 + uGasBandCount * 1.6 * uGasScale / 3.0);
   vec2 uv = vec2(lon / 6.2831853 * N, lat / 6.2831853 * N * 2.2);
   float fy = fract(uv.y);
   float iy = floor(uv.y);
   vec2 acc = vec2(0.0);
   for (int gy = -1; gy <= 1; gy++) {
     float row = iy + float(gy);
-    float rowLat = gasRowLat(row, N);
-    float drift = T * gasRowJet(row, rowLat) * 0.5 / 6.2831853 * N;
+    float rowLat = (row + 0.5) / (N * 2.2) * 6.2831853;
+    float drift = T * gasBands(rowLat / 1.5707963).y * 0.5 / 6.2831853 * N;
     float ux = uv.x + drift;
     float ix = floor(ux);
     float fx = fract(ux);
@@ -403,79 +367,11 @@ void main() {
 export function createGasSurfaceMaterial(shared) {
   return new THREE.ShaderMaterial({
     uniforms: { ...shared },
-    defines: { OCTAVES: GAS_OCTAVES, GAS_JET_TABLE: 1, ...GAS_JET_DEFINES },
+    defines: { OCTAVES: GAS_OCTAVES },
     vertexShader: GAS_VERTEX,
     fragmentShader: GAS_FRAGMENT,
     side: THREE.FrontSide,
   });
-}
-
-// ---------------------------------------------------------------------------
-// Jet table bake (see GAS_STORM_COUNT): one texel per storm / vortex row,
-// evaluated with the very same functions the direct path uses.
-// ---------------------------------------------------------------------------
-const GAS_JET_FRAGMENT = /* glsl */ `
-precision highp float;
-
-${NOISE_UNIFORMS_GLSL}
-${NOISE_FUNCTIONS_GLSL}
-${TOON_GLSL}
-${ATMOSPHERE_GLSL}
-${GAS_UNIFORMS_GLSL}
-${GAS_SURFACE_GLSL}
-
-void main() {
-  int x = int(gl_FragCoord.x);
-  float jet;
-  if (x < GAS_STORM_COUNT) {
-    jet = gasStormJet(x, gasStormLat(x, gasStormHash(x)));
-  } else {
-    float row = float(x - GAS_ROW0);
-    jet = gasRowJet(row, gasRowLat(row, gasVortexN()));
-  }
-  gl_FragColor = vec4(jet, 0.0, 0.0, 1.0);
-}
-`;
-
-export class GasJetTable {
-  constructor(shared) {
-    this.target = new THREE.WebGLRenderTarget(GAS_JETS_W, 1, {
-      type: THREE.FloatType,
-      format: THREE.RedFormat,
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
-      depthBuffer: false,
-      generateMipmaps: false,
-    });
-    this.material = new THREE.ShaderMaterial({
-      uniforms: { ...shared },
-      defines: { OCTAVES: GAS_OCTAVES, ...GAS_JET_DEFINES },
-      vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
-      fragmentShader: GAS_JET_FRAGMENT,
-      depthTest: false,
-      depthWrite: false,
-    });
-    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
-    this.quad.frustumCulled = false;
-    this.scene = new THREE.Scene();
-    this.scene.add(this.quad);
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    shared.uGasJets.value = this.target.texture;
-  }
-
-  /** Re-bake (cheap: a few hundred texels) — band layout sliders are live. */
-  update(renderer) {
-    const prev = renderer.getRenderTarget();
-    renderer.setRenderTarget(this.target);
-    renderer.render(this.scene, this.camera);
-    renderer.setRenderTarget(prev);
-  }
-
-  dispose() {
-    this.target.dispose();
-    this.material.dispose();
-    this.quad.geometry.dispose();
-  }
 }
 
 // ---------------------------------------------------------------------------

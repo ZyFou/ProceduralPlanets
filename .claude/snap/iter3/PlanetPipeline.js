@@ -19,8 +19,7 @@ import { STAR_CORONA_GLSL } from './star.js';
 //
 // Baked helpers (re-baked only when their inputs change):
 //   transmittance LUT (256x64)   sun colour through the air at any altitude
-//   weather cubemap (512/face)   cloud field — also drives terrain shadows;
-//                                re-baked one face per frame as it evolves
+//   weather cubemap (512/face)   cloud field — also drives terrain shadows
 //   noise volume (128^3)         tileable Perlin-Worley + Worley fbm detail
 //
 // Gas mode goes through the same path as the planet (no ocean / clouds): its
@@ -153,8 +152,10 @@ void main() {
 
   // cloud type: tall convective cells (tropics) vs flat stratiform decks
   float type = clamp(0.45 + gnoise(p * 1.6 + 31.0) * 1.3 + (1.0 - abs(d.y)) * 0.25 - 0.12, 0.0, 1.0);
+  // cirrus: thin high streaks, strongly stretched zonally
+  float ci = fbmN(d * uCloudScale * vec3(0.8, 5.0, 0.8) + pw * 0.25 + 71.0, 4);
 
-  gl_FragColor = vec4(clamp(v, 0.0, 1.0), type, 0.0, 1.0);
+  gl_FragColor = vec4(clamp(v, 0.0, 1.0), type, clamp(0.5 + ci * 2.0, 0.0, 1.0), 1.0);
 }
 `;
 
@@ -814,14 +815,7 @@ export class PlanetPipeline {
     this.lutRT.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.lutRT.texture.wrapT = THREE.ClampToEdgeWrapping;
 
-    // r = cloud field, g = cloud type. Double buffered: while the weather
-    // evolves, the next state is baked one face per frame into the back
-    // buffer (no multi-millisecond hitch), then the two swap.
-    const weather = { ...halfLinear, format: THREE.RGFormat };
-    this.weatherRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather);
-    this.weatherBackRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather);
-    this._weatherFace = -1;   // next face of the back-buffer bake (-1 = idle)
-    this._weatherNext = 0;    // weather time being baked into the back buffer
+    this.weatherRT = new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, halfLinear);
 
     const volume = (format, size) => {
       const rt = new THREE.WebGL3DRenderTarget(size, size, size, {
@@ -1022,7 +1016,6 @@ export class PlanetPipeline {
     this._noiseBaked = true;
   }
 
-  /** Bake the whole weather cubemap now (seed / scale changes). */
   _bakeWeather(time) {
     this.weatherMat.uniforms.uWeatherTime.value = time;
     for (let f = 0; f < 6; f++) {
@@ -1030,20 +1023,6 @@ export class PlanetPipeline {
       this._blit(this.weatherMat, this.weatherRT, f);
     }
     this.weatherDirty = false;
-    this._weatherFace = -1;
-  }
-
-  /** One face of the evolving weather into the back buffer; swap when done. */
-  _stepWeather() {
-    const wu = this.weatherMat.uniforms;
-    wu.uWeatherTime.value = this._weatherNext;
-    wu.uFace.value = this._weatherFace;
-    this._blit(this.weatherMat, this.weatherBackRT, this._weatherFace);
-    if (++this._weatherFace === 6) {
-      [this.weatherRT, this.weatherBackRT] = [this.weatherBackRT, this.weatherRT];
-      this.uniforms.uWeatherMap.value = this.weatherRT.texture;
-      this._weatherFace = -1;
-    }
   }
 
   /**
@@ -1068,16 +1047,10 @@ export class PlanetPipeline {
     if (planet) {
       if (clouds || this.uniforms.uCloudShadowStr.value > 0) {
         if (!this._noiseBaked) this._bakeNoise();
-        // evolve the weather every couple of seconds; drift is a free rotation
-        if (this.weatherDirty) {
+        // evolve the weather a few times per second; drift is a free rotation
+        if (this.weatherDirty || Math.abs(opts.weatherTime - this._weatherClock) > 0.004) {
           this._weatherClock = opts.weatherTime;
           this._bakeWeather(opts.weatherTime);
-        } else if (this._weatherFace >= 0) {
-          this._stepWeather();
-        } else if (Math.abs(opts.weatherTime - this._weatherClock) > 0.004) {
-          this._weatherClock = this._weatherNext = opts.weatherTime;
-          this._weatherFace = 0;
-          this._stepWeather();
         }
       }
     }
@@ -1121,8 +1094,7 @@ export class PlanetPipeline {
   }
 
   dispose() {
-    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, this.weatherRT, this.weatherBackRT,
-      this.noiseRT, this.erosionRT]) rt.dispose();
+    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, this.weatherRT, this.noiseRT, this.erosionRT]) rt.dispose();
     this.sceneRT.depthTexture?.dispose();
     this._disposeBloom();
     for (const m of [this.lutMat, this.weatherMat, this.noiseMat, this.cloudMat, this.compositeMat,

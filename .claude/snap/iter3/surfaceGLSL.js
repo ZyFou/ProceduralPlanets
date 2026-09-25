@@ -118,7 +118,7 @@ float phaseHG(float mu, float g) {
 // terrain program light on ANGLE/D3D.
 // ---------------------------------------------------------------------------
 export const CLOUD_FIELD_GLSL = /* glsl */ `
-uniform samplerCube uWeatherMap;   // r: cloud field, g: cloud type
+uniform samplerCube uWeatherMap;   // r: cloud field, g: cloud type, b: cirrus
 uniform highp sampler3D uCloudNoise;   // tileable Worley fbm (r) + Perlin-Worley (g)
 uniform highp sampler3D uCloudErosion; // the same Worley fbm alone (detail taps)
 uniform float uCloudShapeFreq;     // world-space noise frequencies

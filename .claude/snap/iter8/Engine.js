@@ -409,7 +409,7 @@ export class Engine {
     this.camera.updateProjectionMatrix();
     // LOD may be stale (e.g. right after a structural rebuild, or when the
     // loop is paused in a background tab)
-    if (this.world.group.visible) this.world.update(this.camera.position, this.camera);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this._renderFrame();
     const url = this.renderer.domElement.toDataURL('image/png');
     this.renderer.setPixelRatio(prevRatio);
@@ -437,7 +437,7 @@ export class Engine {
   /** One manual frame — used by automated verification when rAF is frozen. */
   renderOnce() {
     this.controls.update();
-    if (this.world.group.visible) this.world.update(this.camera.position, this.camera);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this._renderFrame();
   }
 
@@ -510,7 +510,7 @@ export class Engine {
     this.uniforms.uTime.value += dt;
 
     this.controls.update();
-    if (this.world.group.visible) this.world.update(this.camera.position, this.camera);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this._renderFrame();
 
     // stats at ~2 Hz

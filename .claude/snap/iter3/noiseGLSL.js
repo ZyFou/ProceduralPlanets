@@ -294,22 +294,20 @@ vec4 warpAxis(vec3 p, vec3 o1, vec3 o2) {
   return vec4(a.x + 0.5 * b.x, a.yzw * 0.9 + b.yzw * 0.95);
 }
 
-// domain warp (2 octaves per axis) — organic coastlines. Returns the warped
-// noise-space point; JwT = (dpw/dp)^T keeps gradients exact through the warp.
-vec3 warpDomain(vec3 dir, out mat3 JwT) {
+// dir: unit sphere direction. Returns the height fraction in [0,1];
+// grad = d(height)/d(dir) in 3D (take the tangential part for normals).
+// cLow = low-pass continent value (continentality), mtn = mountain mask.
+float heightField(vec3 dir, out vec3 grad, out float cLow, out float mtn) {
   vec3 p = dir * uNoiseScale + uSeedOffset;
+
+  // domain warp (2 octaves per axis) — organic coastlines. Jacobian kept so
+  // gradients stay exact through the warp.
   vec4 wx = warpAxis(p, vec3(11.3, 0.0, 0.0), vec3(21.7, 3.1, 0.0));
   vec4 wy = warpAxis(p, vec3(0.0, 47.9, 0.0), vec3(0.0, 57.3, 7.7));
   vec4 wz = warpAxis(p, vec3(0.0, 0.0, 83.1), vec3(5.9, 0.0, 91.3));
-  JwT = mat3(1.0) + uWarp * mat3(wx.yzw, wy.yzw, wz.yzw);
-  return p + vec3(wx.x, wy.x, wz.x) * uWarp;
-}
+  vec3 pw = p + vec3(wx.x, wy.x, wz.x) * uWarp;
+  mat3 JwT = mat3(1.0) + uWarp * mat3(wx.yzw, wy.yzw, wz.yzw);   // (dpw/dp)^T
 
-// dir: unit sphere direction, pw / JwT: its warpDomain(). Returns the height
-// fraction in [0,1]; grad = d(height)/d(dir) in 3D (take the tangential part
-// for normals). cLow = low-pass continent value (continentality), mtn =
-// mountain mask.
-float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cLow, out float mtn) {
   // continents: fbm pushed through a shelf curve so oceans are broad basins
   // and land masses have coherent interiors
   vec4 C = continentFbm(pw, cLow);
@@ -373,12 +371,6 @@ float heightFieldWarped(vec3 dir, vec3 pw, mat3 JwT, out vec3 grad, out float cL
 
   if (h <= 0.0 || h >= 1.0) grad = vec3(0.0);
   return clamp(h, 0.0, 1.0);
-}
-
-float heightField(vec3 dir, out vec3 grad, out float cLow, out float mtn) {
-  mat3 JwT;
-  vec3 pw = warpDomain(dir, JwT);
-  return heightFieldWarped(dir, pw, JwT, grad, cLow, mtn);
 }
 
 float height01(vec3 dir) {

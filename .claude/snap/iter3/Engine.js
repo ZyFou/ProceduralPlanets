@@ -10,7 +10,7 @@ import { PlanetPipeline } from './PlanetPipeline.js';
 import {
   DEFAULT_STAR_BODY, createStarSurfaceMaterial, validateStarShaderBody,
 } from './star.js';
-import { createGasSurfaceMaterial, createRingMaterial, createRingGeometry, GasJetTable } from './gas.js';
+import { createGasSurfaceMaterial, createRingMaterial, createRingGeometry } from './gas.js';
 import { PlanetWorld } from './PlanetWorld.js';
 import { PlanetExporter } from './PlanetExporter.js';
 
@@ -161,7 +161,6 @@ export class Engine {
   // the ring plane.
   _buildGas() {
     this.gasGroup = new THREE.Group();
-    this.gasJets = new GasJetTable(this.uniforms);
     this.gasMat = createGasSurfaceMaterial(this.uniforms);
     this.gasMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 192, 128), this.gasMat);
     this.gasMesh.frustumCulled = false;
@@ -409,7 +408,7 @@ export class Engine {
     this.camera.updateProjectionMatrix();
     // LOD may be stale (e.g. right after a structural rebuild, or when the
     // loop is paused in a background tab)
-    if (this.world.group.visible) this.world.update(this.camera.position, this.camera);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this._renderFrame();
     const url = this.renderer.domElement.toDataURL('image/png');
     this.renderer.setPixelRatio(prevRatio);
@@ -437,7 +436,7 @@ export class Engine {
   /** One manual frame — used by automated verification when rAF is frozen. */
   renderOnce() {
     this.controls.update();
-    if (this.world.group.visible) this.world.update(this.camera.position, this.camera);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this._renderFrame();
   }
 
@@ -481,7 +480,6 @@ export class Engine {
     this.uniforms.uCloudShapeFreq.value = shapeFreq;
     this.uniforms.uCloudDetailFreq.value = shapeFreq * 4.1;
     this.uniforms.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
-    if (p.mode === 'gas') this.gasJets.update(this.renderer);
     this.pipeline.render(this.scene, this.camera, {
       mode: p.mode,
       bloom: p.mode === 'star' ? p.starBloom : 0,
@@ -510,7 +508,7 @@ export class Engine {
     this.uniforms.uTime.value += dt;
 
     this.controls.update();
-    if (this.world.group.visible) this.world.update(this.camera.position, this.camera);
+    if (this.world.group.visible) this.world.update(this.camera.position);
     this._renderFrame();
 
     // stats at ~2 Hz
@@ -540,7 +538,6 @@ export class Engine {
     this.gasMesh.geometry.dispose();
     this.starMesh.geometry.dispose();
     for (const m of [this.gasMat, this.ringMat, this.starSurfaceMat]) m?.dispose();
-    this.gasJets.dispose();
     this.pipeline.dispose();
     this.renderer.dispose();
   }
