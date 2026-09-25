@@ -436,7 +436,7 @@ uniform float uCloudsOn;
 uniform float uExposure;
 uniform vec2 uCloudTexel;
 uniform vec2 uCloudUV;          // cloud pass extent in the (shared) cloud target
-uniform float uLinearOut;       // embed: 1 = premultiplied linear HDR, no tone map
+uniform float uLinearOut;       // embed: 0 tone map + sRGB, 1 linear HDR, 2 tone map (sRGB target encodes)
 
 uniform float uSeaRadius;
 uniform vec3  uWaterAbsorb;
@@ -701,11 +701,13 @@ ${EMBED_GLSL}
 void embedOut(vec3 col, float alpha, float surfT, vec3 ro, vec3 rd) {
   gl_FragDepth = embedDepth(ro, rd, surfT);
   if (alpha < 0.002 && max(col.r, max(col.g, col.b)) < 1e-4) discard;
-  if (uHDROut > 0.5 || uLinearOut > 0.5) {
+  if (uHDROut > 0.5 || (uLinearOut > 0.5 && uLinearOut < 1.5)) {
     gl_FragColor = vec4(uHDROut > 0.5 ? col : col * uExposure * 0.85, alpha);
     return;
   }
   vec3 c = aces(col * uExposure * 0.85);
+  // an sRGB render target encodes on write (and blends in linear)
+  if (uLinearOut > 1.5) { gl_FragColor = vec4(c, alpha); return; }
   gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0 * alpha, alpha);
 }
 #endif
@@ -875,7 +877,7 @@ void main() {
   gl_FragDepth = embedDepth(uCamPos, rd, depth >= 1.0 ? 1e20 : length(wp - uCamPos));
   float alpha = hdr.a;
   if (alpha < 0.002 && max(c.r, max(c.g, c.b)) < 1e-4) discard;
-  if (uLinearOut > 0.5) { gl_FragColor = vec4(c * uExposure * 0.85, alpha); return; }
+  if (uLinearOut > 0.5 && uLinearOut < 1.5) { gl_FragColor = vec4(c * uExposure * 0.85, alpha); return; }
 #else
   float alpha = 1.0;
 #endif
@@ -887,6 +889,9 @@ void main() {
   c *= aces(vec3(L)).x / L;
   float m = max(max(c.r, c.g), c.b);
   if (m > 1.0) c = mix(c / m, vec3(1.0), sat01((m - 1.0) * 0.6));
+#ifdef PLANET_EMBED
+  if (uLinearOut > 1.5) { gl_FragColor = vec4(c, alpha); return; }
+#endif
   gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0 * alpha, alpha);
 }
 `;
@@ -1318,7 +1323,8 @@ export class PlanetPipeline {
    * (setSize) and hold the host frame when embedding.
    * opts: { mode: 'planet'|'gas'|'star', water, clouds, cloudSteps,
    *         weatherTime, bloom, camDist, embed, depthTest, depthWrite,
-   *         linear, rect: Vector4 (pixels) | null, setHostScissor(rect|null) }
+   *         output: 0 tone map + sRGB | 1 linear HDR | 2 tone map (sRGB
+   *         target), rect: Vector4 (pixels) | null, setHostScissor(rect|null) }
    */
   render(passes, scene, camera, opts, target = null) {
     const r = this.renderer;
@@ -1394,7 +1400,7 @@ export class PlanetPipeline {
     cu.uWaterOn.value = planet && opts.water ? 1 : 0;
     cu.uCloudsOn.value = clouds ? 1 : 0;
     cu.uHDROut.value = bloom ? 1 : 0;
-    cu.uLinearOut.value = opts.linear ? 1 : 0;
+    cu.uLinearOut.value = opts.output ?? 0;
     if (bloom) {
       // the HDR target is overwritten, not blended onto
       passes.compositeMat.depthTest = false;
@@ -1402,7 +1408,7 @@ export class PlanetPipeline {
       this._blit(passes.compositeMat, this.hdrRT);
       setEmbedBlending(this.finalMat, embed, opts.depthTest);
       this.finalMat.uniforms.uExposure.value = u.uExposure.value;
-      this.finalMat.uniforms.uLinearOut.value = opts.linear ? 1 : 0;
+      this.finalMat.uniforms.uLinearOut.value = opts.output ?? 0;
       opts.setHostScissor?.(null);
       this._renderBloom(target, opts.bloom);
     } else {

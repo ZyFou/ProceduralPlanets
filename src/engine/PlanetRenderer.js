@@ -22,7 +22,10 @@ import { PlanetPipeline, setEmbedBlending } from './PlanetPipeline.js';
 
 const DEFAULTS = {
   background: 'transparent',   // 'transparent' (composite over the host frame) | 'stars'
-  output: 'display',           // 'display' (ACES + sRGB) | 'linear' (premultiplied linear HDR)
+  // 'display' (ACES + sRGB) | 'linear' (premultiplied linear HDR) | 'auto':
+  // display for the canvas and sRGB render targets, linear for linear ones
+  // (HalfFloat / EffectComposer targets, NoColorSpace)
+  output: 'auto',
   depthTest: true,             // occlude planets behind host geometry
   depthWrite: true,            // write planet surfaces into the host depth buffer
   scissor: true,               // only shade each planet's screen rectangle
@@ -224,10 +227,22 @@ export class PlanetRenderer {
       embed,
       depthTest: opt.depthTest,
       depthWrite: embed && opt.depthWrite,
-      linear: embed && opt.output === 'linear',
+      output: embed ? this._outputMode(target) : 0,
       rect,
       setHostScissor: (rc) => this._setHostScissor(target, rc),
     }, target);
+  }
+
+  // 0: tone map + sRGB encode (canvas, 8-bit linear targets with 'display')
+  // 1: premultiplied linear HDR ('linear', or 'auto' into a linear target)
+  // 2: tone map, no encode: sRGB render targets encode on write
+  _outputMode(target) {
+    const o = this.options.output;
+    if (o === 'linear') return 1;
+    const srgbTarget = !!target && target.texture?.colorSpace === THREE.SRGBColorSpace;
+    if (srgbTarget) return 2;
+    if (o === 'auto' && target) return 1;
+    return 0;
   }
 
   // conservative pixel rectangle of a view-space sphere; null = whole frame,

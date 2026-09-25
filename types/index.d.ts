@@ -111,8 +111,12 @@ export class Planet extends Object3D {
 export interface PlanetRendererOptions {
   /** 'transparent' (default): composite over your frame. 'stars': the farthest planet owns the frame, opaque, with a starfield. */
   background?: 'transparent' | 'stars';
-  /** 'display' (default): ACES tone mapped sRGB. 'linear': premultiplied linear HDR for HDR / composer pipelines. */
-  output?: 'display' | 'linear';
+  /**
+   * 'auto' (default): 'display' for the canvas and sRGB render targets, 'linear' for linear targets.
+   * 'display': ACES tone mapped (sRGB encoded, or linear into an sRGB target that encodes on write).
+   * 'linear': premultiplied linear HDR for HDR / composer pipelines.
+   */
+  output?: 'auto' | 'display' | 'linear';
   /** Depth-test planets against your depth buffer (default true). */
   depthTest?: boolean;
   /** Write planet surfaces into your depth buffer (default true). */

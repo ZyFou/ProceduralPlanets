@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Embed checks — procedural-planets</title>
+<style>html, body { margin: 0; height: 100%; background: #000; } canvas { display: block; width: 100%; height: 100%; }</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+// Visual regression scenes for the embedding path (npm run dev, then open
+// /test/visual/embed-checks.html?case=<name>). Each case exposes
+// window.__example.frame(dt) for automated screenshots.
+//   origin     planet + occluding box at the origin
+//   far        the same scene translated 1e6 units away (must look identical)
+//   logdepth   'origin' with a logarithmic depth buffer
+//   lod        THREE.LOD: live planet near, baked mesh far (?dist=)
+//   inside     camera inside the atmosphere, near-field box
+//   target     'origin' rendered into a WebGLRenderTarget, then shown
+import * as THREE from 'three';
+import { Planet, PlanetRenderer, bakePlanet } from 'procedural-planets';
+
+const q = new URLSearchParams(location.search);
+const name = q.get('case') ?? 'origin';
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, logarithmicDepthBuffer: name === 'logdepth' });
+renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a1020);
+const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 1, 1e7);
+scene.add(new THREE.DirectionalLight(0xffffff, 2.5), new THREE.AmbientLight(0xffffff, 0.3));
+
+const offset = new THREE.Vector3(name === 'far' ? 1e6 : 0, name === 'far' ? -2e5 : 0, 0);
+const lightDir = new THREE.Vector3(1, 0.3, 0.6);
+const planets = new PlanetRenderer(renderer, { autoUpdate: false });
+let planet, lod, rt;
+
+const box = new THREE.Mesh(new THREE.BoxGeometry(500, 500, 500), new THREE.MeshStandardMaterial({ color: 0xff6633 }));
+if (name === 'lod') {
+  lod = new THREE.LOD();
+  planet = new Planet({ preset: 'terran', seed: 8, lightSource: lightDir });
+  lod.addLevel(planet, 0);
+  lod.addLevel(await bakePlanet(renderer, { preset: 'terran', seed: 8, textureSize: 256, meshResolution: 32 }), 30000);
+  scene.add(lod);
+  camera.position.set(0, 0, Number(q.get('dist') ?? 6000));
+  camera.lookAt(0, 0, 0);
+} else {
+  planet = new Planet({ preset: 'terran', seed: 8, lightSource: lightDir });
+  planet.position.copy(offset);
+  scene.add(planet);
+  if (name === 'inside') {
+    const R = planet.get('radius');
+    const up = new THREE.Vector3(0, 1, 0);
+    camera.position.copy(up).multiplyScalar(R + 120).add(offset);
+    camera.lookAt(offset.clone().add(new THREE.Vector3(1500, R - 150, 0)));
+    box.scale.setScalar(0.05);
+    box.position.copy(camera.position).add(new THREE.Vector3(60, -8, 0));
+  } else {
+    camera.position.set(0, 800, 6000).add(offset);
+    camera.lookAt(offset);
+    box.position.set(-600, 200, 3000).add(offset);
+  }
+  scene.add(box);
+}
+if (name === 'target') {
+  // an sRGB (display-referred) target: 'auto' output writes display colours
+  rt = new THREE.WebGLRenderTarget(canvas.width, canvas.height);
+  rt.texture.colorSpace = THREE.SRGBColorSpace;
+}
+planet.time = 3;
+planet.cloudTime = 5;
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: rt?.texture ?? null, toneMapped: false }));
+const quadScene = new THREE.Scene();
+quadScene.add(quad);
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+function frame(dt) {
+  if (rt) {
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, camera);
+    planets.render(scene, camera, { delta: dt });
+    renderer.setRenderTarget(null);
+    renderer.render(quadScene, quadCam);
+  } else {
+    renderer.render(scene, camera);
+    planets.render(scene, camera, { delta: dt });
+  }
+}
+window.__example = { THREE, renderer, scene, camera, planets, planet, lod, frame };
+</script>
+</body>
+</html>

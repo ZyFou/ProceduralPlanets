@@ -1,0 +1,27 @@
+<!DOCTYPE html><html><body style="margin:0">
+<!-- Studio regression frames: window.shoot(templateId) renders the studio Engine
+     at a fixed camera / time and returns a PNG data URL (compare before / after
+     engine changes). -->
+<canvas id="c" style="width:960px;height:540px;display:block"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { Engine } from '/src/engine/Engine.js';
+import { createTemplateParams } from '/src/project/ProjectTemplates.js';
+window.shoot = async (template) => {
+  const canvas = document.getElementById('c');
+  const engine = new Engine({ canvas });
+  engine.renderer.setAnimationLoop(null);
+  const p = createTemplateParams(template, 1337);
+  for (const [k, v] of Object.entries(p)) engine.setParam(k, v);
+  const R = engine.params.radius;
+  engine.camera.position.set(R * 2.4, R * 1.4, R * 2.4);
+  engine.camera.lookAt(0, 0, 0);
+  engine.uniforms.uTime.value = 20;
+  engine.planet.cloudTime = 12;
+  for (let i = 0; i < 12; i++) engine.renderOnce();
+  const url = engine.screenshotDataURL(960, 540);
+  engine.dispose();
+  return url;
+};
+window.ready = true;
+</script></body></html>

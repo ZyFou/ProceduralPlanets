@@ -731,8 +731,9 @@ export class Planet extends THREE.Object3D {
   }
 
   /**
-   * Build a Planet from studio data: an exported planet_preset.json, a saved
-   * studio project ({ params }), or a bare parameter object. Older studio
+   * Build a Planet from studio data: an exported planet_preset.json /
+   * star_preset.json (its custom starShader included), a saved studio
+   * project ({ params }), or a bare parameter object. Older studio
    * parameter sets are migrated. `options` are extra constructor options
    * (lightSource, overrides, ...).
    */
@@ -743,7 +744,8 @@ export class Planet extends THREE.Object3D {
     const migrated = migrateParams({ ...raw }, 'terran', {});
     const known = {};
     for (const [k, v] of Object.entries(migrated)) if (k in DEFAULT_PARAMS) known[k] = v;
-    return new Planet({ ...options, params: { ...known, mode, ...(options.params ?? {}) } });
+    const starShader = options.starShader ?? (typeof data.starShader === 'string' ? data.starShader : undefined);
+    return new Planet({ ...options, starShader, params: { ...known, mode, ...(options.params ?? {}) } });
   }
 
   copy(source, recursive) {

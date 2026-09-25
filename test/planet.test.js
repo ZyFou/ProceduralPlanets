@@ -260,3 +260,13 @@ describe('studio code snippet', async () => {
     planet.dispose(); rebuilt.dispose();
   });
 });
+
+describe('fromJSON star shader', () => {
+  it('restores the custom star shader of a star_preset.json', () => {
+    const body = 'vec3 starSurface(vec3 dir, vec3 viewDir, float t) { return vec3(1.0); }';
+    const star = Planet.fromJSON({ app: 'procedural-planets', version: 1, mode: 'star', params: { mode: 'star' }, starShader: body });
+    expect(star.planetType).toBe('star');
+    expect(star.starShaderBody).toBe(body);
+    star.dispose();
+  });
+});
