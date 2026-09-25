@@ -105,6 +105,10 @@ export class PlanetRenderer {
       warnOnce('PlanetRenderer.render needs a THREE.PerspectiveCamera');
       return;
     }
+    if (r.xr?.isPresenting) {
+      warnOnce('PlanetRenderer does not support WebXR sessions yet; planets are skipped');
+      return;
+    }
     const opt = this.options;
     const list = this._collect(planets);
 
@@ -148,6 +152,10 @@ export class PlanetRenderer {
     const prevFace = r.getActiveCubeFace();
     const prevMip = r.getActiveMipmapLevel();
     const prevAutoClear = r.autoClear;
+    // count the planet passes into the host's frame stats instead of
+    // resetting them on every internal draw
+    const prevAutoReset = r.info.autoReset;
+    r.info.autoReset = false;
     r.getClearColor(_clear);
     const prevClearAlpha = r.getClearAlpha();
     const prevScissorTest = out ? out.scissorTest : r.getScissorTest();
@@ -162,6 +170,7 @@ export class PlanetRenderer {
       else { r.setScissor(_scissor); r.setScissorTest(prevScissorTest); }
       r.setClearColor(_clear, prevClearAlpha);
       r.autoClear = prevAutoClear;
+      r.info.autoReset = prevAutoReset;
       r.setRenderTarget(prevTarget, prevFace, prevMip);
     }
   }

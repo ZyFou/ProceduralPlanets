@@ -28,7 +28,8 @@ export class PlanetPass extends Pass {
 
   render(renderer, writeBuffer, readBuffer, deltaTime /* , maskActive */) {
     if (!this.planetRenderer) this.planetRenderer = new PlanetRenderer(renderer, this._rendererOptions);
-    if (this.renderToScreen) {
+    if (this.renderToScreen && !this._warned) {
+      this._warned = true;
       console.warn('[procedural-planets] PlanetPass cannot be the last pass: add an OutputPass after it');
     }
     this.planetRenderer.render(this.scene, this.camera, { target: readBuffer, delta: deltaTime });
