@@ -117,3 +117,29 @@ template preset).
       belts, chromatic limb darkening; chromosphere, prominences and a
       streamer corona in the composite; dual-filter HDR bloom and a
       hue-preserving tone map.
+
+## Checkpoint 7 — Reusable package (`procedural-planets`)  ✅
+Turned the engine into a library other three.js projects import.
+- [x] Engine split: `Planet` (Object3D: params, uniforms, meshes in a private
+      origin-centred scene), `PlanetPipeline` (shared GPU targets) +
+      `PlanetPasses` (per planet: LUT, weather, pass materials),
+      `PlanetRenderer` (host-facing), `PlanetViewer` (standalone viewport).
+      The studio `Engine` wraps the viewer — studio frames pixel-identical
+      (test/visual/studio-shots.html).
+- [x] Embedding: proxy camera in planet-local space (any transform, uniform
+      scale, far from origin), refitted near/far, frustum culling, scissor to
+      the planet's screen rect, premultiplied composite over the host frame,
+      host depth test + solid-surface depth write (log depth supported),
+      output auto/display/linear (sRGB targets encode on write), bloom path
+      for stars, PlanetPass for EffectComposer.
+- [x] Baked tier: `bakePlanet()` (PlanetBaker, shared with the exporter):
+      standard-material meshes, ocean shell, rim atmosphere / corona, rings.
+      `procedural-planets/export`: ZIP / GLB without the studio.
+- [x] Package: Vite lib build (dist/lib, three + fflate external), exports
+      map, hand-written .d.ts + generated PlanetParams, vitest suite.
+- [x] Docs: README, docs/ (getting started, embedding, API, baking, studio
+      interop), generated parameter + preset references
+      (scripts/gen-param-docs.mjs), examples/ (viewer, solar system,
+      composer, baked). Studio: "Use in code" snippet in the Export panel.
+- Verified: packed tarball installed into a fresh Vite + TS consumer
+  (tsc strict clean, bundle runs, single three instance).

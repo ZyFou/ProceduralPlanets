@@ -38,7 +38,7 @@ void main() {
 }
 `;
 
-const TONEMAP_GLSL = /* glsl */ `
+export const TONEMAP_GLSL = /* glsl */ `
 vec3 aces(vec3 x) {
   const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
@@ -49,7 +49,61 @@ vec3 linearToSrgb(vec3 c) {
 }
 `;
 
+// ---------------------------------------------------------------------------
+// Embedding (PLANET_EMBED): the planet is composited over a host three.js
+// frame instead of owning it. The passes run in planet-local space (the
+// renderer builds a proxy camera relative to the planet object), so every
+// ray / sphere test stays origin-centred; only the depth written into the
+// host's depth buffer uses the host camera's projection.
+// ---------------------------------------------------------------------------
+export const EMBED_GLSL = /* glsl */ `
+uniform mat4  uViewMat;       // planet-local -> host view space
+uniform mat4  uHostProj;      // host camera projection
+uniform float uLogDepthFC;    // > 0: host uses a logarithmic depth buffer
+uniform float uBoundRadius;   // everything the planet draws lies inside this sphere
+uniform vec3  uRingAxis;      // gas giant ring plane normal (planet-local)
+uniform vec2  uRingRange;     // ring inner / outer radius (0 = no rings)
+
+float hostDepth(vec3 p) {
+  vec4 clip = uHostProj * (uViewMat * vec4(p, 1.0));
+  float d = uLogDepthFC > 0.0
+    ? log2(1.0 + max(clip.w, 0.0)) * uLogDepthFC * 0.5
+    : clip.z / clip.w * 0.5 + 0.5;
+  return clamp(d, 0.0, 1.0);
+}
+
+// depth of what this pixel shows: the solid surface when it hits one; for
+// translucent pixels (air, rings, corona) the entry into the planet's
+// bounding volume, so host objects in front of it keep covering it. From
+// inside the bounding sphere the sky only fills the host's background.
+float embedDepth(vec3 ro, vec3 rd, float surfT) {
+  if (surfT < 1e19) return hostDepth(ro + rd * surfT);
+  if (uRingRange.y > 0.0) {
+    float dn = dot(rd, uRingAxis);
+    if (abs(dn) > 1e-6) {
+      float tp = -dot(ro, uRingAxis) / dn;
+      float rr = length(ro + rd * tp);
+      if (tp > 0.0 && rr >= uRingRange.x && rr <= uRingRange.y) return hostDepth(ro + rd * tp);
+    }
+  }
+  if (dot(ro, ro) <= uBoundRadius * uBoundRadius) return 1.0;
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - uBoundRadius * uBoundRadius;
+  float h = b * b - c;
+  if (h < 0.0 || -b + sqrt(h) < 0.0) return 1.0;
+  return hostDepth(ro + rd * max(-b - sqrt(h), 0.0));
+}
+`;
+
 const NOISE_VOLUME_SIZE = 64;
+const WEATHER_TARGET = {
+  type: THREE.UnsignedByteType,
+  format: THREE.RGFormat,
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  depthBuffer: false,
+  generateMipmaps: false,
+};
 const EROSION_VOLUME_SIZE = 64;
 const WEATHER_SIZE = 512;
 const WEATHER_STEP = 0.004;   // weather time between crossfaded keyframes
@@ -119,7 +173,7 @@ vec3 faceDir(float face, vec2 st) {
 
 float fbmN(vec3 p, int oct) {
   float s = 0.0, a = 0.5, n = 0.0;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < DYN(6); i++) {
     if (i >= oct) break;
     s += a * gnoise(p);
     n += a;
@@ -240,7 +294,9 @@ uniform sampler2D tDepth;
 uniform mat4 uInvProj;
 uniform mat4 uCamWorld;
 uniform vec3 uCamPos;
-uniform vec2 uCloudRes;
+uniform vec2 uViewScale;        // rendered view / allocated scene target
+uniform vec2 uCloudRes;         // cloud pass grid over the whole view
+uniform vec2 uCloudOffset;      // this pass covers the cloud shell's screen rect only: its origin
 uniform float uCloudSteps;
 uniform float uCloudDetail;
 uniform vec3 uCloudColor;
@@ -286,8 +342,9 @@ float cloudDensity(vec3 p, bool detail, out float hf) {
 }
 
 void main() {
-  vec2 uv = gl_FragCoord.xy / uCloudRes;
-  float depth = textureLod(tDepth, uv, 0.0).x;
+  vec2 px = gl_FragCoord.xy + uCloudOffset;   // pixel on the view's cloud grid
+  vec2 uv = px / uCloudRes;
+  float depth = textureLod(tDepth, uv * uViewScale, 0.0).x;
   vec4 vp = uInvProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
   vp /= vp.w;
   vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
@@ -309,9 +366,12 @@ void main() {
 
   float thick = uCloudTop - uCloudBottom;
   float len = t1 - t0;
-  float steps = clamp(len / (thick * 0.035), 24.0, uCloudSteps);
+  // step length from the field's finest structure: the erosion detail spans
+  // ~0.4 x the shell thickness, a few jittered samples across it resolve it
+  // (bench: 3x fewer steps than thick * 0.035 at SSIM > 0.998 vs 64 steps)
+  float steps = clamp(len / (thick * 0.1), 12.0, uCloudSteps);
   float ds = len / steps;
-  float t = t0 + ds * ign(gl_FragCoord.xy);
+  float t = t0 + ds * ign(px);
 
   // extinction per world unit: a full-thickness dense column is ~OD 14
   float sigma = 14.0 / thick * uCloudDensity;
@@ -382,6 +442,7 @@ uniform sampler2D tClouds;
 uniform mat4 uInvProj;
 uniform mat4 uCamWorld;
 uniform vec3 uCamPos;
+uniform vec2 uViewScale;        // rendered view / allocated scene target
 uniform float uPixelAngle;
 uniform float uMode;            // 0 planet, 1 gas, 2 star
 uniform float uHDROut;          // 1 = write linear HDR (bloom follows)
@@ -389,6 +450,10 @@ uniform float uWaterOn;
 uniform float uCloudsOn;
 uniform float uExposure;
 uniform vec2 uCloudTexel;
+uniform vec2 uCloudUV;          // view -> cloud target UV scale
+uniform vec2 uCloudOffset;      // the cloud rect's origin in the cloud target (UV)
+uniform vec2 uCloudMax;         // last texel centre of the rect (UV)
+uniform float uLinearOut;       // embed: 0 tone map + sRGB, 1 linear HDR, 2 tone map (sRGB target encodes)
 
 uniform float uSeaRadius;
 uniform vec3  uWaterAbsorb;
@@ -410,7 +475,7 @@ float ign(vec2 p) {
 // ---- stars: point sources with sub-pixel gaussian footprints ---------------
 vec3 starField(vec3 rd) {
   vec3 col = vec3(0.0);
-  for (int l = 0; l < 3; l++) {
+  for (int l = 0; l < DYN(3); l++) {
     float N = 70.0 * pow(1.9, float(l));
     vec3 q = rd * N + float(l) * 31.7;
     vec3 cell = floor(q);
@@ -460,7 +525,7 @@ vec3 atmosphere(vec3 ro, vec3 rd, float tMax, out vec3 transmittance) {
   // optical depths and sums in units of ds (scaled once at the end)
   vec3 od = vec3(0.0);
   vec3 sumR = vec3(0.0), sumM = vec3(0.0);
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < DYN(N); i++) {
     float t = t0 + (float(i) + jit) * ds;
     vec3 p = ro + rd * t;
     float r = length(p);
@@ -495,7 +560,7 @@ vec3 oceanNormal(vec3 P, vec3 N, float fp, float wind, out float rough, out floa
   crest = 0.0;
   float wl = max(uWaveSize, 0.01);
   float amp = 1.0;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < DYN(6); i++) {
     float f = 1.0 / wl;
     float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
     if (fade <= 0.0) {
@@ -529,7 +594,7 @@ float foamPattern(vec3 P, float fp, float t) {
   float s = 0.0, wsum = 0.0;
   float f = 1.0 / max(uWaveSize * 0.28, 0.005);
   float a = 1.0;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < DYN(3); i++) {
     float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
     float n = 0.0;
     if (fade > 0.0) {
@@ -646,10 +711,28 @@ vec3 shadeOcean(vec3 ro, vec3 rd, float tW, float tExit, float sceneT, bool noFl
 
 ${TONEMAP_GLSL}
 
+#ifdef PLANET_EMBED
+${EMBED_GLSL}
+
+// premultiplied output over the host frame: alpha = 1 - background transmittance
+void embedOut(vec3 col, float alpha, float surfT, vec3 ro, vec3 rd) {
+  gl_FragDepth = embedDepth(ro, rd, surfT);
+  if (alpha < 0.002 && max(col.r, max(col.g, col.b)) < 1e-4) discard;
+  if (uHDROut > 0.5 || (uLinearOut > 0.5 && uLinearOut < 1.5)) {
+    gl_FragColor = vec4(uHDROut > 0.5 ? col : col * uExposure * 0.85, alpha);
+    return;
+  }
+  vec3 c = aces(col * uExposure * 0.85);
+  // an sRGB render target encodes on write (and blends in linear)
+  if (uLinearOut > 1.5) { gl_FragColor = vec4(c, alpha); return; }
+  gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0 * alpha, alpha);
+}
+#endif
+
 void main() {
-  vec4 sceneS = texture2D(tScene, vUv);
+  vec4 sceneS = texture2D(tScene, vUv * uViewScale);
   vec3 scene = sceneS.rgb;
-  float depth = texture2D(tDepth, vUv).x;
+  float depth = texture2D(tDepth, vUv * uViewScale).x;
   bool bg = depth >= 1.0;
   vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, bg ? 1.0 : depth * 2.0 - 1.0, 1.0);
   vp /= vp.w;
@@ -658,23 +741,33 @@ void main() {
   vec3 rd = normalize(wp - ro);
   float sceneT = bg ? 1e20 : length(wp - ro);
 
-  if (uMode > 1.5) {
+#ifdef STAR_MODE
+  {
     // star: emissive disc; around it the chromosphere, prominences, corona
     vec3 c = scene;
     if (bg) {
       float tc = max(-dot(ro, rd), 0.0);
       vec3 pc = ro + rd * tc;
       float b = length(pc) / uRadius;
+#ifdef PLANET_EMBED
+      c += starHalo(pc, b);
+#else
       c += starHalo(pc, b) + starField(rd) * 0.6;
+#endif
     }
+#ifdef PLANET_EMBED
+    embedOut(c, bg ? 0.0 : 1.0, sceneT, ro, rd);
+    return;
+#endif
     if (uHDROut > 0.5) { gl_FragColor = vec4(c, 1.0); return; }
     c = aces(c * uExposure * 0.85);
     gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0, 1.0);
     return;
   }
-
+#else
   vec3 col = scene;
   float surfT = sceneT;
+  float bgT = 1.0;   // how much of the background shows through (embed alpha)
 
   if (uWaterOn > 0.5) {
     vec2 to = raySphere(ro, rd, uSeaRadius);
@@ -688,26 +781,40 @@ void main() {
   }
 
   // background shows through whatever the scene left uncovered (ring gaps)
+#ifdef PLANET_EMBED
+  if (surfT > 1e19) bgT = sceneS.a;
+  else bgT = 0.0;
+#else
   if (surfT > 1e19) col = scene + (starField(rd) + sunDisc(rd)) * sceneS.a;
+#endif
 
   if (uCloudsOn > 0.5) {
     // tent-filtered upsample of the reduced-res cloud pass: hides the
     // per-pixel raymarch jitter
+    // outside the rect the edge texels (no cloud: T = 1) are clamped in
     vec2 o = uCloudTexel * 0.75;
-    vec4 cl = texture2D(tClouds, vUv) * 0.36
-            + (texture2D(tClouds, vUv + vec2(o.x, o.y)) + texture2D(tClouds, vUv + vec2(-o.x, o.y))
-             + texture2D(tClouds, vUv + vec2(o.x, -o.y)) + texture2D(tClouds, vUv + vec2(-o.x, -o.y))) * 0.16;
+    vec2 cuv = vUv * uCloudUV - uCloudOffset;
+    vec2 cmin = uCloudTexel * 0.5;
+    vec4 cl = texture2D(tClouds, clamp(cuv, cmin, uCloudMax)) * 0.36
+            + (texture2D(tClouds, clamp(cuv + vec2(o.x, o.y), cmin, uCloudMax)) + texture2D(tClouds, clamp(cuv + vec2(-o.x, o.y), cmin, uCloudMax))
+             + texture2D(tClouds, clamp(cuv + vec2(o.x, -o.y), cmin, uCloudMax)) + texture2D(tClouds, clamp(cuv + vec2(-o.x, -o.y), cmin, uCloudMax))) * 0.16;
     col = col * cl.a + cl.rgb;
+    bgT *= cl.a;
   }
 
   vec3 T;
   vec3 ins = atmosphere(ro, rd, surfT, T);
   col = col * T + ins;
 
+#ifdef PLANET_EMBED
+  embedOut(col, 1.0 - bgT * dot(T, vec3(1.0 / 3.0)), surfT, ro, rd);
+  return;
+#endif
   if (uHDROut > 0.5) { gl_FragColor = vec4(col, 1.0); return; }
   col = aces(col * uExposure * 0.85);
   col = linearToSrgb(col) + (ign(gl_FragCoord.xy) - 0.5) / 255.0;
   gl_FragColor = vec4(col, 1.0);
+#endif
 }
 `;
 
@@ -720,17 +827,19 @@ const BLOOM_DOWN_FRAGMENT = /* glsl */ `
 precision highp float;
 uniform sampler2D tSrc;
 uniform vec2 uTexel;       // source texel
+uniform vec2 uSrcScale;    // the source view inside its (larger) target
 uniform float uFirst;      // clamp fireflies on the first (full-res) level
 varying vec2 vUv;
 vec3 tap(vec2 uv) {
-  vec3 c = texture2D(tSrc, uv).rgb;
+  vec3 c = texture2D(tSrc, min(uv, uSrcScale - 0.5 * uTexel)).rgb;
   if (uFirst > 0.5) c = min(c, vec3(60.0));
   return c;
 }
 void main() {
   vec2 o = uTexel;
-  vec3 c = tap(vUv) * 4.0 + tap(vUv + vec2(-o.x, -o.y)) + tap(vUv + vec2(o.x, -o.y))
-         + tap(vUv + vec2(-o.x, o.y)) + tap(vUv + vec2(o.x, o.y));
+  vec2 uv = vUv * uSrcScale;
+  vec3 c = tap(uv) * 4.0 + tap(uv + vec2(-o.x, -o.y)) + tap(uv + vec2(o.x, -o.y))
+         + tap(uv + vec2(-o.x, o.y)) + tap(uv + vec2(o.x, o.y));
   gl_FragColor = vec4(c / 8.0, 1.0);
 }
 `;
@@ -755,6 +864,7 @@ void main() {
 const FINAL_FRAGMENT = /* glsl */ `
 precision highp float;
 uniform sampler2D tHDR;
+uniform vec2 uHdrScale;       // the HDR view inside the (shared, larger) cloud target
 uniform sampler2D tBloom;
 uniform float uBloom;
 uniform float uBloomNorm;
@@ -765,11 +875,36 @@ float ign(vec2 p) {
 }
 ${TONEMAP_GLSL}
 float sat01(float x) { return clamp(x, 0.0, 1.0); }
+
+#ifdef PLANET_EMBED
+uniform sampler2D tDepth;
+uniform mat4 uInvProj;
+uniform mat4 uCamWorld;
+uniform vec3 uCamPos;
+uniform vec2 uViewScale;
+uniform float uLinearOut;
+${EMBED_GLSL}
+#endif
+
 void main() {
-  vec3 c = texture2D(tHDR, vUv).rgb;
+  vec4 hdr = texture2D(tHDR, vUv * uHdrScale);
+  vec3 c = hdr.rgb;
   vec3 b = texture2D(tBloom, vUv).rgb * uBloomNorm;
   // wide soft glare + a tighter core halo around overexposed pixels
   c += b * 0.1 * uBloom;
+#ifdef PLANET_EMBED
+  float depth = texture2D(tDepth, vUv * uViewScale).x;
+  vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, depth >= 1.0 ? 1.0 : depth * 2.0 - 1.0, 1.0);
+  vp /= vp.w;
+  vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
+  vec3 rd = normalize(wp - uCamPos);
+  gl_FragDepth = embedDepth(uCamPos, rd, depth >= 1.0 ? 1e20 : length(wp - uCamPos));
+  float alpha = hdr.a;
+  if (alpha < 0.002 && max(c.r, max(c.g, c.b)) < 1e-4) discard;
+  if (uLinearOut > 0.5 && uLinearOut < 1.5) { gl_FragColor = vec4(c * uExposure * 0.85, alpha); return; }
+#else
+  float alpha = 1.0;
+#endif
   // hue-preserving tone map: per-channel ACES would clip the red of a cool
   // star first and turn it yellow. Map luminance, keep the chromaticity, and
   // only let what still overflows bleach toward white.
@@ -778,45 +913,113 @@ void main() {
   c *= aces(vec3(L)).x / L;
   float m = max(max(c.r, c.g), c.b);
   if (m > 1.0) c = mix(c / m, vec3(1.0), sat01((m - 1.0) * 0.6));
-  gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0, 1.0);
+#ifdef PLANET_EMBED
+  if (uLinearOut > 1.5) { gl_FragColor = vec4(c, alpha); return; }
+#endif
+  gl_FragColor = vec4(linearToSrgb(c) + (ign(gl_FragCoord.xy) - 0.5) / 255.0 * alpha, alpha);
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Embed depth pass: writes the planet's SOLID surface (terrain / ocean / gas
+// or star disc) into the host depth buffer, colour writes off. Runs after the
+// colour composite so translucent air never occludes later host geometry.
+// ---------------------------------------------------------------------------
+const DEPTH_FRAGMENT = /* glsl */ `
+precision highp float;
+uniform sampler2D tDepth;
+uniform mat4 uInvProj;
+uniform mat4 uCamWorld;
+uniform vec3 uCamPos;
+uniform vec2 uViewScale;
+uniform float uSeaRadius;
+uniform float uWaterOn;
+${EMBED_GLSL}
+varying vec2 vUv;
+void main() {
+  float depth = texture2D(tDepth, vUv * uViewScale).x;
+  bool bg = depth >= 1.0;
+  vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, bg ? 1.0 : depth * 2.0 - 1.0, 1.0);
+  vp /= vp.w;
+  vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
+  vec3 ro = uCamPos;
+  vec3 rd = normalize(wp - ro);
+  float t = bg ? 1e20 : length(wp - ro);
+  if (uWaterOn > 0.5) {
+    float b = dot(ro, rd);
+    float h = b * b - (dot(ro, ro) - uSeaRadius * uSeaRadius);
+    if (h >= 0.0) {
+      float tw = -b - sqrt(h);
+      if (-b + sqrt(h) > 0.0) t = min(t, max(tw, 0.0));
+    }
+  }
+  if (t > 1e19) discard;
+  gl_FragDepth = hostDepth(ro + rd * t);
+  gl_FragColor = vec4(0.0);
 }
 `;
 
 const BLOOM_LEVELS = 7;
 
-// ============================================================================
+const _rc = new THREE.Vector3();
+const _rv = new THREE.Vector3();
+const _shellRect = new THREE.Vector4();
 
-export class PlanetPipeline {
-  constructor(renderer, uniforms) {
-    this.renderer = renderer;
+const HALF_LINEAR = {
+  type: THREE.HalfFloatType,
+  format: THREE.RGBAFormat,
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  depthBuffer: false,
+  generateMipmaps: false,
+};
+
+// toneMapped: false — the passes tone map themselves; it also keeps the host
+// renderer's toneMapping out of the program key (one variant, not one per
+// host setting)
+function screenMaterial(fragmentShader, uniforms) {
+  return new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: FULLSCREEN_VERTEX,
+    fragmentShader,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
+}
+
+// premultiplied "over" onto the host frame (colour and alpha)
+export function setEmbedBlending(material, embed, depthTest) {
+  if (!!material.defines.PLANET_EMBED !== embed) {
+    if (embed) material.defines.PLANET_EMBED = 1;
+    else delete material.defines.PLANET_EMBED;
+    material.needsUpdate = true;
+  }
+  material.transparent = embed;
+  material.blending = embed ? THREE.CustomBlending : THREE.NormalBlending;
+  material.blendEquation = material.blendEquationAlpha = THREE.AddEquation;
+  material.blendSrc = material.blendSrcAlpha = THREE.OneFactor;
+  material.blendDst = material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+  material.depthTest = embed && depthTest;
+  material.depthWrite = false;
+}
+
+// ============================================================================
+// PlanetPasses — the per-planet half of the pipeline: the planet's own
+// transmittance LUT and weather keyframes, and the screen-pass materials bound
+// to its uniforms. Programs are shared between planets through three's
+// program cache (same sources + defines).
+// ============================================================================
+export class PlanetPasses {
+  constructor(pipeline, uniforms) {
+    this.pipeline = pipeline;
     this.uniforms = uniforms;
     this.cloudBudget = 0.5;   // user resolution scale = pixel budget
     this.cloudScale = 0.5;    // effective scale this frame
-    this.width = 1;
-    this.height = 1;
     this.lutDirty = true;
     this.weatherDirty = true;
-    this._noiseBaked = false;
 
-    const halfLinear = {
-      type: THREE.HalfFloatType,
-      format: THREE.RGBAFormat,
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      depthBuffer: false,
-      generateMipmaps: false,
-    };
-
-    // scene: HDR colour + float depth (read back by the screen passes)
-    this.sceneRT = new THREE.WebGLRenderTarget(1, 1, {
-      ...halfLinear,
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
-      depthBuffer: true,
-      depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType),
-    });
-    this.cloudRT = new THREE.WebGLRenderTarget(1, 1, halfLinear);
-    this.lutRT = new THREE.WebGLRenderTarget(256, 64, halfLinear);
+    this.lutRT = new THREE.WebGLRenderTarget(256, 64, HALF_LINEAR);
     this.lutRT.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.lutRT.texture.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -824,156 +1027,96 @@ export class PlanetPipeline {
     // WEATHER_STEP apart: the shaders crossfade keyframe A -> B while the one
     // after B is baked one face per frame into the third cube (no
     // multi-millisecond hitch). When the clock passes B they rotate.
-    const weather = { ...halfLinear, format: THREE.RGFormat };
-    this.weatherRTs = [0, 1, 2].map(() => new THREE.WebGLCubeRenderTarget(WEATHER_SIZE, weather));
-    this._wA = 0; this._wB = 0; this._wC = 1;   // indices: shown, next, baking
-    this._tA = 0; this._tB = 0; this._tC = 0;   // their weather times
-    this._weatherFace = -1;   // next face of the background bake (-1 = ready)
-
-    const volume = (format, size) => {
-      const rt = new THREE.WebGL3DRenderTarget(size, size, size, {
-        depthBuffer: false,
-      });
-      const t = rt.texture;
-      t.format = format;
-      t.type = THREE.UnsignedByteType;
-      t.minFilter = THREE.LinearFilter;
-      t.magFilter = THREE.LinearFilter;
-      t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
-      t.generateMipmaps = false;
-      return rt;
-    };
-    this.noiseRT = volume(THREE.RGFormat, NOISE_VOLUME_SIZE);
-    this.erosionRT = volume(THREE.RedFormat, EROSION_VOLUME_SIZE);
+    // 8-bit (both fields are 0..1: identical frames to 16-bit float, half the
+    // memory) and sized to the planet on screen (fitWeatherSize).
+    this.weatherSize = WEATHER_SIZE;
+    this.weatherRTs = [];
+    this._allocWeather(WEATHER_SIZE);
 
     uniforms.uTransmittanceLUT.value = this.lutRT.texture;
-    uniforms.uWeatherMap.value = this.weatherRTs[0].texture;
-    uniforms.uWeatherMapNext.value = this.weatherRTs[0].texture;
-    uniforms.uCloudNoise.value = this.noiseRT.texture;
-    uniforms.uCloudErosion.value = this.erosionRT.texture;
+    uniforms.uCloudNoise.value = pipeline.noiseRT.texture;
+    uniforms.uCloudErosion.value = pipeline.erosionRT.texture;
 
-    // ---- passes
-    this.quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
-    this.quad.frustumCulled = false;
-    this.quadScene = new THREE.Scene();
-    this.quadScene.add(this.quad);
-
-    const screen = (fragmentShader, extra = {}) => new THREE.ShaderMaterial({
-      uniforms: { ...uniforms, ...extra },
-      vertexShader: FULLSCREEN_VERTEX,
-      fragmentShader,
-      depthTest: false,
-      depthWrite: false,
-    });
-
-    this.lutMat = screen(LUT_FRAGMENT);
-    this.weatherMat = screen(WEATHER_FRAGMENT, {
+    this.lutMat = screenMaterial(LUT_FRAGMENT, { ...uniforms });
+    this.lutMat.name = 'pp.lut';
+    this.weatherMat = screenMaterial(WEATHER_FRAGMENT, {
+      ...uniforms,
       uFace: { value: 0 },
-      uFaceSize: { value: WEATHER_SIZE },
+      uFaceSize: { value: this.weatherSize },
       uWeatherTime: { value: 0 },
     });
-    this.noiseMat = screen(NOISE_VOLUME_FRAGMENT, { uLayer: { value: 0 }, uSize: { value: 1 } });
-
-    this.view = {
-      uInvProj: { value: new THREE.Matrix4() },
-      uCamWorld: { value: new THREE.Matrix4() },
-      uCamPos: { value: new THREE.Vector3() },
-      tDepth: { value: this.sceneRT.depthTexture },
-    };
-    this.cloudMat = screen(CLOUD_FRAGMENT, {
-      ...this.view,
+    this.weatherMat.name = 'pp.weather';
+    this.cloudMat = screenMaterial(CLOUD_FRAGMENT, {
+      ...uniforms,
+      ...pipeline.view,
       uCloudRes: { value: new THREE.Vector2(1, 1) },
+      uCloudOffset: { value: new THREE.Vector2(0, 0) },
       uCloudSteps: { value: 64 },
     });
-    this.compositeMat = screen(COMPOSITE_FRAGMENT, {
-      ...this.view,
-      tScene: { value: this.sceneRT.texture },
-      tClouds: { value: this.cloudRT.texture },
+    this.cloudMat.name = 'pp.clouds';
+    // two composite programs over one uniform set: planets / gas giants
+    // (ocean, clouds, atmosphere) and stars (chromosphere, corona) — each
+    // compiles faster than one shader holding both, and a planet never
+    // waits for the star code
+    const compositeUniforms = {
+      ...uniforms,
+      ...pipeline.view,
+      ...pipeline.embed,
+      tScene: { value: pipeline.sceneRT.texture },
+      tClouds: { value: pipeline.cloudRT.texture },
       uPixelAngle: { value: 0.001 },
       uMode: { value: 0 },
       uHDROut: { value: 0 },
       uWaterOn: { value: 1 },
       uCloudsOn: { value: 1 },
       uCloudTexel: { value: new THREE.Vector2(1, 1) },
-    });
-
-    // bloom (allocated on first use)
-    this._halfLinear = halfLinear;
-    this.hdrRT = null;
-    this.bloomRTs = [];
-    const post = (fragmentShader, uniformsIn) => new THREE.ShaderMaterial({
-      uniforms: uniformsIn,
-      vertexShader: FULLSCREEN_VERTEX,
-      fragmentShader,
-      depthTest: false,
-      depthWrite: false,
-    });
-    this.bloomDownMat = post(BLOOM_DOWN_FRAGMENT, {
-      tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uFirst: { value: 0 },
-    });
-    this.bloomUpMat = post(BLOOM_UP_FRAGMENT, {
-      tSrc: { value: null }, uTexel: { value: new THREE.Vector2() },
-    });
-    this.bloomUpMat.blending = THREE.AdditiveBlending;
-    this.bloomUpMat.transparent = true;
-    this.finalMat = post(FINAL_FRAGMENT, {
-      tHDR: { value: null },
-      tBloom: { value: null },
-      uBloom: { value: 1 },
-      uBloomNorm: { value: 1 / BLOOM_LEVELS },
-      uExposure: uniforms.uExposure,
-    });
+      uCloudUV: { value: new THREE.Vector2(1, 1) },
+      uCloudOffset: { value: new THREE.Vector2(0, 0) },
+      uCloudMax: { value: new THREE.Vector2(1, 1) },
+      uLinearOut: { value: 0 },
+    };
+    this.compositeMats = {
+      planet: screenMaterial(COMPOSITE_FRAGMENT, compositeUniforms),
+      star: screenMaterial(COMPOSITE_FRAGMENT, compositeUniforms),
+    };
+    this.compositeMats.star.defines = { STAR_MODE: 1 };
+    this.compositeMats.planet.name = 'pp.composite';
+    this.compositeMats.star.name = 'pp.composite.star';
+    this.compositeUniforms = compositeUniforms;
   }
 
-  _ensureBloomTargets() {
-    const w = this.width, h = this.height;
-    if (this.hdrRT && this.hdrRT.width === w && this.hdrRT.height === h) return;
-    this._disposeBloom();
-    this.hdrRT = new THREE.WebGLRenderTarget(w, h, this._halfLinear);
-    let bw = w, bh = h;
-    for (let i = 0; i < BLOOM_LEVELS; i++) {
-      bw = Math.max(1, bw >> 1);
-      bh = Math.max(1, bh >> 1);
-      const rt = new THREE.WebGLRenderTarget(bw, bh, this._halfLinear);
-      rt.texture.wrapS = rt.texture.wrapT = THREE.ClampToEdgeWrapping;
-      this.bloomRTs.push(rt);
-    }
+  /** The composite material for a body type. */
+  compositeFor(mode) {
+    return mode === 'star' ? this.compositeMats.star : this.compositeMats.planet;
   }
 
-  _disposeBloom() {
-    this.hdrRT?.dispose();
-    this.hdrRT = null;
-    for (const rt of this.bloomRTs) rt.dispose();
-    this.bloomRTs = [];
+  _allocWeather(size) {
+    for (const rt of this.weatherRTs) rt.dispose();
+    this.weatherSize = size;
+    this.weatherRTs = [0, 1, 2].map(() => new THREE.WebGLCubeRenderTarget(size, WEATHER_TARGET));
+    this._wA = 0; this._wB = 0; this._wC = 1;   // indices: shown, next, baking
+    this._tA = 0; this._tB = 0; this._tC = 0;   // their weather times
+    this._weatherFace = -1;   // next face of the background bake (-1 = ready)
+    this._initFace = 0;       // next face of the initial keyframe A bake
+    this.weatherDirty = true;
+    this.uniforms.uWeatherMap.value = this.weatherRTs[0].texture;
+    this.uniforms.uWeatherMapNext.value = this.weatherRTs[0].texture;
+    if (this.weatherMat) this.weatherMat.uniforms.uFaceSize.value = size;
   }
 
-  _renderBloom(target, strength) {
-    const r = this.renderer;
-    const levels = this.bloomRTs;
-    const dm = this.bloomDownMat.uniforms;
-    let src = this.hdrRT;
-    for (let i = 0; i < levels.length; i++) {
-      dm.tSrc.value = src.texture;
-      dm.uTexel.value.set(1 / src.width, 1 / src.height);
-      dm.uFirst.value = i === 0 ? 1 : 0;
-      this._blit(this.bloomDownMat, levels[i]);
-      src = levels[i];
-    }
-    // accumulate upward: level i += upsample(level i+1)
-    const um = this.bloomUpMat.uniforms;
-    r.autoClear = false;
-    for (let i = levels.length - 2; i >= 0; i--) {
-      um.tSrc.value = levels[i + 1].texture;
-      um.uTexel.value.set(1 / levels[i + 1].width, 1 / levels[i + 1].height);
-      this._blit(this.bloomUpMat, levels[i]);
-    }
-    r.autoClear = true;
-    const fu = this.finalMat.uniforms;
-    fu.tHDR.value = this.hdrRT.texture;
-    fu.tBloom.value = levels[0].texture;
-    fu.uBloom.value = strength;
-    this._blit(this.finalMat, target);
+  /**
+   * Weather resolution for a planet `px` pixels in radius on screen
+   * (texture streaming): 128 / 256 / 512 per face, with hysteresis. Far
+   * planets keep 16x less memory; at these sizes the switch is invisible
+   * (the field's finest features span 5+ texels at 128, 10+ at 256).
+   */
+  fitWeatherSize(px) {
+    const s = this.weatherSize;
+    let want = s;
+    if (px > 180) want = WEATHER_SIZE;
+    else if (px > 48) want = s === WEATHER_SIZE && px > 135 ? WEATHER_SIZE : 256;
+    else want = s !== 128 && px > 36 ? 256 : 128;
+    if (want !== s) this._allocWeather(want);
   }
 
   setCloudResolution(scale) {
@@ -982,53 +1125,20 @@ export class PlanetPipeline {
 
   // Cloud cost scales with the pixels that actually see the cloud shell, so a
   // planet that fills little of the screen can afford full-resolution clouds
-  // (crisp edges); close up, the scale drops back to the budget. Quantised so
-  // the target is only reallocated when the step changes, with hysteresis so
-  // a camera hovering on a step boundary doesn't toggle it every frame.
-  _fitCloudScale(camera, shellRadius) {
-    const d = camera.position.length();
+  // (crisp edges); close up, the scale drops back to the budget. Quantised,
+  // with hysteresis so a camera hovering on a step boundary doesn't toggle it
+  // every frame.
+  fitCloudScale(camDist, fovDeg, aspect, shellRadius) {
     let frac = 1;
-    if (d > shellRadius) {
-      const a = Math.asin(Math.min(shellRadius / d, 1));
-      const r = Math.tan(a) / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-      frac = Math.min(1, (Math.PI * r * r) / (4 * camera.aspect));
+    if (camDist > shellRadius) {
+      const a = Math.asin(Math.min(shellRadius / camDist, 1));
+      const r = Math.tan(a) / Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2);
+      frac = Math.min(1, (Math.PI * r * r) / (4 * aspect));
     }
     const s = Math.min(1, this.cloudBudget / Math.sqrt(Math.max(frac, 1e-3)));
     const q = Math.max(0.25, Math.round(s * 8) / 8);
-    if (q !== this.cloudScale && Math.abs(s - this.cloudScale) > 0.09) {
-      this.cloudScale = q;
-      this.setSize(this.width, this.height);
-    }
-  }
-
-  /** Drawing-buffer size in pixels. */
-  setSize(w, h) {
-    this.width = Math.max(1, Math.floor(w));
-    this.height = Math.max(1, Math.floor(h));
-    this.sceneRT.setSize(this.width, this.height);
-    const cw = Math.max(1, Math.round(this.width * this.cloudScale));
-    const ch = Math.max(1, Math.round(this.height * this.cloudScale));
-    this.cloudRT.setSize(cw, ch);
-    this.cloudMat.uniforms.uCloudRes.value.set(cw, ch);
-    this.compositeMat.uniforms.uCloudTexel.value.set(1 / cw, 1 / ch);
-  }
-
-  _blit(material, target, face = 0) {
-    this.quad.material = material;
-    this.renderer.setRenderTarget(target, face);
-    this.renderer.render(this.quadScene, this.quadCamera);
-  }
-
-  _bakeNoise() {
-    const nu = this.noiseMat.uniforms;
-    for (const rt of [this.noiseRT, this.erosionRT]) {
-      nu.uSize.value = rt.depth;
-      for (let z = 0; z < rt.depth; z++) {
-        nu.uLayer.value = z;
-        this._blit(this.noiseMat, rt, z);
-      }
-    }
-    this._noiseBaked = true;
+    if (q !== this.cloudScale && Math.abs(s - this.cloudScale) > 0.09) this.cloudScale = q;
+    return this.cloudScale;
   }
 
   /** One face of weather keyframe `idx` at weather time `time`. */
@@ -1036,7 +1146,7 @@ export class PlanetPipeline {
     const wu = this.weatherMat.uniforms;
     wu.uWeatherTime.value = time;
     wu.uFace.value = face;
-    this._blit(this.weatherMat, this.weatherRTs[idx], face);
+    this.pipeline._blit(this.weatherMat, this.weatherRTs[idx], face);
   }
 
   /** Start baking the keyframe after B into the free cube. */
@@ -1047,19 +1157,37 @@ export class PlanetPipeline {
   }
 
   /**
+   * Bake keyframe A a few faces per call (loading: no multi-face hitch).
+   * Returns true once the weather is ready to show.
+   */
+  bakeWeatherSlice(wt, faces = 1) {
+    if (!this.weatherDirty) return true;
+    for (let i = 0; i < faces && this._initFace < 6; i++, this._initFace++) {
+      this._bakeWeatherFace(this._wA, wt, this._initFace);
+    }
+    if (this._initFace < 6) return false;
+    this._startWeather(wt);
+    return true;
+  }
+
+  // keyframe A is complete at weather time wt: B aliases it until the
+  // background bake delivers the next state
+  _startWeather(wt) {
+    this._initFace = 0;
+    this._wB = this._wA;
+    this._tA = this._tB = wt;
+    this._shown = this._wtPrev = wt;
+    this._queueWeather();
+    this.weatherDirty = false;
+  }
+
+  /**
    * Advance the weather keyframes to weather time wt and set the crossfade.
    * Seed / scale changes rebake keyframe A at once; B aliases A until the
    * background bake delivers the next state, so evolution resumes smoothly.
    */
-  _updateWeather(wt) {
-    if (this.weatherDirty) {
-      for (let f = 0; f < 6; f++) this._bakeWeatherFace(this._wA, wt, f);
-      this._wB = this._wA;
-      this._tA = this._tB = wt;
-      this._shown = this._wtPrev = wt;
-      this._queueWeather();
-      this.weatherDirty = false;
-    }
+  updateWeather(wt) {
+    if (this.weatherDirty) this.bakeWeatherSlice(wt, 6);
     // the displayed weather clock follows wt but waits at keyframe B until
     // the next one is baked, then catches up at 1.5x (never a jump)
     const dw = Math.max(0, wt - this._wtPrev);
@@ -1089,30 +1217,310 @@ export class PlanetPipeline {
     this.uniforms.uWeatherBlend.value = blend;
   }
 
-  /**
-   * Render one frame.
-   * opts: { mode: 'planet'|'gas'|'star', water, clouds, cloudSteps, weatherTime, bloom }
-   */
-  render(scene, camera, opts, target = null) {
+  /** Screen-pass materials, for shader pre-compilation. */
+  get materials() {
+    return [this.lutMat, this.weatherMat, this.cloudMat, this.compositeMats.planet, this.compositeMats.star];
+  }
+
+  dispose() {
+    for (const rt of [this.lutRT, ...this.weatherRTs]) rt.dispose();
+    for (const m of this.materials) m.dispose();
+  }
+}
+
+// ============================================================================
+// PlanetPipeline — the shared half: GPU resources every planet drawn by one
+// WebGLRenderer can reuse, because each planet is composited onto the output
+// before the next one starts (scene + depth target, cloud target, noise
+// volumes, bloom chain, fullscreen quad).
+// ============================================================================
+export class PlanetPipeline {
+  constructor(renderer) {
+    this.renderer = renderer;
+    this.width = 1;           // rendered view
+    this.height = 1;
+    this._allocW = 1;         // allocated scene target
+    this._allocH = 1;
+    this._noiseBaked = false;
+    this._noiseVol = 0;       // resumable noise bake: volume, next layer
+    this._noiseLayer = 0;
+    this._cloudCap = new THREE.Vector2(0, 0);
+
+    // scene: HDR colour + float depth (read back by the screen passes)
+    this.sceneRT = new THREE.WebGLRenderTarget(1, 1, {
+      ...HALF_LINEAR,
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      depthBuffer: true,
+      depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType),
+    });
+    // cloud pass: drawn into the lower-left cw x ch of this target, which
+    // only ever grows (planets with different cloud scales share it)
+    this.cloudRT = new THREE.WebGLRenderTarget(1, 1, HALF_LINEAR);
+
+    const volume = (format, size) => {
+      const rt = new THREE.WebGL3DRenderTarget(size, size, size, {
+        depthBuffer: false,
+      });
+      const t = rt.texture;
+      t.format = format;
+      t.type = THREE.UnsignedByteType;
+      t.minFilter = THREE.LinearFilter;
+      t.magFilter = THREE.LinearFilter;
+      t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
+      t.generateMipmaps = false;
+      return rt;
+    };
+    this.noiseRT = volume(THREE.RGFormat, NOISE_VOLUME_SIZE);
+    this.erosionRT = volume(THREE.RedFormat, EROSION_VOLUME_SIZE);
+
+    // ---- passes
+    this.quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+    this.quad.frustumCulled = false;
+    this.quadScene = new THREE.Scene();
+    this.quadScene.add(this.quad);
+
+    this.noiseMat = screenMaterial(NOISE_VOLUME_FRAGMENT, { uLayer: { value: 0 }, uSize: { value: 1 } });
+    this.noiseMat.name = 'pp.noise';
+
+    // camera + embed uniforms: shared value objects, set before each planet
+    this.view = {
+      uInvProj: { value: new THREE.Matrix4() },
+      uCamWorld: { value: new THREE.Matrix4() },
+      uCamPos: { value: new THREE.Vector3() },
+      uViewScale: { value: new THREE.Vector2(1, 1) },
+      tDepth: { value: this.sceneRT.depthTexture },
+    };
+    this.embed = {
+      uViewMat: { value: new THREE.Matrix4() },
+      uHostProj: { value: new THREE.Matrix4() },
+      uLogDepthFC: { value: 0 },
+      uBoundRadius: { value: 1 },
+      uRingAxis: { value: new THREE.Vector3(0, 1, 0) },
+      uRingRange: { value: new THREE.Vector2(0, 0) },
+    };
+
+    // bloom mip chain (allocated on first use); the star's HDR frame itself
+    // goes into the cloud target (stars have no clouds, and each planet is
+    // finished before the next starts)
+    this.bloomRTs = [];
+    this.bloomDownMat = screenMaterial(BLOOM_DOWN_FRAGMENT, {
+      tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uSrcScale: { value: new THREE.Vector2(1, 1) },
+      uFirst: { value: 0 },
+    });
+    this.bloomUpMat = screenMaterial(BLOOM_UP_FRAGMENT, {
+      tSrc: { value: null }, uTexel: { value: new THREE.Vector2() },
+    });
+    this.bloomUpMat.blending = THREE.AdditiveBlending;
+    this.bloomUpMat.transparent = true;
+    this.finalMat = screenMaterial(FINAL_FRAGMENT, {
+      ...this.view,
+      ...this.embed,
+      tHDR: { value: null },
+      uHdrScale: { value: new THREE.Vector2(1, 1) },
+      tBloom: { value: null },
+      uBloom: { value: 1 },
+      uBloomNorm: { value: 1 / BLOOM_LEVELS },
+      uExposure: { value: 1 },
+      uLinearOut: { value: 0 },
+    });
+
+    this.depthMat = screenMaterial(DEPTH_FRAGMENT, {
+      ...this.view,
+      ...this.embed,
+      uSeaRadius: { value: 1 },
+      uWaterOn: { value: 0 },
+    });
+    this.depthMat.defines = {};
+    this.depthMat.colorWrite = false;
+    this.depthMat.depthTest = true;
+    this.depthMat.depthWrite = true;
+  }
+
+  createPasses(uniforms) {
+    return new PlanetPasses(this, uniforms);
+  }
+
+  _ensureBloomTargets() {
+    const w = this.width, h = this.height;
+    if (this._bloomW === w && this._bloomH === h && this.bloomRTs.length) return;
+    this._disposeBloom();
+    this._bloomW = w;
+    this._bloomH = h;
+    let bw = w, bh = h;
+    for (let i = 0; i < BLOOM_LEVELS; i++) {
+      bw = Math.max(1, bw >> 1);
+      bh = Math.max(1, bh >> 1);
+      const rt = new THREE.WebGLRenderTarget(bw, bh, HALF_LINEAR);
+      rt.texture.wrapS = rt.texture.wrapT = THREE.ClampToEdgeWrapping;
+      this.bloomRTs.push(rt);
+    }
+  }
+
+  _disposeBloom() {
+    for (const rt of this.bloomRTs) rt.dispose();
+    this.bloomRTs = [];
+  }
+
+  _renderBloom(target, strength) {
     const r = this.renderer;
-    const prevAutoClear = r.autoClear;
+    const levels = this.bloomRTs;
+    const dm = this.bloomDownMat.uniforms;
+    const cap = this._cloudCap;
+    const hdrScale = [this.width / cap.x, this.height / cap.y];
+    let src = this.cloudRT;
+    for (let i = 0; i < levels.length; i++) {
+      dm.tSrc.value = src.texture;
+      dm.uTexel.value.set(1 / src.width, 1 / src.height);
+      if (i === 0) dm.uSrcScale.value.set(hdrScale[0], hdrScale[1]);
+      else dm.uSrcScale.value.set(1, 1);
+      dm.uFirst.value = i === 0 ? 1 : 0;
+      this._blit(this.bloomDownMat, levels[i]);
+      src = levels[i];
+    }
+    // accumulate upward: level i += upsample(level i+1)
+    const um = this.bloomUpMat.uniforms;
+    r.autoClear = false;
+    for (let i = levels.length - 2; i >= 0; i--) {
+      um.tSrc.value = levels[i + 1].texture;
+      um.uTexel.value.set(1 / levels[i + 1].width, 1 / levels[i + 1].height);
+      this._blit(this.bloomUpMat, levels[i]);
+    }
+    const fu = this.finalMat.uniforms;
+    fu.tHDR.value = this.cloudRT.texture;
+    fu.uHdrScale.value.set(hdrScale[0], hdrScale[1]);
+    fu.tBloom.value = levels[0].texture;
+    fu.uBloom.value = strength;
+    this._blit(this.finalMat, target);
+  }
+
+  /**
+   * Drawing-buffer size in pixels of the output: the shared targets are
+   * allocated at this size, and it is the view rendered by default.
+   */
+  setSize(w, h) {
+    w = Math.max(1, Math.floor(w));
+    h = Math.max(1, Math.floor(h));
+    this.width = w;
+    this.height = h;
+    this.view.uViewScale.value.set(1, 1);
+    if (w === this._allocW && h === this._allocH) return;
+    this._allocW = w;
+    this._allocH = h;
+    this.sceneRT.setSize(w, h);
+    this._cloudCap.set(0, 0);
+  }
+
+  /**
+   * Render a smaller view (impostor captures) into the lower-left corner of
+   * the allocated targets — no reallocation. setSize() restores the full
+   * view. Clamped to the allocation.
+   */
+  setViewSize(w, h) {
+    this.width = Math.max(1, Math.min(Math.floor(w), this._allocW));
+    this.height = Math.max(1, Math.min(Math.floor(h), this._allocH));
+    this.view.uViewScale.value.set(this.width / this._allocW, this.height / this._allocH);
+  }
+
+  /**
+   * Conservative pixel rectangle (in the current view) of a sphere of
+   * `radius` (view units) at the camera's planet-local origin: null = the
+   * whole view (it straddles the camera), false = off screen.
+   */
+  screenRect(cam, radius, out) {
+    const center = _rc.set(0, 0, 0).applyMatrix4(cam.matrixWorldInverse);
+    const w = this.width;
+    const h = this.height;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      _rv.set(
+        center.x + (i & 1 ? radius : -radius),
+        center.y + (i & 2 ? radius : -radius),
+        center.z + (i & 4 ? radius : -radius)
+      );
+      if (_rv.z > -cam.near) return null;
+      _rv.applyMatrix4(cam.projectionMatrix);
+      x0 = Math.min(x0, _rv.x); x1 = Math.max(x1, _rv.x);
+      y0 = Math.min(y0, _rv.y); y1 = Math.max(y1, _rv.y);
+    }
+    const px0 = Math.max(0, Math.floor((x0 * 0.5 + 0.5) * w) - 2);
+    const py0 = Math.max(0, Math.floor((y0 * 0.5 + 0.5) * h) - 2);
+    const px1 = Math.min(w, Math.ceil((x1 * 0.5 + 0.5) * w) + 2);
+    const py1 = Math.min(h, Math.ceil((y1 * 0.5 + 0.5) * h) + 2);
+    if (px1 <= px0 || py1 <= py0) return false;
+    return out.set(px0, py0, px1 - px0, py1 - py0);
+  }
+
+  _ensureCloudTarget(cw, ch) {
+    const cap = this._cloudCap;
+    if (cw <= cap.x && ch <= cap.y) return;
+    cap.set(Math.max(cw, cap.x), Math.max(ch, cap.y));
+    this.cloudRT.setSize(cap.x, cap.y);
+  }
+
+  _blit(material, target, face = 0) {
+    this.quad.material = material;
+    this.renderer.setRenderTarget(target, face);
+    this.renderer.render(this.quadScene, this.quadCamera);
+  }
+
+  /** Bake up to `layers` more layers of the noise volumes; true once complete. */
+  bakeNoiseSlice(layers = Infinity) {
+    if (this._noiseBaked) return true;
+    const nu = this.noiseMat.uniforms;
+    const vols = [this.noiseRT, this.erosionRT];
+    for (let n = 0; n < layers; n++) {
+      const rt = vols[this._noiseVol];
+      nu.uSize.value = rt.depth;
+      nu.uLayer.value = this._noiseLayer;
+      this._blit(this.noiseMat, rt, this._noiseLayer);
+      if (++this._noiseLayer < rt.depth) continue;
+      this._noiseLayer = 0;
+      if (++this._noiseVol === vols.length) {
+        this._noiseBaked = true;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  _bakeNoise() {
+    this.bakeNoiseSlice(Infinity);
+  }
+
+  /**
+   * Render one planet. `camera` is the planet-local (proxy) camera; `scene`
+   * the planet's internal scene. The output target must already be sized
+   * (setSize) and hold the host frame when embedding.
+   * opts: { mode: 'planet'|'gas'|'star', water, clouds, cloudSteps,
+   *         weatherTime, bloom, camDist, embed, depthTest, depthWrite,
+   *         output: 0 tone map + sRGB | 1 linear HDR | 2 tone map (sRGB
+   *         target), rect: Vector4 (pixels) | null, setHostScissor(rect|null) }
+   */
+  render(passes, scene, camera, opts, target = null) {
+    const r = this.renderer;
     r.autoClear = true;
 
     const mode = opts.mode || 'planet';
     const planet = mode === 'planet';
     const clouds = planet && !!opts.clouds;
     const bloom = opts.bloom > 0.001;
+    const embed = !!opts.embed;
+    // bloom spreads over the whole frame: no scissor for stars
+    const rect = bloom ? null : opts.rect;
+    const u = passes.uniforms;
 
     // the transmittance LUT lights the terrain AND the gas giant
-    if (mode !== 'star' && this.lutDirty) {
-      this._blit(this.lutMat, this.lutRT);
-      this.lutDirty = false;
+    if (mode !== 'star' && passes.lutDirty) {
+      this._blit(passes.lutMat, passes.lutRT);
+      passes.lutDirty = false;
     }
     if (planet) {
-      if (clouds || this.uniforms.uCloudShadowStr.value > 0) {
+      if (clouds || u.uCloudShadowStr.value > 0) {
         if (!this._noiseBaked) this._bakeNoise();
         // weather evolves through crossfaded keyframes; drift is a free rotation
-        this._updateWeather(opts.weatherTime);
+        passes.updateWeather(opts.weatherTime);
       }
     }
 
@@ -1122,45 +1530,110 @@ export class PlanetPipeline {
     this.view.uCamWorld.value.copy(camera.matrixWorld);
     this.view.uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
     const fovRad = THREE.MathUtils.degToRad(camera.fov);
-    this.compositeMat.uniforms.uPixelAngle.value = (2 * Math.tan(fovRad / 2)) / this.height;
+    const composite = passes.compositeFor(mode);
+    passes.compositeUniforms.uPixelAngle.value = (2 * Math.tan(fovRad / 2)) / (camera.zoom * this.height);
 
-    // 1. scene
+    // 1. scene (into the view: the whole target unless an impostor capture)
+    const partial = this.width < this._allocW || this.height < this._allocH;
+    this.sceneRT.viewport.set(0, 0, this.width, this.height);
+    this.sceneRT.scissorTest = !!rect || partial;
+    if (rect) this.sceneRT.scissor.copy(rect);
+    else this.sceneRT.scissor.set(0, 0, this.width, this.height);
     r.setRenderTarget(this.sceneRT);
     r.clear();
     r.render(scene, camera);
+    this.sceneRT.scissorTest = false;
+    this.sceneRT.viewport.set(0, 0, this._allocW, this._allocH);
 
     // 2. clouds
+    const cu = passes.compositeUniforms;
     if (clouds) {
-      this._fitCloudScale(camera, this.uniforms.uCloudTop.value);
-      const cu = this.cloudMat.uniforms;
-      cu.uCloudSteps.value = opts.cloudSteps;
-      this._blit(this.cloudMat, this.cloudRT);
+      const s = passes.fitCloudScale(opts.camDist, camera.fov, camera.aspect, u.uCloudTop.value);
+      const cw = Math.max(1, Math.round(this.width * s));
+      const ch = Math.max(1, Math.round(this.height * s));
+      // only the cloud shell's screen rect (x the embed scissor) is traced,
+      // into a target of that size: no full-frame allocation for a planet
+      // that covers a quarter of it
+      let x0 = 0, y0 = 0, x1 = cw, y1 = ch;
+      let cr = this.screenRect(camera, u.uCloudTop.value * (opts.radiusScale ?? 1), _shellRect);
+      if (cr === false) cr = _shellRect.set(0, 0, 0, 0);
+      if (rect) {
+        // x the embed scissor
+        if (!cr) cr = _shellRect.copy(rect);
+        else {
+          const ax = Math.max(cr.x, rect.x), ay = Math.max(cr.y, rect.y);
+          const bx = Math.min(cr.x + cr.z, rect.x + rect.z), by = Math.min(cr.y + cr.w, rect.y + rect.w);
+          cr.set(ax, ay, Math.max(0, bx - ax), Math.max(0, by - ay));
+        }
+      }
+      if (cr) {
+        x0 = Math.max(0, Math.floor(cr.x * s) - 2);
+        y0 = Math.max(0, Math.floor(cr.y * s) - 2);
+        x1 = Math.min(cw, Math.ceil((cr.x + cr.z) * s) + 2);
+        y1 = Math.min(ch, Math.ceil((cr.y + cr.w) * s) + 2);
+      }
+      const rw = Math.max(1, x1 - x0);
+      const rh = Math.max(1, y1 - y0);
+      this._ensureCloudTarget(rw, rh);
+      const cap = this._cloudCap;
+      this.cloudRT.viewport.set(0, 0, rw, rh);
+      this.cloudRT.scissorTest = false;
+      const cm = passes.cloudMat.uniforms;
+      cm.uCloudSteps.value = opts.cloudSteps;
+      cm.uCloudRes.value.set(cw, ch);
+      cm.uCloudOffset.value.set(x0, y0);
+      cu.uCloudTexel.value.set(1 / cap.x, 1 / cap.y);
+      cu.uCloudUV.value.set(cw / cap.x, ch / cap.y);
+      cu.uCloudOffset.value.set(x0 / cap.x, y0 / cap.y);
+      cu.uCloudMax.value.set((rw - 0.5) / cap.x, (rh - 0.5) / cap.y);
+      this._blit(passes.cloudMat, this.cloudRT);
     }
 
     // 3. composite
-    const u = this.compositeMat.uniforms;
-    u.uMode.value = mode === 'star' ? 2 : mode === 'gas' ? 1 : 0;
-    u.uWaterOn.value = planet && opts.water ? 1 : 0;
-    u.uCloudsOn.value = clouds ? 1 : 0;
-    u.uHDROut.value = bloom ? 1 : 0;
+    setEmbedBlending(composite, embed, opts.depthTest);
+    cu.uMode.value = mode === 'star' ? 2 : mode === 'gas' ? 1 : 0;
+    cu.uWaterOn.value = planet && opts.water ? 1 : 0;
+    cu.uCloudsOn.value = clouds ? 1 : 0;
+    cu.uHDROut.value = bloom ? 1 : 0;
+    cu.uLinearOut.value = opts.output ?? 0;
     if (bloom) {
+      // the HDR frame is overwritten, not blended onto; it lives in the
+      // (idle in star mode) cloud target
+      composite.depthTest = false;
       this._ensureBloomTargets();
-      this._blit(this.compositeMat, this.hdrRT);
+      this._ensureCloudTarget(this.width, this.height);
+      this.cloudRT.viewport.set(0, 0, this.width, this.height);
+      this.cloudRT.scissorTest = false;
+      // the composite's cloud sampler must not stay bound to its own target
+      // (a feedback loop: WebGL drops the draw)
+      cu.tClouds.value = null;
+      this._blit(composite, this.cloudRT);
+      cu.tClouds.value = this.cloudRT.texture;
+      setEmbedBlending(this.finalMat, embed, opts.depthTest);
+      this.finalMat.uniforms.uExposure.value = u.uExposure.value;
+      this.finalMat.uniforms.uLinearOut.value = opts.output ?? 0;
+      opts.setHostScissor?.(null);
       this._renderBloom(target, opts.bloom);
     } else {
-      this._blit(this.compositeMat, target);
+      r.autoClear = false;
+      opts.setHostScissor?.(rect);
+      this._blit(composite, target);
     }
 
-    r.autoClear = prevAutoClear;
+    // 4. embed: the solid surface into the host depth buffer
+    if (embed && opts.depthWrite) {
+      r.autoClear = false;
+      this.depthMat.uniforms.uSeaRadius.value = u.uSeaRadius.value;
+      this.depthMat.uniforms.uWaterOn.value = cu.uWaterOn.value;
+      this._blit(this.depthMat, target);
+    }
   }
 
   dispose() {
-    for (const rt of [this.sceneRT, this.cloudRT, this.lutRT, ...this.weatherRTs,
-      this.noiseRT, this.erosionRT]) rt.dispose();
+    for (const rt of [this.sceneRT, this.cloudRT, this.noiseRT, this.erosionRT]) rt.dispose();
     this.sceneRT.depthTexture?.dispose();
     this._disposeBloom();
-    for (const m of [this.lutMat, this.weatherMat, this.noiseMat, this.cloudMat, this.compositeMat,
-      this.bloomDownMat, this.bloomUpMat, this.finalMat]) m.dispose();
+    for (const m of [this.noiseMat, this.bloomDownMat, this.bloomUpMat, this.finalMat, this.depthMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }

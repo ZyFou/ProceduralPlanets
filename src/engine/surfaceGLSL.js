@@ -250,7 +250,7 @@ float surfaceDetail(vec3 wp, float fp, out vec3 slope) {
   slope = vec3(0.0);
   float f = 1.0 / 14.0;
   float a = 0.5;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < DYN(5); i++) {
     float fade = 1.0 - smoothstep(0.18, 0.45, f * fp);
     if (fade <= 0.0) break;
     vec4 n = gnoised(wp * f + float(i) * 17.31);

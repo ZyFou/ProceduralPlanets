@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>procedural-planets bench</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; position: fixed; left: 0; top: 0; }
+</style>
+</head>
+<body>
+<!-- Driven by bench/run.mjs through window.bench (see bench.js). Uses only the
+     public API (+ a little introspection for pass labels), so the same page
+     runs against any checkout of the engine for A/B comparisons. -->
+<script type="module">
+import * as bench from './bench.js';
+window.bench = bench;
+window.benchReady = true;
+</script>
+</body>
+</html>

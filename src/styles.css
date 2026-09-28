@@ -616,6 +616,22 @@ input {
   font-size: 11px;
 }
 
+.code-snippet {
+  margin: 6px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-control);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre;
+  user-select: text;
+}
+
 .preset-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1332,6 +1348,44 @@ input {
   font: 600 10.5px var(--font);
   cursor: var(--cursor-pointer);
 }
+/* shown while a body type's shaders compile in the background (the last
+   frame stays up; nothing freezes) */
+.viewport-compiling {
+  position: absolute;
+  z-index: 18;
+  top: 54px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(10,10,10,.86);
+  color: var(--text-muted);
+  font: 600 10.5px var(--font);
+  letter-spacing: .02em;
+  transform: translateX(-50%);
+  backdrop-filter: blur(12px);
+  animation: viewport-compiling-in .2s ease both;
+  pointer-events: none;
+}
+.viewport-compiling-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(37, 99, 235, .8);
+  animation: viewport-compiling-pulse 1s ease-in-out infinite;
+}
+@keyframes viewport-compiling-in { from { opacity: 0; transform: translate(-50%, -4px); } }
+@keyframes viewport-compiling-pulse { 50% { opacity: .35; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) {
+  .viewport-compiling, .viewport-compiling-dot { animation: none; }
+}
+#app.landing-mode .viewport-compiling { display: none; }
+
 .viewport-mode-bar button:hover { color: var(--text-main); }
 .viewport-mode-bar button.active { border-color: rgba(37,99,235,.65); background: var(--accent-bg); color: var(--accent); }
 

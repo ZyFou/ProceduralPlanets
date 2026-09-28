@@ -18,6 +18,7 @@ export function createSharedUniforms(p) {
   const off = seedToOffset(p.seed);
   return {
     uTime:          { value: 0 },
+    uLoopBias:      { value: 0 },   // always 0: opaque loop bounds (see noiseGLSL)
     uSeedOffset:    { value: new THREE.Vector3(off[0], off[1], off[2]) },
     uRadius:        { value: p.radius },
     uHeightScale:   { value: p.heightScale },
@@ -215,14 +216,23 @@ ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
 ${CLIMATE_NOISE_GLSL}
 
-uniform vec3 uFaceOrigin;
-uniform vec3 uFaceU;
-uniform vec3 uFaceV;
-uniform vec2 uUV0;
-uniform float uUVSize;
-uniform float uSkirtDepth;
+uniform float uGridRes;   // quads per chunk side
 
 attribute float aSkirt;
+// per chunk (instanced, see PlanetWorld)
+attribute vec4 iNode;     // face-UV origin (xy), size (z), cube face (w)
+attribute vec3 iMorph;    // geomorph start / end distance, skirt depth
+
+const vec3 FACE_O[6] = vec3[6](vec3(-1.0, -1.0, 1.0), vec3(1.0, -1.0, -1.0), vec3(1.0, -1.0, 1.0),
+                               vec3(-1.0, -1.0, -1.0), vec3(-1.0, 1.0, 1.0), vec3(-1.0, -1.0, -1.0));
+const vec3 FACE_U[6] = vec3[6](vec3(2.0, 0.0, 0.0), vec3(-2.0, 0.0, 0.0), vec3(0.0, 0.0, -2.0),
+                               vec3(0.0, 0.0, 2.0), vec3(2.0, 0.0, 0.0), vec3(2.0, 0.0, 0.0));
+const vec3 FACE_V[6] = vec3[6](vec3(0.0, 2.0, 0.0), vec3(0.0, 2.0, 0.0), vec3(0.0, 2.0, 0.0),
+                               vec3(0.0, 2.0, 0.0), vec3(0.0, 0.0, -2.0), vec3(0.0, 0.0, 2.0));
+
+vec3 faceDir(int f, vec2 uv) {
+  return normalize(FACE_O[f] + uv.x * FACE_U[f] + uv.y * FACE_V[f]);
+}
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
@@ -240,9 +250,17 @@ varying vec3 vJitG, vMoistG;      // their gradients
 #endif
 
 void main() {
-  vec2 uv2 = uUV0 + position.xy * uUVSize;
-  vec3 cube = uFaceOrigin + uv2.x * uFaceU + uv2.y * uFaceV;
-  vec3 dir = normalize(cube);
+  int face = int(iNode.w + 0.5);
+  // geomorph: over the last part of this chunk's range the odd grid vertices
+  // slide onto the parent grid (toward the lower even neighbour, along the
+  // same diagonal as the parent's quads), so the chunk has become its parent
+  // by the time they swap. k from the vertex's own distance: continuous
+  // across chunks.
+  vec2 grid = floor(position.xy * uGridRes + 0.5);
+  float dv = distance(cameraPosition, faceDir(face, iNode.xy + grid / uGridRes * iNode.z) * uRadius);
+  float morph = clamp((dv - iMorph.x) / max(iMorph.y - iMorph.x, 1e-3), 0.0, 1.0);
+  grid -= fract(grid * 0.5) * 2.0 * morph;
+  vec3 dir = faceDir(face, iNode.xy + grid / uGridRes * iNode.z);
 #ifdef WARP_VARYING
   mat3 JwT;
   vec3 pw = warpDomain(dir, JwT);
@@ -273,7 +291,7 @@ void main() {
 #else
   float h = terrainHeight(dir);
 #endif
-  vec3 wp = dir * (uRadius + h - aSkirt * uSkirtDepth);
+  vec3 wp = dir * (uRadius + h - aSkirt * iMorph.z);
   vDir = dir;
   vWorldPos = wp;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
@@ -377,11 +395,13 @@ void main() {
 // lowVarying: also interpolate the low continent octaves + belt noise. Only
 // for chunks fine enough (quadtree level >= 2) that their vertex spacing
 // resolves those octaves; coarse chunks evaluate them per pixel.
-export function createTerrainMaterial(shared, octaves, chunkUniforms, lowVarying = false) {
+// Draws instanced chunks of a gridRes x gridRes grid (PlanetWorld).
+export function createTerrainMaterial(shared, octaves, lowVarying = false, gridRes = 32) {
   const defines = { OCTAVES: octaves, WARP_VARYING: 1 };
   if (lowVarying) defines.LOW_VARYING = 1;
   return new THREE.ShaderMaterial({
-    uniforms: { ...shared, uSkirtDepth: { value: 0 }, ...chunkUniforms },
+    name: lowVarying ? 'pp.terrain.lowVarying' : 'pp.terrain',
+    uniforms: { ...shared, uGridRes: { value: gridRes } },
     defines,
     vertexShader: TERRAIN_VERTEX,
     fragmentShader: TERRAIN_FRAGMENT,

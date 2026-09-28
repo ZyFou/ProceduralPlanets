@@ -28,6 +28,13 @@ import { PANELS } from './components/panels.jsx';
 import { searchSettings } from './components/settingsSearch.js';
 import SettingsSearchOverlay from './components/SettingsSearchOverlay.jsx';
 
+const LOADING_STAGES = {
+  shaders: 'Compiling shaders',
+  noise: 'Baking cloud noise',
+  weather: 'Forming weather',
+  prime: 'Warming up the GPU',
+};
+
 const ICONS = {
   terrain: Orbit,
   biomes: Leaf,
@@ -58,16 +65,65 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
   const [stats, setStats] = useState({ fps: 0, triangles: 0, drawCalls: 0, chunks: 0 });
   const [activePanel, setActivePanel] = useState('terrain');
   const [booted, setBooted] = useState(false);
+  // shaders still compiling for what the viewport should show (the last
+  // frame stays up meanwhile; nothing freezes)
+  const [compiling, setCompiling] = useState(false);
+  const precompiledRef = useRef(false);
+  const watchRef = useRef(0);
 
+  const watchCompile = useCallback(() => {
+    cancelAnimationFrame(watchRef.current);
+    let frames = 0;
+    const poll = () => {
+      const pending = engineRef.current?.planetRenderer.pending ?? 0;
+      if (pending > 0) setCompiling(true);
+      if (pending === 0 && frames > 2) { setCompiling(false); return; }
+      frames++;
+      watchRef.current = requestAnimationFrame(poll);
+    };
+    watchRef.current = requestAnimationFrame(poll);
+  }, []);
+
+  const precompileTypes = useCallback(() => {
+    if (precompiledRef.current || !engineRef.current) return;
+    precompiledRef.current = true;
+    engineRef.current.precompileAll();
+  }, []);
+
+  // Boot: the loading screen (index.html) stays up until the planet's first
+  // final-quality frame is on the canvas — shaders compile in parallel and
+  // the GPU bakes run a slice per frame, so the loader keeps animating. Then
+  // it fades out over that frame. The other body types compile on intent
+  // (pointer on the type switcher), not eagerly: the browser's shader cache
+  // is small, and filling it with every type's programs evicts the planet's
+  // own for the next visit (bench: repeat visits 1.6 s -> 1.0 s).
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
     const engine = new Engine({ canvas, callbacks: { onStats: setStats } });
     engineRef.current = engine;
     if (import.meta.env.DEV) window.planetStudio = engine;
-    setBooted(true);
-    document.getElementById('boot-splash')?.classList.add('hide');
+    performance.mark('pp:engine-created');
+    const loader = window.__ppLoader;
+    const span = (p) => 0.14 + p * 0.8;
+    let cancelled = false;
+    (async () => {
+      await engine.prepare({
+        onProgress: ({ stage, progress, stageEnd }) => loader?.progress(span(progress), LOADING_STAGES[stage], span(stageEnd)),
+      });
+      if (cancelled) return;
+      performance.mark('pp:first-frame');
+      loader?.progress(0.97, 'Rendering first frame', 1);
+      // one more frame: the first one must be presented before the reveal
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (cancelled) return;
+      setBooted(true);
+      await loader?.done();
+      performance.mark('pp:loader-hidden');
+    })();
     return () => {
+      cancelled = true;
+      cancelAnimationFrame(watchRef.current);
       engine.dispose();
       engineRef.current = null;
       if (import.meta.env.DEV && window.planetStudio === engine) window.planetStudio = null;
@@ -85,8 +141,9 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
     skipPersistRef.current = true;
     Object.entries(next).forEach(([key, value]) => engine.setParam(key, value));
     setParams(next);
+    watchCompile();
     setActivePanel(next.mode === 'star' ? 'starSurface' : next.mode === 'gas' ? 'gasFlow' : 'terrain');
-  }, [booted, project?.id]);
+  }, [booted, project?.id, watchCompile]);
 
   useEffect(() => {
     if (!project || project.preview || !onProjectChange) return;
@@ -97,13 +154,20 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
     onProjectChange(params);
   }, [params, project?.id, project?.preview, onProjectChange]);
 
+  // project card thumbnail: a small copy of the next drawn frame once edits
+  // settle (no extra render, no render-target resize, a few KB of WebP)
   useEffect(() => {
     if (!booted || !project?.id || !onThumbnail) return undefined;
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      const dataUrl = engineRef.current?.screenshotDataURL();
-      if (dataUrl) onThumbnail(project.id, dataUrl);
+      engineRef.current?.captureThumbnail().then((dataUrl) => {
+        if (!cancelled && dataUrl) onThumbnail(project.id, dataUrl);
+      });
     }, 850);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [booted, params, project?.id, onThumbnail]);
 
   const onParam = useCallback((key, value) => {
@@ -135,8 +199,9 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
 
   const onMode = useCallback((mode) => {
     onParam('mode', mode);
+    watchCompile();
     setActivePanel(mode === 'star' ? 'starSurface' : mode === 'gas' ? 'gasFlow' : 'terrain');
-  }, [onParam]);
+  }, [onParam, watchCompile]);
 
   const onRandomize = useCallback(() => {
     const seed = engineRef.current?.randomize();
@@ -275,7 +340,11 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
           <canvas id="viewport" ref={canvasRef} />
         </div>
 
-        <div className="viewport-mode-bar" role="tablist" aria-label="Editor mode">
+        {compiling && (
+          <div className="viewport-compiling" role="status"><span className="viewport-compiling-dot" aria-hidden />Compiling shaders</div>
+        )}
+
+        <div className="viewport-mode-bar" role="tablist" aria-label="Editor mode" onPointerEnter={precompileTypes} onFocus={precompileTypes}>
           <button type="button" role="tab" aria-selected={params.mode === 'planet'} className={params.mode === 'planet' ? 'active' : ''} onClick={() => onMode('planet')}><Orbit size={14} /> Planet</button>
           <button type="button" role="tab" aria-selected={params.mode === 'gas'} className={params.mode === 'gas' ? 'active' : ''} onClick={() => onMode('gas')}><Waves size={14} /> Gas</button>
           <button type="button" role="tab" aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /> Star</button>
