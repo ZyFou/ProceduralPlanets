@@ -3,3 +3,4 @@ dist
 .claude/shots
 *.local
 .codex-vite.*.log
+/bench
