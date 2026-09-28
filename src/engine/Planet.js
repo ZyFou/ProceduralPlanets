@@ -221,7 +221,7 @@ export class Planet extends THREE.Object3D {
     this._passesOwner = null;
     this._lutDirty = true;
     this._weatherDirty = true;
-    this._needsWarmup = true;
+    this._version = 0;
 
     this.world = new PlanetWorld(this._scene, this.uniforms, {
       chunkRes: this.params.chunkRes,
@@ -421,8 +421,12 @@ export class Planet extends THREE.Object3D {
     const accepted = acceptParams(patch, 'Planet.set');
     let structural = false;
     for (const [k, v] of Object.entries(accepted)) {
-      if (REBUILD_KEYS.has(k)) { this.params[k] = v; structural = true; }
-      else this.setParam(k, v);
+      if (REBUILD_KEYS.has(k)) {
+        if (this.params[k] !== v) structural = true;
+        this.params[k] = v;
+      } else {
+        this.setParam(k, v);
+      }
     }
     if (structural) this._rebuildStructural();
     return this;
@@ -430,12 +434,15 @@ export class Planet extends THREE.Object3D {
 
   /** Low-level single-key setter (no validation) — used by the studio UI. */
   setParam(key, value) {
-    this.params[key] = value;
-
+    this._version++;   // anything cached from the params (impostors) is stale
     if (REBUILD_KEYS.has(key)) {
+      // a rebuild drops every chunk: only when the structure really changes
+      if (this.params[key] === value) return;
+      this.params[key] = value;
       this._rebuildStructural();
       return;
     }
+    this.params[key] = value;
     if (ATMO_KEYS.has(key)) this._syncAtmosphere();
     if (WATER_KEYS.has(key)) this._syncWater();
     if (WEATHER_KEYS.has(key)) this._weatherDirty = true;
@@ -513,9 +520,9 @@ export class Planet extends THREE.Object3D {
   }
 
   _rebuildStructural() {
+    this._version++;
     const p = this.params;
     this.world.rebuild({ chunkRes: p.chunkRes, maxDepth: p.maxDepth, octaves: p.octaves });
-    this._needsWarmup = true;
   }
 
   /**
@@ -547,8 +554,12 @@ export class Planet extends THREE.Object3D {
     }
     let structural = false;
     for (const [k, v] of Object.entries(patch)) {
-      if (REBUILD_KEYS.has(k)) { this.params[k] = v; structural = true; }
-      else this.setParam(k, v);
+      if (REBUILD_KEYS.has(k)) {
+        if (this.params[k] !== v) structural = true;
+        this.params[k] = v;
+      } else {
+        this.setParam(k, v);
+      }
     }
     if (structural) this._rebuildStructural();
   }
@@ -645,13 +656,31 @@ export class Planet extends THREE.Object3D {
       this._passes?.dispose();
       this._passes = pipeline.createPasses(this.uniforms);
       this._passesOwner = pipeline;
-      this._lutDirty = this._weatherDirty = this._needsWarmup = true;
+      this._lutDirty = this._weatherDirty = true;
     }
     const passes = this._passes;
     if (this._lutDirty) { passes.lutDirty = true; this._lutDirty = false; }
-    if (this._weatherDirty) { passes.weatherDirty = true; this._weatherDirty = false; }
+    if (this._weatherDirty) {
+      passes.weatherDirty = true;
+      passes._initFace = 0;   // a half-done initial bake restarts with the new seed
+      this._weatherDirty = false;
+    }
     passes.setCloudResolution(this.params.cloudResolution);
     return passes;
+  }
+
+  /**
+   * @internal materials the planet's own scene draws in `mode` (the current
+   * one by default); `all` includes the optional ones (rings) so they can be
+   * compiled before they are switched on.
+   */
+  _sceneMaterials(mode = this.params.mode, all = false) {
+    if (mode === 'planet') {
+      const [exact, low] = this.world.templateMaterials;
+      return all || this.world.useLowVarying ? [exact, low] : [exact];
+    }
+    if (mode === 'gas') return all || this.params.gasRingsEnabled ? [this.gasMat, this.ringMat] : [this.gasMat];
+    return [this.starSurfaceMat];
   }
 
   /** @internal near / far (local units) that hug the planet for depth precision. */
@@ -695,7 +724,7 @@ export class Planet extends THREE.Object3D {
   }
 
   /** @internal per-frame uniforms + render options for PlanetPipeline. */
-  _prepareFrame(renderer) {
+  _prepareFrame() {
     const p = this.params;
     const u = this.uniforms;
     const ct = this.cloudTime;
@@ -708,7 +737,6 @@ export class Planet extends THREE.Object3D {
     u.uCloudShapeFreq.value = shapeFreq;
     u.uCloudDetailFreq.value = shapeFreq * 4.1;
     u.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
-    if (p.mode === 'gas') this.gasJets.update(renderer);
     return {
       mode: p.mode,
       bloom: p.mode === 'star' ? p.starBloom : 0,
@@ -717,6 +745,11 @@ export class Planet extends THREE.Object3D {
       cloudSteps: p.cloudQuality,
       weatherTime: ct * 0.0035,
     };
+  }
+
+  /** @internal per-frame GPU bakes (the gas giant's jet table), once its programs are ready. */
+  _bakeFrame(renderer) {
+    if (this.params.mode === 'gas') this.gasJets.update(renderer);
   }
 
   // ---------------------------------------------------------- serialisation

@@ -4,4 +4,7 @@ import Root from './Root.jsx';
 import './cursors.css';
 import './styles.css';
 
+// modules are in: the loading screen moves on to the engine (App.jsx)
+window.__ppLoader?.progress(0.1, 'Starting engine', 0.14);
+performance.mark('pp:modules-loaded');
 createRoot(document.getElementById('root')).render(<Root />);

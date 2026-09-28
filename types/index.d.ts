@@ -127,6 +127,38 @@ export interface PlanetRendererOptions {
   autoUpdate?: boolean;
   /** Clamp for the internal clock step, seconds (default 0.05). */
   maxDelta?: number;
+  /** Draw distant planets as impostors: a cached picture on a billboard (default true). */
+  impostors?: boolean;
+  /** Screen radius (px) under which a planet becomes an impostor (default 90). */
+  impostorPixels?: number;
+  /** Impostor pictures re-rendered per frame at most (default 2). */
+  impostorUpdates?: number;
+  /** View / sun direction change (degrees) that makes an impostor stale (default 0.6). */
+  impostorAngle?: number;
+  /** Planet-clock seconds between impostor refreshes, for clouds and waves (default 0.5). */
+  impostorRefresh?: number;
+  /** Largest impostor atlas edge in px; starts at 512 and doubles when full (default 2048). */
+  impostorAtlasSize?: number;
+}
+
+export interface PrepareProgress {
+  stage: 'shaders' | 'noise' | 'weather' | 'prime';
+  /** Overall progress 0..1. */
+  progress: number;
+  /** Where the current stage ends (0..1), e.g. to animate a loading bar toward it. */
+  stageEnd: number;
+  done: number;
+  total: number;
+}
+
+export interface PrepareOptions {
+  /** Also compile the other body types and optional layers, so later switches never wait (default false). */
+  modes?: boolean;
+  /** Run the one-time GPU bakes too (default true). */
+  bake?: boolean;
+  /** The render target the planets will be drawn into (default: the renderer's current one). */
+  target?: WebGLRenderTarget | null;
+  onProgress?: (progress: PrepareProgress) => void;
 }
 
 export interface PlanetRenderOptions {
@@ -141,20 +173,32 @@ export class PlanetRenderer {
   constructor(renderer: WebGLRenderer, options?: PlanetRendererOptions);
   readonly renderer: WebGLRenderer;
   readonly options: Required<PlanetRendererOptions>;
-  /** Stats of the last render(). */
-  readonly info: { planets: number; culled: number };
+  /**
+   * Stats of the last render(): planets drawn / culled, pending (skipped while their
+   * shaders compile in the background), impostors (drawn as billboards), captures
+   * (impostor pictures rendered this frame).
+   */
+  readonly info: { planets: number; culled: number; pending: number; impostors: number; captures: number };
+  /** Planets the last render() skipped because their shaders are still compiling. */
+  readonly pending: number;
   setOptions(options: PlanetRendererOptions): this;
   /**
    * Draw every visible Planet in `planets` (an object tree to traverse, a Planet or an
    * array). Call after rendering your opaque scene into the same target.
    */
   render(planets: Object3D | Planet | Planet[], camera: PerspectiveCamera, options?: PlanetRenderOptions): void;
-  /** Pre-compile shaders (avoids a first-frame stall). */
+  /**
+   * Get planets ready without stalling the page: shaders compile in parallel, the one-time
+   * GPU bakes run a slice per frame. When it resolves the next render() draws them at full
+   * quality: the place to hide a loading screen.
+   */
+  prepare(planets: Object3D | Planet | Planet[], camera?: PerspectiveCamera | null, options?: PrepareOptions): Promise<void>;
+  /** prepare() without the bakes: compile the shaders ahead, without blocking. */
   compile(planets: Planet | Planet[], camera?: PerspectiveCamera): Promise<void>;
   dispose(): void;
 }
 
-export interface PlanetStats { fps: number; triangles: number; drawCalls: number; chunks: number }
+export interface PlanetStats { fps: number; triangles: number; drawCalls: number; chunks: number; pending: number }
 
 export interface PlanetViewerOptions {
   /** Canvas to render into... */
@@ -189,8 +233,15 @@ export class PlanetViewer {
   stop(): this;
   /** One frame without advancing time. */
   renderOnce(): void;
+  /**
+   * Compile the planet's shaders (in parallel), run its bakes and draw its first frame.
+   * Resolves once that final-quality frame is on the canvas.
+   */
+  prepare(options?: PrepareOptions): Promise<this>;
   /** PNG data URL of a w x h frame. */
   screenshot(width?: number, height?: number): string;
+  /** A small image (data URL) copied from the next frame that draws the planet: no extra render. */
+  captureThumbnail(width?: number, height?: number, type?: string, quality?: number): Promise<string | null>;
   dispose(): void;
 }
 

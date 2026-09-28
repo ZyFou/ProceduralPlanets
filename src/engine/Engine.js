@@ -53,6 +53,14 @@ export class Engine extends PlanetViewer {
     return this.planet.randomizeSeed();
   }
 
+  /**
+   * Compile every body type's shaders (and optional layers) in the
+   * background, so later mode switches and toggles never wait on a compile.
+   */
+  precompileAll() {
+    return this.planetRenderer.prepare(this.planet, this.camera, { modes: true, bake: false });
+  }
+
   screenshotDataURL(w = 1920, h = 1080) {
     return this.screenshot(w, h);
   }

@@ -3,6 +3,11 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Planet } from './Planet.js';
 import { PlanetRenderer } from './PlanetRenderer.js';
 
+const nextFrame = () => new Promise((resolve) => {
+  const t = setTimeout(resolve, 100);
+  requestAnimationFrame(() => { clearTimeout(t); resolve(); });
+});
+
 // ============================================================================
 // PlanetViewer — a self-contained planet view: its own WebGLRenderer, camera,
 // orbit controls and render loop around ONE Planet, drawn opaque over a
@@ -20,7 +25,11 @@ export class PlanetViewer {
    *   controls    enable OrbitControls (default true)
    *   autoStart   start the render loop (default true)
    *   pixelRatio  max device pixel ratio (default 2)
-   *   onStats     ({ fps, triangles, drawCalls, chunks }) => void, ~2 Hz
+   *   onStats     ({ fps, triangles, drawCalls, chunks, pending }) => void, ~2 Hz
+   *
+   * Shaders compile in the background: until they are ready the canvas
+   * keeps its previous frame. await viewer.prepare() to know when the first
+   * full-quality frame is up (e.g. to hide a loading screen).
    */
   constructor(options = {}) {
     const { canvas: canvasIn, container, controls = true, autoStart = true, pixelRatio = 2 } = options;
@@ -87,7 +96,50 @@ export class PlanetViewer {
 
     this._clock = new THREE.Clock();
     this._running = false;
+    this._afterFrame = [];
     if (autoStart) this.start();
+  }
+
+  /**
+   * Compile the planet's shaders (in parallel, without blocking the page),
+   * run its one-time GPU bakes and draw its first frame. Resolves once that
+   * final-quality frame is on the canvas. options: { onProgress, modes }
+   * (see PlanetRenderer.prepare).
+   */
+  async prepare(options = {}) {
+    this._applyControlLimits();
+    this.controls?.update();
+    await this.planetRenderer.prepare(this.planet, this.camera, options);
+    for (let i = 0; i < 240 && !this._disposed; i++) {
+      this._renderFrame(0);
+      if (this.planetRenderer.pending === 0) break;
+      await nextFrame();
+    }
+    return this;
+  }
+
+  /**
+   * A small image of the view (data URL) taken from the next frame that draws
+   * the planet — no extra render, no target resize. Resolves null when the
+   * viewer is disposed first.
+   */
+  captureThumbnail(width = 480, height = Math.round((width * 9) / 16), type = 'image/webp', quality = 0.82) {
+    return new Promise((resolve) => {
+      this._afterFrame.push((ok) => {
+        if (!ok) return false;   // not drawn this frame: wait for the next
+        const src = this.renderer.domElement;
+        const c = document.createElement('canvas');
+        c.width = width;
+        c.height = height;
+        // centre crop to the thumbnail aspect
+        const s = Math.min(src.width / width, src.height / height);
+        const sw = width * s, sh = height * s;
+        c.getContext('2d').drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, width, height);
+        resolve(c.toDataURL(type, quality));
+        return true;
+      });
+      this._thumbResolvers = [...(this._thumbResolvers ?? []), resolve];
+    });
   }
 
   /** Put the camera back at the default 3/4 view of the planet. */
@@ -138,6 +190,11 @@ export class PlanetViewer {
   _renderFrame(delta) {
     this.renderer.info.reset();
     this.planetRenderer.render(this.planet, this.camera, { target: null, delta });
+    if (this._afterFrame.length) {
+      // same task as the draw: the drawing buffer is still readable
+      const ok = this.planetRenderer.pending === 0 && this.planetRenderer.info.planets > 0;
+      this._afterFrame = this._afterFrame.filter((fn) => !fn(ok));
+    }
   }
 
   /** One manual frame (no clock advance) — e.g. when rAF is frozen. */
@@ -192,12 +249,15 @@ export class PlanetViewer {
         triangles: this.renderer.info.render.triangles,
         drawCalls: this.renderer.info.render.calls,
         chunks: this.planet.world.chunkCount,
+        pending: this.planetRenderer.pending,
       });
     }
   }
 
   dispose() {
     this._disposed = true;
+    for (const resolve of this._thumbResolvers ?? []) resolve(null);
+    this._afterFrame = [];
     this.stop();
     window.removeEventListener('resize', this._onResize);
     this._resizeObserver?.disconnect();

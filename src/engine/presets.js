@@ -171,7 +171,7 @@ export const DEFAULT_PARAMS = {
   // performance / render
   chunkRes: 32,            // grid quads per chunk side (rebuild)
   maxDepth: 5,             // quadtree depth (rebuild)
-  splitFactor: 2.4,        // split when camDist < size * factor
+  splitFactor: 2.4,        // LOD split distance, in node sizes
   wireframe: false,
 };
 

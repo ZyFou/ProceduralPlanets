@@ -88,7 +88,7 @@ float ringDepth(float rr, float fw) {
   // ringlets: 1D gradient noise at rising frequency, footprint-filtered
   float rl = 0.0;
   float f = 38.0, a = 0.55;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < DYN(5); i++) {
     float fade = 1.0 - smoothstep(0.2, 0.5, f * fw);
     rl += a * gnoise(vec3(u * f, s + float(i) * 3.1, 0.5)) * fade;
     f *= 2.6;
@@ -122,7 +122,7 @@ vec3 gasRotY(vec3 v, float a) {
 
 float gfbm(vec3 p, int oct) {
   float s = 0.0, a = 0.5, n = 0.0;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < DYN(6); i++) {
     if (i >= oct) break;
     s += a * gnoise(p);
     n += a;
@@ -181,7 +181,7 @@ float gasRowJet(float row, float rowLat) { return gasBands(rowLat / 1.5707963).y
 // bright collar, kind: 0 great spot, 1 white oval, 2 dark barge.
 vec3 gasStorms(vec3 d, float T, out float mask, out float ring, out float kind) {
   mask = 0.0; ring = 0.0; kind = 1.0;
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < DYN(12); i++) {
     float fi = float(i);
     vec3 h = gasStormHash(i);
     float size;
@@ -234,14 +234,14 @@ vec3 gasVortices(vec3 d, float T) {
   float fy = fract(uv.y);
   float iy = floor(uv.y);
   vec2 acc = vec2(0.0);
-  for (int gy = -1; gy <= 1; gy++) {
+  for (int gy = -1; gy <= DYN(1); gy++) {
     float row = iy + float(gy);
     float rowLat = gasRowLat(row, N);
     float drift = T * gasRowJet(row, rowLat) * 0.5 / 6.2831853 * N;
     float ux = uv.x + drift;
     float ix = floor(ux);
     float fx = fract(ux);
-    for (int gx = -1; gx <= 1; gx++) {
+    for (int gx = -1; gx <= DYN(1); gx++) {
       vec2 cell = vec2(mod(ix + float(gx), N), row);
       vec3 h = hash33(vec3(cell, 5.7) + uSeedOffset * 0.013) * 0.5 + 0.5;
       if (h.z > 0.35 + 0.5 * min(uGasTurb, 1.0)) continue;

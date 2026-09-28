@@ -104,16 +104,28 @@ renderer**; it owns the GPU buffers the planets share.
 | `scissor` | `true` | Only shade each planet's screen rectangle |
 | `autoUpdate` | `true` | Advance planet clocks from an internal clock when `render()` gets no `delta` |
 | `maxDelta` | `0.05` | Clamp for the internal clock step (seconds) |
+| `impostors` | `true` | Draw distant planets as impostors (see [embedding](embedding.md#distant-planets-impostors)) |
+| `impostorPixels` | `90` | Screen radius (px) under which a planet becomes an impostor |
+| `impostorUpdates` | `2` | Impostor pictures re-rendered per frame at most |
+| `impostorAngle` | `0.6` | View or sun direction change (degrees) that makes an impostor stale |
+| `impostorRefresh` | `0.5` | Planet-clock seconds between impostor refreshes (clouds, waves) |
+| `impostorAtlasSize` | `2048` | Largest impostor atlas edge (px); it starts at 512 (2 MB) and doubles when full |
 
 ### Methods
 
 | Method | Description |
 |---|---|
 | `render(planets, camera, { target?, delta? })` | Draw every visible planet in `planets`: an object tree (e.g. your scene), a `Planet` or an array. `camera` must be a `PerspectiveCamera`. `target` defaults to the renderer's current render target and needs a depth buffer for occlusion. Call it after your opaque scene |
-| `compile(planets, camera?)` | `Promise`: pre-compile the shaders, to avoid a stall on first use |
+| `prepare(planets, camera?, options?)` | `Promise`: get planets ready without stalling the page. Shaders compile in parallel (`KHR_parallel_shader_compile`), the one-time GPU bakes run a slice per frame, and it resolves when the next `render()` draws them at full quality: the place to hide a loading screen. Options: `modes` (also compile the other body types, default `false`), `bake` (default `true`), `target`, `onProgress({ stage, progress, stageEnd, done, total })` |
+| `compile(planets, camera?)` | `Promise`: `prepare()` without the bakes |
 | `setOptions(options)` | Change options at runtime |
 | `dispose()` | Free the shared buffers (planets are disposed separately) |
-| `info` | `{ planets, culled }` for the last `render()` |
+| `info` | `{ planets, culled, pending, impostors, captures }` for the last `render()` |
+| `pending` | Planets the last `render()` skipped because their shaders are still compiling |
+
+`render()` never compiles a shader on the spot. A planet whose programs are
+still compiling in the background is skipped (`info.pending`) instead of
+freezing the page; call `prepare()` first to show it from its first frame.
 
 The renderer restores the host renderer's state that it touches: render
 target, clear colour and alpha, `autoClear`, scissor.
@@ -135,7 +147,7 @@ A self-contained single-planet view: its own `WebGLRenderer`, camera,
 | `controls` | `true` | `OrbitControls` |
 | `autoStart` | `true` | Start the render loop |
 | `pixelRatio` | `2` | Max device pixel ratio |
-| `onStats` | — | `({ fps, triangles, drawCalls, chunks }) => void`, about 2 Hz |
+| `onStats` | — | `({ fps, triangles, drawCalls, chunks, pending }) => void`, about 2 Hz |
 
 ### Members
 
@@ -146,7 +158,9 @@ A self-contained single-planet view: its own `WebGLRenderer`, camera,
 | `frame()` | Reset the camera to the default three-quarter view |
 | `start()` / `stop()` / `running` | Render loop |
 | `renderOnce()` | One frame, without advancing time |
+| `prepare({ onProgress?, modes? })` | `Promise`: compile the shaders, run the bakes and draw the first frame. Resolves once that final-quality frame is on the canvas |
 | `screenshot(w = 1920, h = 1080)` | PNG data URL |
+| `captureThumbnail(w = 480, h, type = 'image/webp', quality)` | `Promise<string>`: a small copy of the next frame that draws the planet (no extra render) |
 | `dispose()` | Free everything (and remove the canvas it created) |
 
 ---

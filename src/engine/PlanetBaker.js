@@ -507,7 +507,8 @@ export async function bakePlanet(renderer, options = {}) {
     owned = true;
   }
   // the gas bake reads the jet table
-  planet._prepareFrame(renderer);
+  planet._prepareFrame();
+  planet._bakeFrame(renderer);
   const group = await bakeGroup(renderer, planet.params, planet.uniforms, {
     meshRes: options.meshResolution ?? 128,
     texRes: options.textureSize ?? 1024,

@@ -123,8 +123,28 @@ in a menu background.
 
 - Planets share the renderer's GPU targets. Each **visible** planet costs its own passes.
 - **Planets that are not visible cost nothing.** Off-screen planets are culled, and `planet.visible = false` skips one.
-- The **terrestrial** planet with clouds is the expensive one. It also allocates ~19 MB of weather cube maps.
-- A good pattern for many bodies is to switch between a live planet up close and a baked mesh far away with `THREE.LOD`. `PlanetRenderer` only draws visible planets, and `renderer.render()` updates the LOD first:
+- The **terrestrial** planet with clouds is the expensive one. Its weather maps take 9 MB close up, and much less when it is small on screen (they are sized to it: 128, 256 or 512 texels per cube face).
+- `planetRenderer.info` → `{ planets, culled, pending, impostors, captures }` for the last frame.
+
+### Distant planets: impostors
+
+A planet whose screen radius is under `impostorPixels` (90 px by default) is
+drawn as an **impostor**. The same pipeline renders it into a slot of a shared
+HDR atlas, from the current viewpoint, and a billboard shows that picture every
+frame. It looks the same as the full render, and it writes the same depth, so
+your geometry still occludes it and is occluded by it. The picture is refreshed
+when it goes stale: the view or sun direction moved (`impostorAngle`), the
+distance or size changed, a parameter was edited, or `impostorRefresh` seconds
+of planet time passed (clouds, waves). At most `impostorUpdates` pictures are
+re-rendered per frame, stalest first.
+
+Nothing to set up: a solar system of small planets costs a few billboards plus
+a couple of small re-renders per frame. Stars are always drawn in full (their
+glare spreads over the whole frame). Turn it off with `{ impostors: false }`.
+
+For very distant bodies you can still swap in a static baked mesh with
+`THREE.LOD`. `PlanetRenderer` only draws visible planets, and
+`renderer.render()` updates the LOD first:
 
 ```js
 const lod = new THREE.LOD();
@@ -133,22 +153,45 @@ lod.addLevel(await bakePlanet(renderer, { preset: 'mars', seed: 3, textureSize: 
 scene.add(lod);
 ```
 
-- `planetRenderer.info` → `{ planets, culled }` for the last frame.
+## Loading without stalls
+
+WebGL links a shader program on its first draw and then waits for the driver.
+For the terrain shader that is seconds, during which the page is frozen.
+`PlanetRenderer` never does that: it compiles every program a planet needs in
+the background (`KHR_parallel_shader_compile`) and skips the planet until they
+are ready (`info.pending`). To show a planet from its very first frame, prepare
+it behind your loading screen:
+
+```js
+await planets.prepare(scene, camera, {
+  onProgress: ({ stage, progress }) => loadingBar.set(progress),   // 0..1
+});
+// the next planets.render() draws everything at full quality
+hideLoadingScreen();
+```
+
+`prepare()` compiles the programs in parallel, runs the one-time GPU bakes (cloud
+noise, transmittance, first weather state) a slice per frame, and gives each
+program a first draw. Pass `{ modes: true }` to also compile the other body types
+and optional layers (clouds, rings), so that later switches never wait.
+`PlanetViewer.prepare()` does the same and resolves once its first frame is on
+the canvas.
 
 ## Performance knobs
 
 | Parameter | Effect |
 |---|---|
 | `cloudsEnabled` | The volumetric cloud pass is the most expensive thing on a terrestrial planet |
-| `cloudQuality` | Max raymarch steps (default 64) |
-| `cloudResolution` | Cloud pass resolution budget (0.25–1). Small on-screen planets get full resolution automatically |
-| `chunkRes`, `maxDepth`, `splitFactor` | Terrain LOD density (grid size per chunk, tree depth, split distance) |
+| `cloudQuality` | Max raymarch steps (default 64). The step length follows the cloud structure, so most rays need far fewer |
+| `cloudResolution` | Cloud pass resolution budget (0.25–1). Small on-screen planets get full resolution automatically, and only the cloud shell's screen rectangle is traced |
+| `chunkRes`, `maxDepth`, `splitFactor` | Terrain LOD density: grid size per chunk, tree depth, split distance. The whole terrain is one instanced draw per shader variant |
 | `octaves` | Noise octaves (compile-time) |
 | `scissor` (renderer option) | Leave it on: planets only shade their screen rectangle |
+| `impostors`, `impostorPixels` (renderer options) | Distant planets as billboards (see above) |
 
-**Shader compilation.** The terrain shader is large, and its first use can
-stall for a moment. Call `await planets.compile(planet, camera)` during
-loading. It uses `KHR_parallel_shader_compile` where the browser supports it.
+**Level of detail.** The terrain LOD is geomorphed: a chunk's vertices slide
+onto its parent's grid as the camera moves away, so chunks split and merge
+without any visible pop.
 
 ## Picking and placing things on a planet
 

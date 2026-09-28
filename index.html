@@ -3,37 +3,141 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#07090c">
+<meta name="theme-color" content="#05060a">
 <title>Procedural Planets - Stylized Planet Studio</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #07090c; }
-  #boot-splash {
-    position: fixed; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px;
-    background: #07090c; color: #8b93a3; z-index: 100;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    transition: opacity .45s ease; pointer-events: none;
+  html, body { margin: 0; height: 100%; background: #05060a; }
+
+  /* ---- the one loading screen: up from the first paint until the planet's
+     first final frame is on the canvas. Every animation here is a transform /
+     opacity keyframe, so it runs on the compositor even while the page is
+     busy. */
+  #pp-loader {
+    position: fixed; inset: 0; z-index: 100000;
+    display: grid; place-items: center;
+    background:
+      radial-gradient(60vmax 60vmax at 50% 46%, rgba(37, 99, 235, 0.07), transparent 62%),
+      linear-gradient(180deg, #05060a 0%, #070910 100%);
+    color: #8b93a3;
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: opacity .45s cubic-bezier(.4, 0, .2, 1), transform .45s cubic-bezier(.4, 0, .2, 1);
+    will-change: opacity, transform;
   }
-  #boot-splash.hide { opacity: 0; }
-  .bs-logo {
-    width: 36px;
-    height: 36px;
-    color: #2563eb;
-    animation: bs-fade 1.4s ease-in-out infinite;
+  #pp-loader.done { opacity: 0; transform: scale(1.015); pointer-events: none; }
+  .ppl-center { display: flex; flex-direction: column; align-items: center; transform: translateY(-2vh); }
+
+  /* planet + orbiting moon: the orbit is a squashed, tilted circle drawn
+     twice — whole behind the planet, near half in front of it — so the moon
+     passes behind the disc */
+  .ppl-mark { position: relative; width: 112px; height: 76px; margin-bottom: 26px; }
+  .ppl-planet {
+    position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 30%, rgba(160, 196, 255, 0.55) 0%, rgba(160, 196, 255, 0) 38%),
+      radial-gradient(circle at 36% 34%, #3f74e0 0%, #1d3f96 42%, #0b1638 74%, #060a18 100%);
+    box-shadow: 0 0 0 1px rgba(122, 162, 255, 0.16), 0 0 26px rgba(37, 99, 235, 0.28);
   }
-  .bs-title { font-size: 13px; letter-spacing: .22em; text-transform: uppercase; }
-  @keyframes bs-fade { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+  .ppl-orbit {
+    position: absolute; left: 0; top: 50%; width: 112px; height: 112px; margin-top: -56px;
+    transform: rotate(-18deg) scaleY(0.34);
+  }
+  .ppl-orbit.front { clip-path: inset(50% 0 0 0); }
+  .ppl-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(122, 162, 255, 0.28); }
+  .ppl-spin { position: absolute; inset: 0; animation: ppl-spin 3.4s linear infinite; }
+  .ppl-moon {
+    position: absolute; left: 50%; top: -9px; width: 7px; height: 20px; margin-left: -3.5px;
+    border-radius: 50%; background: #dfe8ff;
+    box-shadow: 0 0 10px 2px rgba(122, 162, 255, 0.7);
+    animation: ppl-spin 3.4s linear infinite reverse;
+  }
+  @keyframes ppl-spin { to { transform: rotate(360deg); } }
+
+  .ppl-title { font-size: 11px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #aab2c2; margin-left: .3em; }
+  .ppl-progress { width: 240px; margin-top: 22px; }
+  .ppl-track { position: relative; height: 2px; border-radius: 2px; background: #161b27; overflow: hidden; }
+  .ppl-fill {
+    position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0);
+    background: linear-gradient(90deg, #1d4ed8, #2563eb 55%, #7aa2ff);
+    border-radius: 2px;
+  }
+  .ppl-shine {
+    position: absolute; top: 0; bottom: 0; left: 0; width: 60px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: ppl-shine 1.6s cubic-bezier(.45, 0, .55, 1) infinite;
+    mix-blend-mode: overlay;
+  }
+  @keyframes ppl-shine { from { transform: translateX(-60px); } to { transform: translateX(240px); } }
+  .ppl-status { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; line-height: 1; }
+  .ppl-stage { color: #6d7587; }
+  .ppl-pct { color: #9aa3b5; font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+  @media (prefers-reduced-motion: reduce) {
+    .ppl-spin, .ppl-moon, .ppl-shine { animation: none; }
+    #pp-loader { transition-duration: .2s; }
+  }
 </style>
 </head>
 <body>
-  <div id="boot-splash">
-    <svg class="bs-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"></circle>
-      <path d="M4.2 14.1c-1.2-.8-1.8-1.7-1.5-2.6.6-1.8 5.2-2 10.3-.5s8.8 4.2 8.2 6c-.3.9-1.5 1.4-3.3 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-      <path d="M19.8 9.9c1.2.8 1.8 1.7 1.5 2.6-.6 1.8-5.2 2-10.3.5S2.2 8.8 2.8 7c.3-.9 1.5-1.4 3.3-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-    </svg>
-    <div class="bs-title">Procedural Planets</div>
+  <div id="pp-loader" data-pp-loader="studio" role="progressbar" aria-label="Loading Procedural Planets" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="ppl-center">
+      <div class="ppl-mark" aria-hidden="true">
+        <div class="ppl-orbit"><div class="ppl-ring"></div><div class="ppl-spin"><div class="ppl-moon"></div></div></div>
+        <div class="ppl-planet"></div>
+        <div class="ppl-orbit front"><div class="ppl-ring"></div><div class="ppl-spin"><div class="ppl-moon"></div></div></div>
+      </div>
+      <div class="ppl-title">Procedural Planets</div>
+      <div class="ppl-progress">
+        <div class="ppl-track"><div class="ppl-fill"></div><div class="ppl-shine"></div></div>
+        <div class="ppl-status"><span class="ppl-stage" aria-live="polite">Loading studio</span><span class="ppl-pct">0%</span></div>
+      </div>
+    </div>
   </div>
+  <script>
+    // Loading screen API for the app: progress(value 0..1, label, stageEnd)
+    // and done() (fills the bar, fades out, removes itself). While a stage
+    // runs, the bar creeps toward its end so it never looks stuck.
+    window.__ppLoader = (() => {
+      const el = document.getElementById('pp-loader');
+      const fill = el.querySelector('.ppl-fill');
+      const stageEl = el.querySelector('.ppl-stage');
+      const pctEl = el.querySelector('.ppl-pct');
+      let target = 0, creepTo = 0.12, stageT = performance.now(), shown = 0, last = -1, closing = null;
+      const tick = (now) => {
+        if (!el.isConnected) return;
+        const creep = target + (creepTo - target) * (1 - Math.exp(-(now - stageT) / 1800));
+        const goal = closing ? 1 : Math.max(target, Math.min(creep, creepTo - 0.01));
+        shown += (goal - shown) * (closing ? 0.4 : 0.1);
+        if (goal - shown < 0.0005) shown = goal;
+        fill.style.transform = `scaleX(${shown.toFixed(4)})`;
+        const pct = Math.round(shown * 100);
+        if (pct !== last) { last = pct; pctEl.textContent = `${pct}%`; el.setAttribute('aria-valuenow', pct); }
+        if (closing && shown >= 0.995) { const c = closing; closing = null; fill.style.transform = 'scaleX(1)'; c(); }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      return {
+        progress(value, label, stageEnd) {
+          target = Math.min(1, Math.max(target, value));
+          if (stageEnd !== undefined && stageEnd > creepTo - 0.001) { creepTo = Math.max(stageEnd, target); stageT = performance.now(); }
+          if (label && stageEl.textContent !== label) stageEl.textContent = label;
+        },
+        done() {
+          return new Promise((resolve) => {
+            if (!el.isConnected) { resolve(); return; }
+            stageEl.textContent = 'Ready';
+            closing = () => {
+              el.classList.add('done');
+              let finished = false;
+              const end = () => { if (finished) return; finished = true; el.remove(); resolve(); };
+              el.addEventListener('transitionend', (e) => { if (e.target === el && e.propertyName === 'opacity') end(); });
+              setTimeout(end, 700);
+            };
+          });
+        },
+      };
+    })();
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>

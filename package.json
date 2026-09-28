@@ -48,6 +48,7 @@
     "test": "vitest run",
     "docs:params": "node scripts/gen-param-docs.mjs",
     "docs:check": "node scripts/gen-param-docs.mjs --check",
+    "bench": "node bench/run.mjs",
     "prepublishOnly": "npm run docs:check && npm test && npm run build:lib"
   },
   "peerDependencies": {

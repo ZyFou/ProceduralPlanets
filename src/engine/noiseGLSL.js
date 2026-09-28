@@ -31,6 +31,11 @@ uniform float uCraters;        // 0..1 crater dent strength
 uniform float uCraterScale;    // crater cell frequency
 uniform float uContinents;     // continent shelf shaping (0 = raw fbm)
 uniform float uTime;
+// always 0: added to loop bounds so the shader compiler cannot unroll them.
+// Unrolled noise loops made these programs several times bigger and took
+// seconds to compile (ANGLE / D3D11) for no measurable speed-up.
+uniform int uLoopBias;
+#define DYN(n) ((n) + uLoopBias)
 `;
 
 export const NOISE_FUNCTIONS_GLSL = /* glsl */ `
@@ -61,7 +66,7 @@ float fbm(vec3 p) {
   float sum = 0.0;
   float amp = 0.5;
   float norm = 0.0;
-  for (int i = 0; i < OCTAVES; i++) {
+  for (int i = 0; i < DYN(OCTAVES); i++) {
     sum += vnoise3(p) * amp;
     norm += amp;
     amp *= uPersistence;
@@ -75,7 +80,7 @@ float ridgedFbm(vec3 p) {
   float sum = 0.0;
   float amp = 0.5;
   float norm = 0.0;
-  for (int i = 0; i < OCTAVES; i++) {
+  for (int i = 0; i < DYN(OCTAVES); i++) {
     float n = 1.0 - abs(vnoise3(p) * 2.0 - 1.0);
     sum += n * n * amp;
     norm += amp;
@@ -90,9 +95,9 @@ float worley(vec3 p) {
   vec3 i = floor(p);
   vec3 f = fract(p);
   float d = 8.0;
-  for (int x = -1; x <= 1; x++)
-  for (int y = -1; y <= 1; y++)
-  for (int z = -1; z <= 1; z++) {
+  for (int x = -1; x <= DYN(1); x++)
+  for (int y = -1; y <= DYN(1); y++)
+  for (int z = -1; z <= DYN(1); z++) {
     vec3 g = vec3(float(x), float(y), float(z));
     vec3 o = vec3(hash13(i + g), hash13(i + g + 17.1), hash13(i + g + 41.7));
     d = min(d, length(g + o - f));
@@ -207,7 +212,7 @@ vec4 continentFbm(vec3 p, out float cLow) {
   float lac = 1.0;         // d(q)/d(p) scale of the current octave
   vec3 q = p;
   cLow = 0.0;
-  for (int i = 0; i < OCTAVES; i++) {
+  for (int i = 0; i < DYN(OCTAVES); i++) {
     vec4 n = gnoised(q);
     sum += amp * n.x;
     grad = OCT_ROT * grad + (amp * lac) * n.yzw;
@@ -271,7 +276,7 @@ vec4 continentFbmFrom(vec3 pw, HeightLow L, out float cLow) {
   }
   float sum = L.cont.x;
   vec3 H = contLowFrame() * L.cont.yzw;
-  for (int i = CONT_LOW; i < OCTAVES; i++) {
+  for (int i = CONT_LOW; i < DYN(OCTAVES); i++) {
     vec4 n = gnoised(q);
     sum += amp * n.x;
     H = OCT_ROT * H + (amp * lac) * n.yzw;
@@ -296,7 +301,7 @@ vec4 ridgedMF(vec3 p) {
   vec3 dw = vec3(0.0);
   float lac = 1.0;
   vec3 q = p;
-  for (int i = 0; i < OCTAVES; i++) {
+  for (int i = 0; i < DYN(OCTAVES); i++) {
     vec4 n = gnoised(q);
     vec3 gn = lac * n.yzw;
     float sgn = n.x >= 0.0 ? 1.0 : -1.0;
@@ -318,7 +323,8 @@ vec4 ridgedMF(vec3 p) {
   return vec4(sum, octaveFrameToDomain() * grad) / max(norm, 1e-5);
 }
 
-// worley F1 with gradient (crater bowls)
+// worley F1 with gradient (crater bowls). Constant bounds on purpose: this
+// search runs faster unrolled (bench: moon-near +15% with a dynamic loop).
 vec4 worleyD(vec3 p) {
   vec3 i = floor(p);
   vec3 f = fract(p);

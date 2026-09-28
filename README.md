@@ -3,16 +3,38 @@
 Procedural planets, gas giants and stars for **three.js**, created from code
 and dropped into your own scene.
 
+<p align="center"><img src="docs/images/terran.webp" alt="A terrestrial ocean world with continents, shallow-water shelves, volumetric clouds and an atmospheric rim" width="860"></p>
+
 - **Terrestrial planets.** GPU height field on a cube-sphere quadtree LOD, climate biomes, an analytic ocean (Beer–Lambert water, sun glint, foam), volumetric clouds and physically based atmospheric scattering.
 - **Gas giants.** Belts, zones and jets, storms and a great spot, rings with shadows.
 - **Stars.** Blackbody colour, granulation, sunspots, prominences, a corona and bloom.
 - **Two ways to use them.** Live full-quality planets composited into your frame with correct depth, or cheap baked meshes with standard materials.
+- **Deterministic.** The same seed and parameters always give the same body, so a planet is just a small parameter object you can save, share or generate.
 
 This repository also contains **Procedural Planets Studio**, the visual editor
 used to design planets. Anything made there can be loaded back in code (see
-[studio interop](docs/studio-interop.md)).
+[below](#procedural-planets-studio) and [studio interop](docs/studio-interop.md)).
 
-<p align="center"><img src="docs/images/solar-system.png" alt="A terrestrial planet, a ringed gas giant and ordinary three.js meshes in one scene (examples/embed-solar-system.html)" width="760"></p>
+## Gallery
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/arid.webp" alt="An arid terrestrial planet: sand-coloured continents, shallow green seas, snow on the ridges"></td>
+    <td width="50%"><img src="docs/images/gas-giant.webp" alt="A gas giant with cream zones, rust belts, turbulent jet edges and a red storm on the limb"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Terrestrial: an arid world with shallow seas and snow-capped ranges</sub></td>
+    <td align="center"><sub>Gas giant: belts, zones, jet-stream turbulence and a great spot</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/star.webp" alt="A yellow star with a granulated surface, red prominences on the limb and a streaming corona"></td>
+    <td width="50%"><img src="docs/images/solar-system.png" alt="A terrestrial planet, a ringed gas giant and ordinary three.js meshes in one scene"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Star: granulation, prominences and corona</sub></td>
+    <td align="center"><sub>Embedded next to ordinary three.js meshes (<a href="examples/embed-solar-system.html">examples/embed-solar-system.html</a>)</sub></td>
+  </tr>
+</table>
 
 ## Install
 
@@ -75,6 +97,20 @@ const moon = await bakePlanet(renderer, { preset: 'moon', radius: 500, textureSi
 scene.add(moon);   // plain meshes with MeshStandardMaterial, lit by your lights
 ```
 
+## Procedural Planets Studio
+
+<p align="center"><img src="docs/images/studio.webp" alt="Procedural Planets Studio: a live planet in the viewport, the Terrain panel with radius, sea level and noise sliders, and a tool rail for biomes, style, water, clouds, performance and export" width="860"></p>
+
+The studio is a browser editor built on the same engine as the package. Switch
+between planet, gas giant and star; tune terrain, biomes, style, water, clouds
+and performance settings with live feedback; search every setting with
+<kbd>Ctrl</kbd>+<kbd>K</kbd>; save projects; and export glTF / ZIP or a
+ready-to-paste code snippet from the **Export** panel's *Use in code* section.
+
+Run it locally with `npm run dev` and open <http://localhost:6061/>. To load a
+studio project or export in your own code, see
+[studio interop](docs/studio-interop.md).
+
 ## Documentation
 
 | | |
@@ -97,6 +133,7 @@ npm test             # unit tests (vitest)
 npm run build:lib    # library -> dist/lib
 npm run build:studio # studio app -> dist/studio
 npm run docs:params  # regenerate docs/parameters.md, docs/presets.md, PARAM_DOCS, types/params.d.ts
+npm run bench        # performance + quality harness (see bench/README.md)
 ```
 
 Visual checks (with `npm run dev` running):
@@ -113,6 +150,7 @@ src/          the studio app (React)
 types/        TypeScript declarations (params.d.ts is generated)
 docs/         documentation (parameters.md / presets.md are generated)
 examples/     runnable examples
+bench/        the benchmark harness (headless Chrome on the real GPU)
 ```
 
 ## License

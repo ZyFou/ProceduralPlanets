@@ -88,12 +88,21 @@ describe('Planet', () => {
     planet.dispose();
   });
 
-  it('marks structural rebuilds', () => {
+  it('rebuilds on structural changes only', () => {
     const planet = new Planet();
-    planet._needsWarmup = false;
+    const templates = planet.world.templateMaterials;
+    const rebuild = vi.spyOn(planet.world, 'rebuild');
+    planet.set({ octaves: planet.get('octaves'), chunkRes: planet.get('chunkRes') });
+    planet.setParam('maxDepth', planet.get('maxDepth'));
+    expect(rebuild).not.toHaveBeenCalled();
+    planet.set({ chunkRes: 16 });
+    expect(rebuild).toHaveBeenCalledTimes(1);
+    // same shader: the terrain programs stay alive (no recompile)
+    expect(planet.world.templateMaterials).toBe(templates);
     planet.set({ octaves: 5 });
     expect(planet.world.opts.octaves).toBe(5);
-    expect(planet._needsWarmup).toBe(true);
+    expect(planet.world.templateMaterials).not.toBe(templates);
+    expect(planet.world.templateMaterials[0].defines.OCTAVES).toBe(5);
     planet.dispose();
   });
 

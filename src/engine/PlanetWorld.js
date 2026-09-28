@@ -2,32 +2,38 @@ import * as THREE from 'three';
 import { createTerrainMaterial } from './materials.js';
 
 // ============================================================================
-// Cube-sphere quadtree LOD world.
+// Cube-sphere quadtree LOD world, geomorphed and instanced.
 //
-// Six cube faces, each a quadtree over face-UV [0,1]². Every visible node is
-// one chunk mesh: a SHARED unit grid geometry whose vertex shader maps
-// (uv0 + pos*size) through the per-chunk face basis onto the unit cube, then
-// normalizes to the sphere and displaces by the GLSL height field. Split /
-// merge is purely a CPU tree decision — geometry never changes, so LOD
-// transitions are just meshes appearing/disappearing (with skirts hiding the
-// cracks between levels).
+// Six cube faces, each a quadtree over face-UV [0,1]². Every selected node is
+// one chunk: the SHARED unit grid, instanced — per-chunk data (face, UV
+// origin + size, morph band, skirt depth) lives in instance attributes, so
+// the whole terrain is ONE draw per shader variant, however many chunks.
+// The vertex shader maps the grid through the face onto the unit cube,
+// normalizes to the sphere and displaces by the GLSL height field.
 //
-// Culling: horizon test — a chunk whose center direction lies beyond the
-// planet horizon from the camera (with a height margin) cannot be visible.
-// Chunks the tree keeps are then hidden (not destroyed) every frame when they
-// are outside the view frustum or entirely below the true horizon: the
-// vertex shader evaluates the full height field, so off-screen chunks are
-// not free.
+// LOD transitions are continuous (CDLOD-style geomorphing). A node splits
+// when the camera comes within range[level] of the nearest point of its cap
+// on the sphere. Each vertex computes its own distance and, over the last
+// part of its chunk's range, slides its odd grid vertices onto the parent's
+// grid: by the time a chunk merges into its parent it IS its parent's
+// surface, and a new chunk appears as an exact copy of the one it replaces.
+// For that the ranges are sized from the nodes' real extent on the sphere
+// (morphBands): a chunk's farthest vertex must still be unmorphed when the
+// chunk splits. Skirts still hide the T-junction cracks at level borders.
 //
-// Chunk meshes are pooled, never disposed while the world lives: three
-// deletes a shader program as soon as its last material is disposed, so
-// dropping every chunk of one terrain variant (crossing the level-2 LOD
-// boundary while zooming) would recompile it — a multi-second stall for this
-// shader — on the way back. warmup() compiles both variants in the
-// background up front, before the first zoom needs the fine one.
+// Culling per chunk, every frame: horizon (the whole cap, heights included,
+// behind the planet) and frustum (bounding sphere vs the side planes).
+// Chunks are sorted front to back so early-z rejects hidden terrain before
+// its heavy fragment shader runs.
+//
+// Two shader variants (LOW_VARYING interpolates the low octaves from the
+// vertices, for chunks fine enough to resolve them: level >= 3). Their
+// materials live as long as the world (three deletes a program with its last
+// material, and recompiling this shader takes seconds); PlanetRenderer
+// compiles them ahead, asynchronously, before the first draw.
 // ============================================================================
 
-const FACES = [
+export const FACES = [
   { origin: [-1, -1, 1], u: [2, 0, 0], v: [0, 2, 0] },   // +Z
   { origin: [1, -1, -1], u: [-2, 0, 0], v: [0, 2, 0] },  // -Z
   { origin: [1, -1, 1], u: [0, 0, -2], v: [0, 2, 0] },   // +X
@@ -36,15 +42,23 @@ const FACES = [
   { origin: [-1, -1, -1], u: [2, 0, 0], v: [0, 0, 2] },  // -Y
 ];
 
+const LOW_VARYING_LEVEL = 3;
+const END_SLACK = 0.97;   // morph done at 97% of the parent's merge distance
+const MIN_BAND = 1.15;    // morph band >= 0.13 node diameters wide
+// coarsest chunks drawn: the domain warp is interpolated from the vertices
+// (WARP_VARYING), which a whole cube face per chunk (level 0) is too coarse for
+export const MIN_LEVEL = 1;
+const NO_MORPH = 1e20;
+const INSTANCE_STRIDE = { iNode: 4, iMorph: 3 };
+
 // Shared grid geometry: res×res quads in [0,1]² plus a skirt ring flagged by
 // aSkirt=1 (the vertex shader sinks those radially to hide LOD cracks).
-function buildChunkGeometry(res) {
+function buildGrid(res) {
   const size = res + 1;
   const positions = [];
   const skirt = [];
   const indices = [];
 
-  // interior grid
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       positions.push(x / res, y / res, 0);
@@ -52,6 +66,8 @@ function buildChunkGeometry(res) {
     }
   }
   const idx = (x, y) => y * size + x;
+  // (a, b, d) (a, d, c): the geomorph collapses a quad onto the parent quad
+  // with the same diagonal
   for (let y = 0; y < res; y++) {
     for (let x = 0; x < res; x++) {
       const a = idx(x, y), b = idx(x + 1, y), c = idx(x, y + 1), d = idx(x + 1, y + 1);
@@ -59,7 +75,6 @@ function buildChunkGeometry(res) {
     }
   }
 
-  // skirt ring: duplicate border vertices with aSkirt=1
   const borderIds = [];
   for (let x = 0; x < size; x++) borderIds.push(idx(x, 0));
   for (let y = 1; y < size; y++) borderIds.push(idx(size - 1, y));
@@ -79,13 +94,91 @@ function buildChunkGeometry(res) {
     const b2 = ringStart + ((i + 1) % ringLen);
     indices.push(a, a2, b, b, a2, b2);
   }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('aSkirt', new THREE.Float32BufferAttribute(skirt, 1));
-  geo.setIndex(indices);
-  return geo;
+  return {
+    position: new THREE.Float32BufferAttribute(positions, 3),
+    aSkirt: new THREE.Float32BufferAttribute(skirt, 1),
+    index: new THREE.Uint32BufferAttribute(indices, 1),
+    triangles: indices.length / 3,
+  };
 }
+
+// ---- node geometry on the unit sphere ----------------------------------------
+export function faceDir(f, u, v, out = [0, 0, 0]) {
+  const face = FACES[f];
+  const x = face.origin[0] + u * face.u[0] + v * face.v[0];
+  const y = face.origin[1] + u * face.u[1] + v * face.v[1];
+  const z = face.origin[2] + u * face.u[2] + v * face.v[2];
+  const len = Math.sqrt(x * x + y * y + z * z) || 1;
+  out[0] = x / len; out[1] = y / len; out[2] = z / len;
+  return out;
+}
+
+const _d = [0, 0, 0];
+const SAMPLES = [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]];
+
+// centre direction + angular radius of the cap containing a node
+function nodeCap(f, u0, v0, s) {
+  const c = faceDir(f, u0 + s / 2, v0 + s / 2, [0, 0, 0]);
+  let cosA = 1;
+  for (const [du, dv] of SAMPLES) {
+    faceDir(f, u0 + du * s, v0 + dv * s, _d);
+    cosA = Math.min(cosA, _d[0] * c[0] + _d[1] * c[1] + _d[2] * c[2]);
+  }
+  return { c, alpha: Math.acos(Math.max(-1, Math.min(1, cosA))) };
+}
+
+/**
+ * Split ranges + morph bands per level for a sphere of radius R.
+ * rangeScale: range = rangeScale x the level's largest cap diameter.
+ * Returns { range[], morphStart[], morphEnd[], diam[] }: level L splits when
+ * the camera is nearer than range[L] to a node's cap; leaves at level L morph
+ * toward level L-1 between morphStart[L] and morphEnd[L].
+ */
+export function morphBands(R, maxDepth, rangeScale) {
+  const diam = [];
+  for (let L = 0; L <= maxDepth; L++) {
+    // nodes are symmetric across faces and quadrants: one quadrant of a face
+    const n = 1 << L;
+    const half = Math.max(1, n >> 1);
+    let maxA = 0;
+    for (let gy = 0; gy < half; gy++) {
+      for (let gx = 0; gx < half; gx++) maxA = Math.max(maxA, nodeCap(0, gx / n, gy / n, 1 / n).alpha);
+    }
+    diam.push(2 * R * Math.sin(Math.min(maxA, Math.PI / 2)));
+  }
+  // natural ranges, then bottom-up: a level must merge far enough out that
+  // its children fit a real morph band (untouched until range + diameter,
+  // done by END_SLACK x the parent's range). Near the cube corners' top
+  // levels the caps shrink by less than 2x per level (level 1 -> 2: 1.73x),
+  // which would squeeze that band to nothing.
+  const range = diam.map((d) => d * rangeScale);
+  for (let L = maxDepth - 1; L >= 0; L--) {
+    range[L] = Math.max(range[L], (range[L + 1] + diam[L + 1] * MIN_BAND) / END_SLACK);
+  }
+  // the coarsest level drawn never merges: no morph
+  const morphStart = [];
+  const morphEnd = [];
+  for (let L = 0; L <= Math.min(MIN_LEVEL, maxDepth); L++) {
+    morphStart.push(NO_MORPH);
+    morphEnd.push(NO_MORPH);
+  }
+  for (let L = MIN_LEVEL + 1; L <= maxDepth; L++) {
+    // fully morphed before the parent merges (it merges at range[L-1]), with
+    // slack for the camera crossing the range between two frames ...
+    const end = range[L - 1] * END_SLACK;
+    // ... and untouched while any of its vertices can still be reached by its
+    // own split (its farthest vertex is within range[L] + its diameter)
+    const start = range[L] + diam[L] * 1.02;
+    morphStart.push(start);
+    morphEnd.push(end);
+  }
+  return { range, morphStart, morphEnd, diam };
+}
+
+// splitFactor (1.2 .. 4, default 2.4) -> range / node diameter. The morph
+// band between two levels needs ~1.45 to stay pop-free (bench: flythrough
+// pops); 1.2 -> 1.3 trades a few faint pops for fewer chunks, 4 -> 1.825.
+export const rangeScaleFor = (splitFactor) => 1.3 + (Math.max(splitFactor, 0.2) - 1.2) * 0.1875;
 
 export class PlanetWorld {
   constructor(scene, sharedUniforms, opts) {
@@ -94,129 +187,141 @@ export class PlanetWorld {
     this.opts = { chunkRes: 32, maxDepth: 5, splitFactor: 2.4, octaves: 6, ...opts };
     this.group = new THREE.Group();
     this.scene.add(this.group);
-    this.geometry = buildChunkGeometry(this.opts.chunkRes);
-    this.chunks = new Map();     // key -> mesh
-    this._pool = [[], []];       // free chunk meshes by variant (1: LOW_VARYING)
-    this._desired = new Map();   // key -> node desc (rebuilt every update)
+
+    this.wireframe = false;
+    this.lowVaryingLevel = LOW_VARYING_LEVEL;
+    // the LOW_VARYING program is an optimisation: until it has compiled
+    // (PlanetRenderer sets this), its chunks draw with the exact variant
+    this.useLowVarying = true;
+    this.templateMaterials = this._createMaterials();
+    this._buildMeshes();
+
+    this.chunks = new Map();     // key -> node, the chunks of the last update
+    this.chunkCount = 0;
+    this.pendingCount = 0;       // nothing streams: every chunk is live at once
+
+    this._caps = new Map();      // node key -> { c, alpha } (static geometry)
+    this._bands = null;
+    this._bandsKey = '';
+    this._leaves = [];
     this._camPos = new THREE.Vector3();
-    this._v = new THREE.Vector3();
+    this._camN = [0, 1, 0];
+    this._camDist = 0;
+    this._thetaMax = Math.PI;
     this._frustum = new THREE.Frustum();
     this._projView = new THREE.Matrix4();
     this._sphere = new THREE.Sphere();
-    this.chunkCount = 0;
-    this.wireframe = false;
   }
 
   get radius() { return this.shared.uRadius.value; }
   get heightScale() { return this.shared.uHeightScale.value; }
 
-  setWireframe(on) {
-    this.wireframe = on;
-    for (const mesh of this.chunks.values()) mesh.material.wireframe = on;
+  // one material per variant (0: per-pixel low octaves, 1: LOW_VARYING)
+  _createMaterials() {
+    return [0, 1].map((low) => {
+      const m = createTerrainMaterial(this.shared, this.opts.octaves, low === 1, this.opts.chunkRes);
+      m.wireframe = this.wireframe;
+      return m;
+    });
   }
 
-  /**
-   * Start compiling both terrain variants and park their meshes in the pool,
-   * which keeps the programs alive. compile() only issues compile + link; the
-   * driver builds them in the background and nothing waits on the status
-   * until first use. (Not compileAsync: its status poll throws if the world
-   * is rebuilt or disposed before the compile finishes.) `target` must be
-   * the render target the terrain is drawn into: the program key depends on
-   * its colour space.
-   */
-  warmup(renderer, camera, target) {
-    const scene = new THREE.Scene();
-    for (const low of [0, 1]) {
-      if (this._pool[low].length) continue;
-      const mesh = this._newMesh(low);
-      scene.add(mesh);
-      this._pool[low].push(mesh);
+  _buildMeshes() {
+    const grid = buildGrid(this.opts.chunkRes);
+    this._grid = grid;
+    this.meshes = [0, 1].map((low) => {
+      const geo = new THREE.InstancedBufferGeometry();
+      geo.setAttribute('position', grid.position);
+      geo.setAttribute('aSkirt', grid.aSkirt);
+      geo.setIndex(grid.index);
+      geo.instanceCount = 0;
+      this._allocInstances(geo, 256);
+      const mesh = new THREE.Mesh(geo, this.templateMaterials[low]);
+      mesh.frustumCulled = false;       // culled per chunk in update()
+      mesh.renderOrder = low ? 0 : 1;   // fine (near) chunks first: early-z
+      mesh.visible = false;
+      this.group.add(mesh);
+      return mesh;
+    });
+  }
+
+  _allocInstances(geo, capacity) {
+    for (const [name, size] of Object.entries(INSTANCE_STRIDE)) {
+      const attr = new THREE.InstancedBufferAttribute(new Float32Array(capacity * size), size);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute(name, attr);
     }
-    if (!scene.children.length) return;
-    const prev = renderer.getRenderTarget();
-    renderer.setRenderTarget(target);
-    renderer.compile(scene, camera);
-    renderer.setRenderTarget(prev);
+    geo.userData.capacity = capacity;
   }
 
   _disposeMeshes() {
-    for (const mesh of this.chunks.values()) {
-      this.group.remove(mesh);
-      mesh.material.dispose();
+    for (const mesh of this.meshes ?? []) {
+      mesh.removeFromParent();
+      mesh.geometry.dispose();
     }
-    this.chunks.clear();
-    for (const pool of this._pool) {
-      for (const mesh of pool) {
-        mesh.removeFromParent();
-        mesh.material.dispose();
-      }
-      pool.length = 0;
-    }
+    this.meshes = [];
+  }
+
+  setWireframe(on) {
+    this.wireframe = on;
+    for (const m of this.templateMaterials) m.wireframe = on;
   }
 
   /** Rebuild everything (structural change: chunkRes / maxDepth / octaves). */
   rebuild(opts = {}) {
+    const prev = { ...this.opts };
     Object.assign(this.opts, opts);
+    // new materials BEFORE the old ones go: an unchanged shader keeps its
+    // programs (no recompile), a changed one gets compiled ahead
+    if (this.opts.octaves !== prev.octaves) {
+      const old = this.templateMaterials;
+      this.templateMaterials = this._createMaterials();
+      for (const m of old) m.dispose();
+    }
+    for (const m of this.templateMaterials) m.uniforms.uGridRes.value = this.opts.chunkRes;
     this._disposeMeshes();
-    this.geometry.dispose();
-    this.geometry = buildChunkGeometry(this.opts.chunkRes);
+    this._buildMeshes();
+    this._bandsKey = '';
+    this.chunks.clear();
+    this.chunkCount = 0;
   }
 
-  /** Rebuild the LOD tree for the camera; `camera` (optional) enables culling. */
+  _cap(f, level, gx, gy) {
+    const key = ((f * 16 + level) * 65536 + gy) * 65536 + gx;
+    let cap = this._caps.get(key);
+    if (!cap) {
+      const s = 1 / (1 << level);
+      cap = nodeCap(f, gx * s, gy * s, s);
+      this._caps.set(key, cap);
+    }
+    return cap;
+  }
+
+  _updateBands() {
+    const key = `${this.radius}|${this.opts.maxDepth}|${this.opts.splitFactor}`;
+    if (key === this._bandsKey) return;
+    this._bandsKey = key;
+    this._bands = morphBands(this.radius, this.opts.maxDepth, rangeScaleFor(this.opts.splitFactor));
+  }
+
+  /** Select, cull and upload the chunks for the camera; `camera` (optional) enables frustum culling. */
   update(cameraPos, camera = null) {
-    this._camPos.copy(cameraPos);
-    this._desired.clear();
-
-    const camDist = this._camPos.length();
-    const R = this.radius;
-    // horizon cos with generous margin for terrain height + skirt
-    const hr = Math.min(R / Math.max(camDist, R + 1), 1);
-    const cosHorizon = Math.sqrt(Math.max(1 - hr * hr, 0));
-    const camDirN = this._v.copy(this._camPos).normalize();
-    this._cosCull = -1;
-    if (camDist > R * 1.05) {
-      // widen by the angular size of a chunk + height margin
-      this._cosCull = cosHorizon * hr - 0.18;
-    }
-    this._camDirN = camDirN.clone();
-
-    for (let f = 0; f < 6; f++) this._visit(f, 0, 0, 0);
-
-    // diff desired vs current
-    for (const [key, mesh] of this.chunks) {
-      if (!this._desired.has(key)) {
-        this.group.remove(mesh);
-        this._pool[mesh.userData.low].push(mesh);
-        this.chunks.delete(key);
-      }
-    }
-    for (const [key, node] of this._desired) {
-      if (!this.chunks.has(key)) this._createChunk(key, node);
-    }
-    this.chunkCount = this.chunks.size;
-
-    // draw front to back so early-z rejects hidden terrain before its (heavy)
-    // fragment shader runs. Every chunk owns a material, so three would
-    // otherwise sort by material id (creation order).
-    for (const mesh of this.chunks.values()) {
-      const c = mesh.userData.center;
-      const dx = this._camPos.x - c[0] * R, dy = this._camPos.y - c[1] * R, dz = this._camPos.z - c[2] * R;
-      mesh.renderOrder = dx * dx + dy * dy + dz * dz;
-    }
-    this._cull(camera, camDist, camDirN);
-  }
-
-  // Hide chunks that cannot put a pixel on screen. Both tests are
-  // conservative: a chunk spans directions within `alpha` of its center and
-  // radii from R - skirt to R + heightScale.
-  //   horizon: every point of it (radius <= R + H) is behind the sphere of
-  //            radius R (terrain never dips below it) as seen from the camera
-  //   frustum: its bounding sphere is outside a side plane (near / far move
-  //            with the camera every frame, so they are left out)
-  _cull(camera, camDist, camDirN) {
+    this._updateBands();
     const R = this.radius;
     const H = this.heightScale;
-    const thetaMax = camDist > R ? Math.acos(R / camDist) + Math.acos(R / (R + H)) : Math.PI;
+    const cam = this._camPos.copy(cameraPos);
+    const camDist = cam.length();
+    this._camDist = camDist;
+    this._camN = camDist > 0 ? [cam.x / camDist, cam.y / camDist, cam.z / camDist] : [0, 1, 0];
+    // horizon: a cap is hidden once its nearest direction is farther than
+    // acos(R / camDist) (the tangent) + acos(R / (R + H)) (peaks rising above
+    // it) from the camera direction
+    this._thetaMax = camDist > R ? Math.acos(R / camDist) + Math.acos(R / (R + H)) : Math.PI;
+
+    const leaves = this._leaves;
+    leaves.length = 0;
+    for (let f = 0; f < 6; f++) this._visit(f, 0, 0, 0);
+
+    // frustum (side planes: near / far are refitted every frame)
     let planes = null;
     if (camera) {
       camera.updateMatrixWorld();
@@ -224,12 +329,12 @@ export class PlanetWorld {
       planes = this._frustum.setFromProjectionMatrix(this._projView).planes;
     }
     const s = this._sphere;
-    for (const mesh of this.chunks.values()) {
-      const { center: c, alpha } = mesh.userData;
-      const cosT = c[0] * camDirN.x + c[1] * camDirN.y + c[2] * camDirN.z;
-      let vis = Math.acos(Math.min(Math.max(cosT, -1), 1)) - alpha <= thetaMax + 1e-3;
-      if (vis && planes) {
-        const r0 = R - mesh.material.uniforms.uSkirtDepth.value;
+    let n = 0;
+    for (const node of leaves) {
+      let vis = true;
+      if (planes) {
+        const { c, alpha } = node;
+        const r0 = R - node.skirt;
         const r1 = R + H;
         const rm = 0.5 * (r0 + r1);
         const ca = Math.cos(alpha);
@@ -239,94 +344,95 @@ export class PlanetWorld {
         s.radius = Math.sqrt(Math.max(d0, d1)) * 1.01 + 1;
         for (let i = 0; i < 4 && vis; i++) vis = planes[i].distanceToPoint(s.center) >= -s.radius;
       }
-      mesh.visible = vis;
+      if (vis) leaves[n++] = node;
     }
+    leaves.length = n;
+    leaves.sort((a, b) => a.d - b.d);
+
+    // upload, per variant, front to back
+    const lowLevel = this.useLowVarying ? this.lowVaryingLevel : Infinity;
+    const counts = [0, 0];
+    for (const node of leaves) counts[node.level >= lowLevel ? 1 : 0]++;
+    for (let low = 0; low < 2; low++) {
+      const geo = this.meshes[low].geometry;
+      if (geo.userData.capacity < counts[low]) {
+        let cap = geo.userData.capacity;
+        while (cap < counts[low]) cap *= 2;
+        this._allocInstances(geo, cap);
+      }
+    }
+    const iNode = this.meshes.map((m) => m.geometry.attributes.iNode.array);
+    const iMorph = this.meshes.map((m) => m.geometry.attributes.iMorph.array);
+    const at = [0, 0];
+    const { morphStart, morphEnd } = this._bands;
+    this.chunks.clear();
+    for (const node of leaves) {
+      const low = node.level >= lowLevel ? 1 : 0;
+      const k = at[low]++;
+      const a = iNode[low];
+      const m = iMorph[low];
+      a[k * 4] = node.u0;
+      a[k * 4 + 1] = node.v0;
+      a[k * 4 + 2] = node.size;
+      a[k * 4 + 3] = node.f;
+      m[k * 3] = morphStart[node.level];
+      m[k * 3 + 1] = morphEnd[node.level];
+      m[k * 3 + 2] = node.skirt;
+      this.chunks.set(node.key, node);
+    }
+    for (let low = 0; low < 2; low++) {
+      const mesh = this.meshes[low];
+      const geo = mesh.geometry;
+      geo.instanceCount = counts[low];
+      mesh.visible = counts[low] > 0;
+      for (const name of Object.keys(INSTANCE_STRIDE)) {
+        const attr = geo.attributes[name];
+        attr.clearUpdateRanges();
+        attr.addUpdateRange(0, Math.max(1, counts[low]) * attr.itemSize);
+        attr.needsUpdate = true;
+      }
+    }
+    this.chunkCount = leaves.length;
   }
 
-  _centerDir(f, u, v) {
-    const face = FACES[f];
-    const x = face.origin[0] + u * face.u[0] + v * face.v[0];
-    const y = face.origin[1] + u * face.u[1] + v * face.v[1];
-    const z = face.origin[2] + u * face.u[2] + v * face.v[2];
-    const len = Math.sqrt(x * x + y * y + z * z) || 1;
-    return [x / len, y / len, z / len];
+  // distance from the camera to the nearest point of a cap on the sphere of
+  // radius R: a lower bound for every vertex of the node
+  _capDistance(c, alpha) {
+    const R = this.radius;
+    const camDist = this._camDist;
+    const n = this._camN;
+    const cosT = Math.min(1, Math.max(-1, c[0] * n[0] + c[1] * n[1] + c[2] * n[2]));
+    const theta = Math.acos(cosT);
+    if (theta <= alpha) return Math.abs(camDist - R);
+    return Math.sqrt(Math.max(0, camDist * camDist + R * R - 2 * camDist * R * Math.cos(theta - alpha)));
   }
 
   _visit(f, level, gx, gy) {
-    const size = 1 / (1 << level);          // node size in face UV
-    const u0 = gx * size, v0 = gy * size;
-    const cd = this._centerDir(f, u0 + size / 2, v0 + size / 2);
+    const { c, alpha } = this._cap(f, level, gx, gy);
+    const n = this._camN;
+    const theta = Math.acos(Math.min(1, Math.max(-1, c[0] * n[0] + c[1] * n[1] + c[2] * n[2])));
+    if (theta - alpha > this._thetaMax + 1e-3) return;   // behind the horizon
 
-    // horizon cull (only meaningful when the camera is outside the sphere)
-    if (this._cosCull > -1) {
-      const dot = cd[0] * this._camDirN.x + cd[1] * this._camDirN.y + cd[2] * this._camDirN.z;
-      // margin grows for big top-level nodes whose center can be far from
-      // their nearest edge
-      if (dot < this._cosCull - size * 0.9) return;
-    }
-
-    const R = this.radius;
-    const cx = cd[0] * R, cy = cd[1] * R, cz = cd[2] * R;
-    const dx = this._camPos.x - cx, dy = this._camPos.y - cy, dz = this._camPos.z - cz;
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const worldSize = size * R * 1.6;        // ~arc length of the node
-
-    if (level < this.opts.maxDepth && dist < worldSize * this.opts.splitFactor) {
+    const d = this._capDistance(c, alpha);
+    if (level < this.opts.maxDepth && (level < MIN_LEVEL || d < this._bands.range[level])) {
       this._visit(f, level + 1, gx * 2, gy * 2);
       this._visit(f, level + 1, gx * 2 + 1, gy * 2);
       this._visit(f, level + 1, gx * 2, gy * 2 + 1);
       this._visit(f, level + 1, gx * 2 + 1, gy * 2 + 1);
-    } else {
-      this._desired.set(`${f}:${level}:${gx}:${gy}`, { f, level, u0, v0, size });
+      return;
     }
-  }
-
-  // A chunk mesh of one terrain variant (low: LOW_VARYING), placed later.
-  _newMesh(low) {
-    const chunkUniforms = {
-      uFaceOrigin: { value: new THREE.Vector3() },
-      uFaceU:      { value: new THREE.Vector3() },
-      uFaceV:      { value: new THREE.Vector3() },
-      uUV0:        { value: new THREE.Vector2() },
-      uUVSize:     { value: 1 },
-    };
-    const mat = createTerrainMaterial(this.shared, this.opts.octaves, chunkUniforms, low === 1);
-    const mesh = new THREE.Mesh(this.geometry, mat);
-    mesh.frustumCulled = false;  // culled in update() instead (shader-displaced)
-    mesh.userData.low = low;
-    return mesh;
-  }
-
-  _createChunk(key, node) {
-    const face = FACES[node.f];
-    const low = node.level >= 2 ? 1 : 0;
-    const mesh = this._pool[low].pop() || this._newMesh(low);
-    const mu = mesh.material.uniforms;
-    mu.uFaceOrigin.value.fromArray(face.origin);
-    mu.uFaceU.value.fromArray(face.u);
-    mu.uFaceV.value.fromArray(face.v);
-    mu.uUV0.value.set(node.u0, node.v0);
-    mu.uUVSize.value = node.size;
-    // skirt depth scales with node size so coarse chunks hide bigger cracks
-    mu.uSkirtDepth.value = Math.max(this.heightScale * 0.6, node.size * this.radius * 0.05);
-    mesh.material.wireframe = this.wireframe;
-    const u0 = node.u0, v0 = node.v0, s = node.size;
-    const c = this._centerDir(node.f, u0 + s / 2, v0 + s / 2);
-    // angular radius: farthest corner / edge midpoint from the center
-    let cosA = 1;
-    for (const [du, dv] of [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]]) {
-      const d = this._centerDir(node.f, u0 + du * s, v0 + dv * s);
-      cosA = Math.min(cosA, d[0] * c[0] + d[1] * c[1] + d[2] * c[2]);
-    }
-    mesh.userData.center = c;
-    mesh.userData.alpha = Math.acos(Math.max(-1, Math.min(1, cosA)));
-    this.group.add(mesh);
-    this.chunks.set(key, mesh);
+    const size = 1 / (1 << level);
+    this._leaves.push({
+      key: `${f}:${level}:${gx}:${gy}`,
+      f, level, u0: gx * size, v0: gy * size, size, c, alpha, d,
+      // skirt depth scales with node size so coarse chunks hide bigger cracks
+      skirt: Math.max(this.heightScale * 0.6, size * this.radius * 0.05),
+    });
   }
 
   dispose() {
     this._disposeMeshes();
-    this.geometry.dispose();
+    for (const m of this.templateMaterials) m.dispose();
     this.scene.remove(this.group);
   }
 }

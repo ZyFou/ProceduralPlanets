@@ -200,7 +200,7 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 |---|---|---|---|---|
 | `chunkRes` | number (structural) | `32` | 8 – 64 | Grid quads per chunk side (rebuild) |
 | `maxDepth` | number (structural) | `5` | 2 – 7 | Quadtree depth (rebuild) — Quadtree subdivision limit (rebuild) |
-| `splitFactor` | number | `2.4` | 1.2 – 4 | Split when camDist < size * factor — Higher = subdivide sooner (more detail, more chunks) |
+| `splitFactor` | number | `2.4` | 1.2 – 4 | LOD split distance, in node sizes — Higher = subdivide sooner (more detail, more chunks) |
 
 ### Debug
 

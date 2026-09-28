@@ -257,7 +257,7 @@ export interface PlanetParams {
   chunkRes?: number;
   /** Quadtree depth (rebuild) — Quadtree subdivision limit (rebuild) Range 2..7. Default: 5. */
   maxDepth?: number;
-  /** Split when camDist < size * factor — Higher = subdivide sooner (more detail, more chunks) Range 1.2..4. Default: 2.4. */
+  /** LOD split distance, in node sizes — Higher = subdivide sooner (more detail, more chunks) Range 1.2..4. Default: 2.4. */
   splitFactor?: number;
   /** Draw the terrain LOD chunks as wireframe (debug). Default: false. */
   wireframe?: boolean;

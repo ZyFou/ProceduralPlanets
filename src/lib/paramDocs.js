@@ -1389,7 +1389,7 @@ export const PARAM_DOCS = {
     "label": "Split factor",
     "type": "number",
     "default": 2.4,
-    "description": "Split when camDist < size * factor — Higher = subdivide sooner (more detail, more chunks)",
+    "description": "LOD split distance, in node sizes — Higher = subdivide sooner (more detail, more chunks)",
     "min": 1.2,
     "max": 4,
     "step": 0.1

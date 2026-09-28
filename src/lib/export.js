@@ -29,7 +29,8 @@ function exportOptions(planet, options) {
  *          JSON, default true), onProgress
  */
 export async function createPlanetArchive(renderer, planet, options = {}) {
-  planet._prepareFrame(renderer);
+  planet._prepareFrame();
+  planet._bakeFrame(renderer);
   const { files, filename } = await PlanetExporter.buildFiles(
     renderer, planet.params, planet.uniforms, exportOptions(planet, options), options.onProgress
   );
