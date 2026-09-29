@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { SEARCH_SETTINGS_SHORTCUT } from '../keyboardShortcuts.js';
+import ShortcutHint from './ui/ShortcutHint.jsx';
+import { SHORTCUT_GROUPS } from './ShortcutsHelp.jsx';
+
+const HEX_VALUE = /^#[0-9A-F]{6}$/;
 
 function SearchIcon() {
   return (
@@ -22,6 +27,7 @@ export default function SettingsSearchOverlay({
   onClose,
 }) {
   const inputRef = useRef(null);
+  const resultsRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -29,12 +35,17 @@ export default function SettingsSearchOverlay({
     inputRef.current?.select?.();
   }, [open]);
 
+  // keep the keyboard selection visible while arrowing through results
+  useEffect(() => {
+    resultsRef.current?.querySelector('.settings-search-item.active')?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex]);
+
   const totalResults = flatResults.length;
   const hasResults = totalResults > 0;
   const hint = useMemo(() => {
-    if (!query.trim()) return 'Search terrain, colors, noise, effects, lighting...';
+    if (!query.trim()) return 'Search terrain, biomes, water, clouds, gas, star, export...';
     if (!hasResults) return 'No matching settings. Try a broader keyword.';
-    return 'Enter opens the selected item. Click a category to open its panel. Esc closes.';
+    return 'Enter jumps to the selected setting. Click a category to open its panel. Esc closes.';
   }, [hasResults, query]);
 
   const handleKeyDown = (e) => {
@@ -88,11 +99,27 @@ export default function SettingsSearchOverlay({
         <div className="settings-search-results-panel">
           <div className="settings-search-hint-row">
             <span>{hint}</span>
-            <span className="settings-search-shortcut">Ctrl+K / Cmd+K</span>
+            <ShortcutHint shortcut={SEARCH_SETTINGS_SHORTCUT} className="settings-search-shortcut" />
           </div>
 
-          {groupedResults.length > 0 ? (
-            <div className="settings-search-results">
+          {!query.trim() ? (
+            <div className="settings-search-results settings-search-shortcuts" aria-label="Keyboard shortcuts">
+              {SHORTCUT_GROUPS.map((group) => (
+                <section className="settings-search-group" key={group.title}>
+                  <div className="settings-search-group-title"><span>{group.title}</span></div>
+                  <div className="settings-search-group-body">
+                    {group.items.map(({ label, shortcut, keys }) => (
+                      <div className="settings-search-shortcut-row" key={label}>
+                        <span>{label}</span>
+                        {shortcut ? <ShortcutHint shortcut={shortcut} className="settings-search-shortcut" /> : <span className="settings-search-shortcut">{keys}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : groupedResults.length > 0 ? (
+            <div className="settings-search-results" ref={resultsRef}>
               {groupedResults.map((group) => (
                 <section className="settings-search-group" key={group.panelId}>
                   <button
@@ -122,6 +149,10 @@ export default function SettingsSearchOverlay({
                                 {item.sectionLabel && <span>{item.sectionLabel}</span>}
                               </div>
                             </div>
+                            <span className="settings-search-item-value">
+                              {HEX_VALUE.test(item.valueText ?? '') && <i className="settings-search-swatch" style={{ background: item.valueText }} aria-hidden />}
+                              {item.valueText ?? '-'}
+                            </span>
                           </div>
                         </button>
                       );

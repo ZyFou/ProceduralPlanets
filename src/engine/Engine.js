@@ -53,6 +53,13 @@ export class Engine extends PlanetViewer {
     return this.planet.randomizeSeed();
   }
 
+  /** Slowly orbit the camera around the body (View > Auto rotate). */
+  setAutoRotate(enabled) {
+    if (!this.controls) return;
+    this.controls.autoRotate = !!enabled;
+    this.controls.autoRotateSpeed = 0.6;
+  }
+
   /**
    * Compile every body type's shaders (and optional layers) in the
    * background, so later mode switches and toggles never wait on a compile.

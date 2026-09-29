@@ -174,6 +174,10 @@ const SETTINGS_INDEX = [
   { panelId: 'export', sectionLabel: 'Format & resolution', settingId: 'export.meshRes', label: 'Mesh resolution', keywords: 'export mesh resolution' },
   { panelId: 'export', sectionLabel: 'Texture baking', settingId: 'export.bakeColor', label: 'Bake color texture', keywords: 'export texture bake color' },
   { panelId: 'export', sectionLabel: 'Texture baking', settingId: 'export.texRes', label: 'Texture size', keywords: 'export texture resolution size' },
+  { panelId: 'export', sectionLabel: 'Format & resolution', settingId: 'export.includeMesh', label: 'Include mesh', keywords: 'export mesh geometry include planet gas star' },
+  { panelId: 'export', sectionLabel: 'Texture baking', settingId: 'export.bakeLighting', label: 'Bake lighting into color', keywords: 'export texture bake lighting shading sun' },
+  { panelId: 'export', sectionLabel: 'Additional assets', settingId: 'export.exportWater', label: 'Include water shell', keywords: 'export water ocean shell sea' },
+  { panelId: 'export', sectionLabel: 'Additional assets', settingId: 'export.exportPreset', label: 'Export preset (JSON)', keywords: 'export preset json params parameters settings' },
 ];
 
 const normalizeText = (value) => String(value ?? '')

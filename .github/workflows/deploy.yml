@@ -1,0 +1,457 @@
+name: Deploy Procedural Planets
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: procedural-planets-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # -------------------------------------------------------
+      # Repository and Node.js
+      # -------------------------------------------------------
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+
+      # -------------------------------------------------------
+      # Frontend
+      # -------------------------------------------------------
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test frontend
+        run: npm test
+
+      - name: Build frontend
+        env:
+          # The web client and API share the procedural-planets.com site, so
+          # browser requests are same-site and session cookies remain first-party.
+          VITE_API_URL: https://api.procedural-planets.com/api/v1
+        run: npm run build:studio
+
+      - name: Verify frontend build
+        run: |
+          test -d dist/studio
+          test -f dist/studio/index.html
+
+      # -------------------------------------------------------
+      # Backend
+      # -------------------------------------------------------
+
+      - name: Install backend dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Test backend
+        working-directory: api
+        run: npm test
+
+      # -------------------------------------------------------
+      # Check secrets
+      # -------------------------------------------------------
+
+      - name: Check deployment secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::error::DEPLOY_HOST is missing"
+            exit 1
+          fi
+
+          if [ -z "$DEPLOY_USER" ]; then
+            echo "::error::DEPLOY_USER is missing"
+            exit 1
+          fi
+
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::error::DEPLOY_SSH_KEY is missing"
+            exit 1
+          fi
+
+          echo "Deployment secrets are present."
+
+      # -------------------------------------------------------
+      # SSH configuration
+      # -------------------------------------------------------
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euxo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" \
+            | tr -d '\r' \
+            > ~/.ssh/id_ed25519
+
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keyscan \
+            -T 15 \
+            -H "$DEPLOY_HOST" \
+            >> ~/.ssh/known_hosts
+
+          chmod 644 ~/.ssh/known_hosts
+
+          echo "SSH configuration created."
+          ls -la ~/.ssh
+
+      # -------------------------------------------------------
+      # Test SSH
+      # -------------------------------------------------------
+
+      - name: Test SSH connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euxo pipefail
+
+          ssh \
+            -vv \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "echo 'SSH connection successful'; whoami; node --version; npm --version; pm2 --version"
+
+      # -------------------------------------------------------
+      # Prepare server
+      # -------------------------------------------------------
+
+      - name: Prepare server directories
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euxo pipefail
+
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -eux
+
+            mkdir -p /home/PlanetStudio
+            mkdir -p /home/PlanetStudioApi
+
+            echo "Frontend directory:"
+            ls -la /home/PlanetStudio
+
+            echo "Backend directory:"
+            ls -la /home/PlanetStudioApi
+          '
+
+      # -------------------------------------------------------
+      # Deploy frontend
+      # -------------------------------------------------------
+
+      - name: Deploy frontend
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euxo pipefail
+
+          rsync \
+            --archive \
+            --compress \
+            --delete \
+            --verbose \
+            --itemize-changes \
+            dist/studio/ \
+            "$DEPLOY_USER@$DEPLOY_HOST:/home/PlanetStudio/"
+
+      # -------------------------------------------------------
+      # Deploy backend
+      # -------------------------------------------------------
+
+      - name: Deploy backend
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euxo pipefail
+
+          rsync \
+            --archive \
+            --compress \
+            --delete \
+            --verbose \
+            --itemize-changes \
+            --exclude='.env' \
+            --exclude='node_modules/' \
+            --exclude='logs/' \
+            --exclude='uploads/' \
+            --exclude='storage/' \
+            api/ \
+            "$DEPLOY_USER@$DEPLOY_HOST:/home/PlanetStudioApi/"
+
+      # -------------------------------------------------------
+      # Install, migrate and restart
+      # -------------------------------------------------------
+
+      - name: Install and restart services
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE_SCRIPT'
+            set -Eeuo pipefail
+            set -x
+
+            show_debug_info() {
+              EXIT_CODE=$?
+
+              set +e
+
+              echo ""
+              echo "========================================"
+              echo "DEPLOYMENT FAILED"
+              echo "Exit code: $EXIT_CODE"
+              echo "========================================"
+
+              echo ""
+              echo "--- Current user ---"
+              whoami
+              pwd
+
+              echo ""
+              echo "--- Node.js versions ---"
+              node --version
+              npm --version
+              pm2 --version
+
+              echo ""
+              echo "--- PM2 process list ---"
+              pm2 list
+
+              echo ""
+              echo "--- Frontend PM2 information ---"
+              pm2 describe PlanetStudio
+
+              echo ""
+              echo "--- Backend PM2 information ---"
+              pm2 describe PlanetStudioApi
+
+              echo ""
+              echo "--- Frontend logs ---"
+              pm2 logs PlanetStudio \
+                --lines 100 \
+                --nostream
+
+              echo ""
+              echo "--- Backend logs ---"
+              pm2 logs PlanetStudioApi \
+                --lines 150 \
+                --nostream
+
+              echo ""
+              echo "--- Frontend directory ---"
+              ls -la /home/PlanetStudio
+
+              echo ""
+              echo "--- Backend directory ---"
+              ls -la /home/PlanetStudioApi
+
+              echo ""
+              echo "--- Backend package.json ---"
+              cat /home/PlanetStudioApi/package.json
+
+              echo ""
+              echo "--- Environment file status ---"
+
+              if [ -f /home/PlanetStudioApi/.env ]; then
+                echo ".env exists"
+                ls -la /home/PlanetStudioApi/.env
+              else
+                echo "ERROR: /home/PlanetStudioApi/.env does not exist"
+              fi
+
+              echo ""
+              echo "--- Listening ports ---"
+              ss -ltnp | grep -E ':7071|:7070' || true
+
+              echo ""
+              echo "--- Frontend HTTP response ---"
+              curl \
+                --verbose \
+                --connect-timeout 10 \
+                http://127.0.0.1:7071/ || true
+
+              echo ""
+              echo "--- Backend HTTP response ---"
+              curl \
+                --verbose \
+                --connect-timeout 10 \
+                http://127.0.0.1:7070/health || true
+
+              echo ""
+              echo "========================================"
+              echo "END OF DEBUG INFORMATION"
+              echo "========================================"
+
+              exit "$EXIT_CODE"
+            }
+
+            trap show_debug_info ERR
+
+            echo "========================================"
+            echo "Starting deployment"
+            echo "========================================"
+
+            echo ""
+            echo "Current user:"
+            whoami
+
+            echo ""
+            echo "Checking deployed directories..."
+
+            test -d /home/PlanetStudio
+            test -f /home/PlanetStudio/index.html
+
+            test -d /home/PlanetStudioApi
+            test -f /home/PlanetStudioApi/package.json
+            test -f /home/PlanetStudioApi/package-lock.json
+
+            if [ ! -f /home/PlanetStudioApi/.env ]; then
+              echo "ERROR: /home/PlanetStudioApi/.env is missing"
+              exit 1
+            fi
+
+            echo ""
+            echo "Installing backend production dependencies..."
+
+            cd /home/PlanetStudioApi
+
+            npm ci --omit=dev
+
+            echo ""
+            echo "Running database migrations..."
+
+            npm run migrate
+
+            echo ""
+            echo "Starting or restarting frontend..."
+
+            if pm2 describe PlanetStudio > /dev/null 2>&1; then
+              pm2 restart PlanetStudio
+            else
+              pm2 serve /home/PlanetStudio 7071 \
+                --name PlanetStudio \
+                --spa
+            fi
+
+            echo ""
+            echo "Starting or restarting backend..."
+
+            if pm2 describe PlanetStudioApi > /dev/null 2>&1; then
+              pm2 restart PlanetStudioApi --update-env
+            else
+              pm2 start npm \
+                --name PlanetStudioApi \
+                --cwd /home/PlanetStudioApi \
+                -- start
+            fi
+
+            echo ""
+            echo "Saving PM2 process list..."
+
+            pm2 save
+
+            echo ""
+            echo "Waiting for services to start..."
+
+            sleep 5
+
+            echo ""
+            echo "Current PM2 status:"
+
+            pm2 list
+
+            echo ""
+            echo "Checking frontend..."
+
+            curl \
+              --fail \
+              --show-error \
+              --location \
+              --verbose \
+              --connect-timeout 10 \
+              --max-time 30 \
+              http://127.0.0.1:7071/
+
+            echo ""
+            echo "Checking backend..."
+
+            curl \
+              --fail \
+              --show-error \
+              --location \
+              --verbose \
+              --connect-timeout 10 \
+              --max-time 30 \
+              http://127.0.0.1:7070/health
+
+            echo ""
+            echo "========================================"
+            echo "Deployment successful"
+            echo "========================================"
+          REMOTE_SCRIPT
+
+      # -------------------------------------------------------
+      # Summary
+      # -------------------------------------------------------
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## Deployment successful" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Frontend" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Directory: \`/home/PlanetStudio\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Port: \`7071\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- PM2 process: \`PlanetStudio\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Backend" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Directory: \`/home/PlanetStudioApi\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Port: \`7070\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- PM2 process: \`PlanetStudioApi\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          echo "## Deployment failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open the failed step to see the complete error and PM2 logs." >> "$GITHUB_STEP_SUMMARY"
