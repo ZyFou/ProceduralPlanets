@@ -40,12 +40,16 @@
     "LICENSE"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
     "build": "npm run build:lib && npm run build:studio",
     "build:lib": "vite build -c vite.lib.config.js",
     "build:studio": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "dev:api": "npm --prefix api run dev",
+    "test:api": "npm --prefix api test",
+    "migrate:api": "npm --prefix api run migrate",
     "docs:params": "node scripts/gen-param-docs.mjs",
     "docs:check": "node scripts/gen-param-docs.mjs --check",
     "bench": "node bench/run.mjs",
@@ -59,6 +63,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^10.0.5",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

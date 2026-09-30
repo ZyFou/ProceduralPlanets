@@ -2,19 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   Disc3,
-  Camera,
   Circle,
   Cloud,
   Code2,
   Download,
   Droplets,
+  Eye,
   Gauge,
-  House,
   Leaf,
   Orbit,
   Palette,
-  Search,
-  Shuffle,
   Sparkles,
   Sun,
   Waves,
@@ -22,11 +19,39 @@ import {
 } from 'lucide-react';
 import { Engine } from './engine/Engine.js';
 import { DEFAULT_PARAMS, migrateParams } from './engine/presets.js';
-import { getProjectTemplate } from './project/ProjectTemplates.js';
+import { createTemplateParams, getProjectTemplate } from './project/ProjectTemplates.js';
+import { planetCodeSnippet } from './project/codeSnippet.js';
+import { copyText } from './utils/clipboard.js';
 import { DEFAULT_STAR_BODY } from './engine/star.js';
 import { PANELS } from './components/panels.jsx';
 import { searchSettings } from './components/settingsSearch.js';
 import SettingsSearchOverlay from './components/SettingsSearchOverlay.jsx';
+import TopBar from './components/TopBar.jsx';
+import { classifyToast } from './components/ui/Toast.jsx';
+import { usePopup } from './components/ui/PopupProvider.jsx';
+import { EDITOR_SHORTCUTS, SEARCH_SETTINGS_SHORTCUT, isTextEditingTarget, matchesShortcut } from './keyboardShortcuts.js';
+import ShortcutsHelp from './components/ShortcutsHelp.jsx';
+
+const toHex = (rgb) => `#${rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('')}`;
+
+/** Current value of a search result's setting, as shown in the Ctrl+K list. */
+function formatSearchValue(item, params) {
+  const key = item.settingId.split('.').slice(1).join('.');
+  const value = params[key];
+  if (key === 'preset') return 'Presets';
+  if (value === undefined || value === null) return item.panelId === 'export' ? 'Export' : '-';
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (Array.isArray(value)) return value.length === 3 ? toHex(value).toUpperCase() : value.join(', ');
+  if (typeof value === 'number') {
+    if (Number.isInteger(value)) return String(value);
+    return String(Math.abs(value) >= 100 ? Math.round(value) : Number(value.toFixed(2)));
+  }
+  return String(value).charAt(0).toUpperCase() + String(value).slice(1);
+}
+
+const HISTORY_LIMIT = 100;
+// edits closer together than this (a slider drag) form one undo step
+const HISTORY_GROUP_MS = 600;
 
 const LOADING_STAGES = {
   shaders: 'Compiling shaders',
@@ -56,10 +81,26 @@ const ICONS = {
   shader: Code2,
 };
 
-export default function App({ project, landingMode = false, onHome, onProjectChange, onThumbnail }) {
+export default function App({
+  project,
+  landingMode = false,
+  documentState = 'local',
+  onHome,
+  onNew,
+  onProjectChange,
+  onRename,
+  onSave,
+  onSaveAs,
+  onLoadFile,
+  onDownload,
+  onThumbnail,
+}) {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
   const skipPersistRef = useRef(false);
+  const loadedProjectIdRef = useRef(null);
+  const loadedParamsRef = useRef(null);
+  const { showPopup } = usePopup();
 
   const [params, setParams] = useState({ ...DEFAULT_PARAMS });
   const [stats, setStats] = useState({ fps: 0, triangles: 0, drawCalls: 0, chunks: 0 });
@@ -138,7 +179,11 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
     const presetKey = template.mode === 'planet' ? template.preset : 'terran';
     const modePreset = { [template.mode]: template.preset };
     const next = { ...DEFAULT_PARAMS, ...migrateParams(project.params, presetKey, modePreset) };
+    loadedProjectIdRef.current = project.id;
+    loadedParamsRef.current = next;
     skipPersistRef.current = true;
+    skipHistoryRef.current = true;
+    resetHistory();
     Object.entries(next).forEach(([key, value]) => engine.setParam(key, value));
     setParams(next);
     watchCompile();
@@ -147,12 +192,167 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
 
   useEffect(() => {
     if (!project || project.preview || !onProjectChange) return;
+    // Not edits, so never saved: the render that switches projects (params
+    // still belong to the previous one), anything before this project's
+    // params are loaded, and the loaded params themselves (saving them would
+    // bump `modified` and make a synced project look changed).
     if (skipPersistRef.current) {
       skipPersistRef.current = false;
+      if (params === loadedParamsRef.current) loadedParamsRef.current = null;
+      return;
+    }
+    if (loadedProjectIdRef.current !== project.id) return;
+    if (params === loadedParamsRef.current) {
+      loadedParamsRef.current = null;
       return;
     }
     onProjectChange(params);
   }, [params, project?.id, project?.preview, onProjectChange]);
+
+  // ---- undo / redo: snapshots of the whole params object ------------------
+  // A snapshot is pushed when an edit group starts; edits within
+  // HISTORY_GROUP_MS of each other (a slider drag) extend the same group.
+  const historyRef = useRef({ past: [], future: [], grouping: false, timer: 0 });
+  const committedRef = useRef(null);
+  const skipHistoryRef = useRef(false);
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+
+  const syncHistoryState = useCallback(() => {
+    const history = historyRef.current;
+    setHistoryState({ canUndo: history.past.length > 0, canRedo: history.future.length > 0 });
+  }, []);
+
+  function resetHistory() {
+    const history = historyRef.current;
+    clearTimeout(history.timer);
+    history.past = [];
+    history.future = [];
+    history.grouping = false;
+    committedRef.current = null;
+    setHistoryState({ canUndo: false, canRedo: false });
+  }
+
+  const endHistoryGroup = useCallback(() => {
+    const history = historyRef.current;
+    clearTimeout(history.timer);
+    history.grouping = false;
+    committedRef.current = paramsRef.current;
+  }, []);
+
+  useEffect(() => {
+    if (skipHistoryRef.current || committedRef.current === null) {
+      skipHistoryRef.current = false;
+      committedRef.current = params;
+      return;
+    }
+    const history = historyRef.current;
+    if (!history.grouping) {
+      history.past.push(committedRef.current);
+      if (history.past.length > HISTORY_LIMIT) history.past.shift();
+      history.future = [];
+      history.grouping = true;
+    }
+    clearTimeout(history.timer);
+    history.timer = setTimeout(endHistoryGroup, HISTORY_GROUP_MS);
+    syncHistoryState();
+  }, [params, endHistoryGroup, syncHistoryState]);
+
+  const applyParams = useCallback((next) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const modeChanged = next.mode !== paramsRef.current.mode;
+    skipHistoryRef.current = true;
+    Object.entries(next).forEach(([key, value]) => {
+      if (paramsRef.current[key] !== value) engine.setParam(key, value);
+    });
+    setParams(next);
+    watchCompile();
+    if (modeChanged) setActivePanel(next.mode === 'star' ? 'starSurface' : next.mode === 'gas' ? 'gasFlow' : 'terrain');
+  }, [watchCompile]);
+
+  const undo = useCallback(() => {
+    const history = historyRef.current;
+    if (history.grouping) endHistoryGroup();
+    const previous = history.past.pop();
+    if (!previous) return;
+    history.future.push(paramsRef.current);
+    applyParams(previous);
+    syncHistoryState();
+  }, [applyParams, endHistoryGroup, syncHistoryState]);
+
+  const redo = useCallback(() => {
+    const history = historyRef.current;
+    if (history.grouping) endHistoryGroup();
+    const next = history.future.pop();
+    if (!next) return;
+    history.past.push(paramsRef.current);
+    applyParams(next);
+    syncHistoryState();
+  }, [applyParams, endHistoryGroup, syncHistoryState]);
+
+  useEffect(() => {
+    if (landingMode) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || isTextEditingTarget(event.target)) return;
+      if (matchesShortcut(event, EDITOR_SHORTCUTS.undo)) {
+        event.preventDefault();
+        undo();
+      } else if (matchesShortcut(event, EDITOR_SHORTCUTS.redo) || matchesShortcut(event, EDITOR_SHORTCUTS.redoAlt)) {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [landingMode, undo, redo]);
+
+  const onResetTemplate = useCallback(() => {
+    const templateId = project?.metadata?.templateId;
+    applyParams(createTemplateParams(templateId, paramsRef.current.seed));
+    // a reset is an edit: record it (applyParams skips history)
+    skipHistoryRef.current = false;
+  }, [applyParams, project?.metadata?.templateId]);
+
+  // ---- notifications (popup + the top bar's recent activity list) ---------
+  const [recentNotifications, setRecentNotifications] = useState([]);
+  const [notificationsIgnored, setNotificationsIgnored] = useState(false);
+  const notify = useCallback((message, type = classifyToast(message)) => {
+    if (!notificationsIgnored) {
+      setRecentNotifications((current) => [{ id: `${Date.now()}-${Math.random()}`, msg: message, type, timestamp: Date.now() }, ...current].slice(0, 20));
+    }
+    showPopup(message, { type });
+  }, [notificationsIgnored, showPopup]);
+
+  // ---- view -----------------------------------------------------------------
+  const [uiHidden, setUiHidden] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
+  const [autoRotate, setAutoRotate] = useState(false);
+  const onAutoRotate = useCallback((enabled) => {
+    setAutoRotate(enabled);
+    engineRef.current?.setAutoRotate(enabled);
+  }, []);
+  const onResetView = useCallback(() => engineRef.current?.frame(), []);
+
+  useEffect(() => {
+    if (!uiHidden) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setUiHidden(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [uiHidden]);
+
+  const onCopyCode = useCallback(async () => {
+    try {
+      await copyText(planetCodeSnippet(paramsRef.current));
+      notify('Code snippet copied to the clipboard.', 'success');
+    } catch {
+      notify('Could not copy the code snippet.', 'error');
+    }
+  }, [notify]);
 
   // project card thumbnail: a small copy of the next drawn frame once edits
   // settle (no extra render, no render-target resize, a few KB of WebP)
@@ -237,8 +437,10 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
   );
 
   const searchResults = useMemo(() => (
-    searchOpen ? searchSettings(searchQuery, isPanelAvailable) : []
-  ), [searchOpen, searchQuery, isPanelAvailable]);
+    searchOpen
+      ? searchSettings(searchQuery, isPanelAvailable).map((item) => ({ ...item, valueText: formatSearchValue(item, params) }))
+      : []
+  ), [searchOpen, searchQuery, isPanelAvailable, params]);
 
   const groupedSearchResults = useMemo(() => {
     const map = new Map();
@@ -261,12 +463,59 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
     setSearchQuery('');
   }, []);
 
+  // the setting a search result points at: the drawer scrolls to it and
+  // flashes it once it is on screen (see the effect below)
+  const [settingsTarget, setSettingsTarget] = useState(null);
+
   const confirmSearch = useCallback((index = searchIndex) => {
     const item = searchResults[index];
     if (!item) return;
     setActivePanel(item.panelId);
+    setSettingsTarget({ ...item, requestedAt: Date.now() });
     closeSearch();
   }, [searchIndex, searchResults, closeSearch]);
+
+  useEffect(() => {
+    if (!settingsTarget) return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    let sectionOpened = false;
+    const timers = [];
+    const later = (fn, ms) => timers.push(window.setTimeout(fn, ms));
+    const content = () => document.querySelector('.side-drawer .side-panel-content');
+    const run = () => {
+      if (cancelled) return;
+      const root = content();
+      const key = settingsTarget.settingId.split('.').slice(1).join('.');
+      const section = root && [...root.querySelectorAll('[data-section]')]
+        .find((node) => node.dataset.section === settingsTarget.sectionLabel);
+      // collapsed section: open it, then look again once it has rendered
+      if (section && !section.classList.contains('open') && !sectionOpened) {
+        sectionOpened = true;
+        section.querySelector('.section-header')?.click();
+        later(run, 60);
+        return;
+      }
+      const target = root?.querySelector(`[data-param="${CSS.escape(key)}"]`) ?? section;
+      if (target) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        target.classList.remove('setting-target-flash');
+        void target.offsetWidth;   // restart the animation on a repeat hit
+        target.classList.add('setting-target-flash');
+        later(() => target.classList.remove('setting-target-flash'), 1200);
+        target.querySelector('input:not([type=range]), select, button[role=switch], input[type=range]')?.focus({ preventScroll: true });
+        setSettingsTarget(null);
+        return;
+      }
+      if (++attempts < 12) later(run, 80);
+      else setSettingsTarget(null);
+    };
+    later(run, 120);
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [settingsTarget]);
 
   const confirmSearchPanel = useCallback((panelId) => {
     if (!isPanelAvailable(panelId)) return;
@@ -279,11 +528,15 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
   }, [searchResults.length]);
 
   useEffect(() => {
+    if (landingMode) return undefined;
     const onKeyDown = (event) => {
-      const key = event.key.toLowerCase();
-      if ((event.metaKey || event.ctrlKey) && key === 'k') {
+      if (matchesShortcut(event, SEARCH_SETTINGS_SHORTCUT)) {
         event.preventDefault();
-        openSearch();
+        if (searchOpen) closeSearch();
+        else {
+          setUiHidden(false);
+          openSearch();
+        }
       } else if (event.key === 'Escape' && searchOpen) {
         event.preventDefault();
         closeSearch();
@@ -291,37 +544,54 @@ export default function App({ project, landingMode = false, onHome, onProjectCha
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [searchOpen, openSearch, closeSearch]);
+  }, [landingMode, searchOpen, openSearch, closeSearch]);
 
   const Panel = visiblePanels.find((panel) => panel.id === activePanel)?.component;
 
   return (
-    <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel ? ' side-drawer-open' : ''}`}>
-      <header id="topbar">
-        <div className="tb-group tb-brand">
-          <button type="button" className="tb-brand-button" onClick={onHome} title="Back to projects">
-            <Orbit className="logo" aria-hidden />
-            <span className="app-name">Procedural Planets</span>
-          </button>
-        </div>
-        <div className="tb-group tb-left">
-          <button type="button" className="tb-btn tb-file-btn" onClick={onHome}><House size={14} /><span className="tb-text">Projects</span></button>
-          <span className="tb-workspace-pill">{project?.metadata?.name ?? 'Untitled planet'}</span>
-        </div>
-        <div className="tb-center">
-          <button type="button" className={`tb-btn tb-search-btn${searchOpen ? ' active' : ''}`} onClick={openSearch} title="Search settings (Ctrl+K)" aria-pressed={searchOpen}>
-            <Search size={13} />
-            <span className="tb-text">Search settings</span>
-            <span className="tb-shortcut">Ctrl+K</span>
-          </button>
-        </div>
-        <div className="tb-group tb-right">
-          <label className="seed-box"><span>Seed</span><input value={params.seed} onChange={(event) => onSeedInput(event.target.value)} /></label>
-          <button type="button" className="tb-btn tb-icon-btn" onClick={onRandomize} title="Random seed"><Shuffle size={14} /></button>
-          <button type="button" className="tb-btn tb-icon-btn" onClick={onScreenshot} title="Screenshot (PNG)"><Camera size={14} /></button>
-          <button type="button" className="tb-btn primary" onClick={() => setActivePanel('export')}><Download size={14} /><span className="tb-text">Export</span></button>
-        </div>
-      </header>
+    <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel ? ' side-drawer-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
+      <TopBar
+        projectName={project?.metadata?.name ?? 'Untitled planet'}
+        documentState={documentState}
+        shortcutsEnabled={!landingMode && !searchOpen}
+        onProjectNameChange={onRename}
+        onHome={onHome}
+        onNew={onNew}
+        onSave={onSave}
+        onSaveAs={onSaveAs}
+        onLoadFile={onLoadFile}
+        onDownload={onDownload}
+        onCopyCode={onCopyCode}
+        onScreenshot={onScreenshot}
+        onRandomize={onRandomize}
+        onResetTemplate={onResetTemplate}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={historyState.canUndo}
+        canRedo={historyState.canRedo}
+        onResetView={onResetView}
+        autoRotate={autoRotate}
+        onAutoRotate={onAutoRotate}
+        onToggleUi={() => setUiHidden(true)}
+        seed={params.seed}
+        onSeedInput={onSeedInput}
+        onOpenSearch={openSearch}
+        searchOpen={searchOpen}
+        onExport={() => setActivePanel('export')}
+        exportActive={activePanel === 'export'}
+        onToggleHelp={() => setHelpOpen((value) => !value)}
+        helpOpen={helpOpen}
+        recentNotifications={recentNotifications}
+        notificationsIgnored={notificationsIgnored}
+        onClearNotifications={() => setRecentNotifications([])}
+        onToggleNotificationLogging={() => setNotificationsIgnored((value) => !value)}
+      />
+      <ShortcutsHelp open={helpOpen && !landingMode} onClose={closeHelp} />
+      {uiHidden && (
+        <button type="button" className="ui-hidden-restore" onClick={() => setUiHidden(false)} title="Show the interface (Esc)">
+          <Eye size={14} aria-hidden /> Show UI
+        </button>
+      )}
 
       <div id="main" className="main app-shell">
         <nav className="left-toolbar" aria-label="Planet tools">

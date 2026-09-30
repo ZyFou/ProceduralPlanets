@@ -4,4 +4,6 @@ dist
 *.local
 .codex-vite.*.log
 bench/results/
+.env
 api/.env
+api/node_modules

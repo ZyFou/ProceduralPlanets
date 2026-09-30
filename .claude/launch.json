@@ -8,7 +8,7 @@
         "run",
         "dev"
       ],
-      "port": 6061,
+      "port": 7071,
       "autoPort": true
     }
   ]

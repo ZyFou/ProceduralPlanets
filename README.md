@@ -107,9 +107,37 @@ and performance settings with live feedback; search every setting with
 <kbd>Ctrl</kbd>+<kbd>K</kbd>; save projects; and export glTF / ZIP or a
 ready-to-paste code snippet from the **Export** panel's *Use in code* section.
 
-Run it locally with `npm run dev` and open <http://localhost:6061/>. To load a
+The header's **File / Edit / View** menus cover the project workflow: rename,
+save (<kbd>Ctrl</kbd>+<kbd>S</kbd>), save as, load and download `.ppplanet`
+files, copy the code snippet, undo / redo, random seed, reset camera and
+auto rotate.
+
+Run it locally with `npm run dev` and open <http://localhost:7071/>. To load a
 studio project or export in your own code, see
 [studio interop](docs/studio-interop.md).
+
+### Accounts, cloud projects and community
+
+Accounts are optional: projects are always saved in the browser first. With an
+account, the **Projects** page syncs planets to a cloud library (conflicts are
+detected, never overwritten), each cloud planet can be private, unlisted or
+public, and public planets appear on the **Community** page, where anyone can
+open a copy or copy its `procedural-planets` code. Administrators get a
+dashboard with users, visits, planets, security events and an audit log.
+
+The account service lives in [`api/`](api/README.md): Node.js 22, Fastify and
+MySQL / MariaDB, on port 7070. Vite proxies `/api` to it during development.
+
+```sh
+cp api/.env.example api/.env   # set DB_PASSWORD, ADMIN_EMAILS, ...
+npm --prefix api install
+npm run migrate:api            # creates the procedural_planets schema
+npm run dev                    # studio on http://localhost:7071 + API on :7070
+```
+
+`npm run dev` starts both processes (output prefixed `[web]` / `[api]`); use
+`npm run dev:web` or `npm run dev:api` to run only one. If the API cannot start
+(no database), the studio keeps running in local-only mode.
 
 ## Documentation
 
@@ -128,8 +156,10 @@ studio project or export in your own code, see
 
 ```sh
 npm install
-npm run dev          # studio at http://localhost:6061/, examples at /examples/
+npm run dev          # studio at http://localhost:7071/ + account API at :7070, examples at /examples/
+npm run dev:web      # the studio alone (no account API)
 npm test             # unit tests (vitest)
+npm run test:api     # API unit tests (node:test)
 npm run build:lib    # library -> dist/lib
 npm run build:studio # studio app -> dist/studio
 npm run docs:params  # regenerate docs/parameters.md, docs/presets.md, PARAM_DOCS, types/params.d.ts
@@ -147,6 +177,7 @@ Layout:
 src/engine/   the engine (Planet, PlanetRenderer, PlanetViewer, pipeline, shaders, baker)
 src/lib/      the package entry points (index.js, export.js) + PlanetPass
 src/          the studio app (React)
+api/          the account / cloud project / admin service (Fastify + MySQL)
 types/        TypeScript declarations (params.d.ts is generated)
 docs/         documentation (parameters.md / presets.md are generated)
 examples/     runnable examples

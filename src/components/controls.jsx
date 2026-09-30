@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 
 // Small control primitives shared by every panel — same interaction model as
 // the ThreeTerrain studio (drag slider, or type in the value box and Enter).
+// `param` tags a control with its parameter key (data-param), which the
+// Ctrl+K search uses to scroll to and highlight it.
 
-export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChange, title }) {
+export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChange, title, param }) {
   const fmt = (v) => Number(v).toFixed(digits);
   const [text, setText] = useState(fmt(value));
   useEffect(() => { setText(fmt(value)); }, [value]);
@@ -16,7 +18,7 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
 
   const fill = ((value - min) / (max - min)) * 100;
   return (
-    <div className="ctl" title={title}>
+    <div className="ctl" title={title} data-param={param}>
       <div className="ctl-top">
         <span className="ctl-label">{label}</span>
         <input
@@ -42,9 +44,9 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
   );
 }
 
-export function Toggle({ label, value, onChange, title }) {
+export function Toggle({ label, value, onChange, title, param }) {
   return (
-    <label className="toggle" title={title}>
+    <label className="toggle" title={title} data-param={param}>
       <span className="ctl-label">{label}</span>
       <button
         type="button"
@@ -59,9 +61,9 @@ export function Toggle({ label, value, onChange, title }) {
   );
 }
 
-export function SelectRow({ label, value, options, onChange, title }) {
+export function SelectRow({ label, value, options, onChange, title, param }) {
   return (
-    <label className="select-row" title={title}>
+    <label className="select-row" title={title} data-param={param}>
       <span className="ctl-label">{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((opt) => (
@@ -75,9 +77,9 @@ export function SelectRow({ label, value, options, onChange, title }) {
 const toHex = (rgb) => '#' + rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('');
 const fromHex = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 
-export function ColorRow({ label, value, onChange }) {
+export function ColorRow({ label, value, onChange, param }) {
   return (
-    <label className="color-row">
+    <label className="color-row" data-param={param}>
       <span className="color-chip" style={{ background: toHex(value) }} />
       <span className="ctl-label">{label}</span>
       <input type="color" value={toHex(value)} onChange={(e) => onChange(fromHex(e.target.value))} />
@@ -88,7 +90,7 @@ export function ColorRow({ label, value, onChange }) {
 export function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={`section${open ? ' open' : ''}`}>
+    <div className={`section${open ? ' open' : ''}`} data-section={typeof title === 'string' ? title : undefined}>
       <button type="button" className="section-header" onClick={() => setOpen(!open)}>
         <span className="section-caret">{open ? '▾' : '▸'}</span>
         {title}
