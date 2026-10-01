@@ -1,7 +1,11 @@
 // Single source of truth for the studio's name, version and links.
 import { version } from '../../package.json';
 
-export const APP_VERSION = version;
+// The studio's version is X.Y.Z: X (release) and Y (package) come from the
+// npm package, Z counts site releases — bump SITE_REVISION for a site-only
+// change, never package.json.
+const SITE_REVISION = 1;
+export const APP_VERSION = `${version.split('.').slice(0, 2).join('.')}.${SITE_REVISION}`;
 export const APP_NAME = 'Procedural Planets';
 export const GITHUB_REPO_URL = 'https://github.com/ZyFou/ProceduralPlanets';
 export const AUTHOR_NAME = 'ZyFod';
