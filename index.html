@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="pp-booting">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,50 +9,43 @@
   html, body { margin: 0; height: 100%; background: #05060a; }
 
   /* ---- the one loading screen: up from the first paint until the planet's
-     first final frame is on the canvas. Every animation here is a transform /
-     opacity keyframe, so it runs on the compositor even while the page is
-     busy. */
+     first final frame is on the canvas. The planet is a cube-sphere mosaic
+     drawn on a canvas — in a worker (OffscreenCanvas) when the browser can,
+     so it keeps turning while the page is busy booting. When loading ends it
+     assembles its last tiles, then the camera flies into it and the menu
+     comes in behind. */
   #pp-loader {
     position: fixed; inset: 0; z-index: 100000;
-    display: grid; place-items: center;
-    background:
-      radial-gradient(60vmax 60vmax at 50% 46%, rgba(37, 99, 235, 0.07), transparent 62%),
-      linear-gradient(180deg, #05060a 0%, #070910 100%);
     color: #8b93a3;
     font-family: "Inter", "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    transition: opacity .45s cubic-bezier(.4, 0, .2, 1), transform .45s cubic-bezier(.4, 0, .2, 1);
-    will-change: opacity, transform;
+    transition: opacity .35s cubic-bezier(.4, 0, .2, 1);
   }
-  #pp-loader.done { opacity: 0; transform: scale(1.015); pointer-events: none; }
-  .ppl-center { display: flex; flex-direction: column; align-items: center; transform: translateY(-2vh); }
-
-  /* planet + orbiting moon: the orbit is a squashed, tilted circle drawn
-     twice — whole behind the planet, near half in front of it — so the moon
-     passes behind the disc */
-  .ppl-mark { position: relative; width: 112px; height: 76px; margin-bottom: 26px; }
-  .ppl-planet {
-    position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
-    border-radius: 50%;
+  #pp-loader.done { opacity: 0; pointer-events: none; }
+  #pp-loader.zooming { opacity: 0; pointer-events: none; transition: opacity .3s ease .9s; }
+  .ppl-bg {
+    position: absolute; inset: 0;
     background:
-      radial-gradient(circle at 32% 30%, rgba(160, 196, 255, 0.55) 0%, rgba(160, 196, 255, 0) 38%),
-      radial-gradient(circle at 36% 34%, #3f74e0 0%, #1d3f96 42%, #0b1638 74%, #060a18 100%);
-    box-shadow: 0 0 0 1px rgba(122, 162, 255, 0.16), 0 0 26px rgba(37, 99, 235, 0.28);
+      radial-gradient(60vmax 60vmax at 50% 44%, rgba(37, 99, 235, 0.08), transparent 62%),
+      linear-gradient(180deg, #05060a 0%, #070910 100%);
+    transition: opacity .7s cubic-bezier(.4, 0, .2, 1) .3s;
   }
-  .ppl-orbit {
-    position: absolute; left: 0; top: 50%; width: 112px; height: 112px; margin-top: -56px;
-    transform: rotate(-18deg) scaleY(0.34);
+  #pp-loader.zooming .ppl-bg { opacity: 0; }
+  .ppl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .ppl-center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transform: translateY(-2vh);
   }
-  .ppl-orbit.front { clip-path: inset(50% 0 0 0); }
-  .ppl-ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(122, 162, 255, 0.28); }
-  .ppl-spin { position: absolute; inset: 0; animation: ppl-spin 3.4s linear infinite; }
-  .ppl-moon {
-    position: absolute; left: 50%; top: -9px; width: 7px; height: 20px; margin-left: -3.5px;
-    border-radius: 50%; background: #dfe8ff;
-    box-shadow: 0 0 10px 2px rgba(122, 162, 255, 0.7);
-    animation: ppl-spin 3.4s linear infinite reverse;
+  /* empty slot the canvas draws the planet into */
+  .ppl-mark { width: 220px; height: 170px; margin-bottom: 14px; }
+  .ppl-ui {
+    display: flex; flex-direction: column; align-items: center;
+    animation: ppl-in .8s cubic-bezier(.22, 1, .36, 1) both .1s;
+    transition: opacity .3s ease, transform .5s cubic-bezier(.4, 0, .2, 1);
   }
-  @keyframes ppl-spin { to { transform: rotate(360deg); } }
+  #pp-loader.zooming .ppl-ui { opacity: 0; transform: translateY(14px); }
+  @keyframes ppl-in { from { opacity: 0; transform: translateY(8px); } }
 
   .ppl-title { font-size: 11px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #aab2c2; margin-left: .3em; }
   .ppl-progress { width: 240px; margin-top: 22px; }
@@ -72,66 +65,396 @@
   .ppl-status { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; line-height: 1; }
   .ppl-stage { color: #6d7587; }
   .ppl-pct { color: #9aa3b5; font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+
+  /* the menu waits small and blurred under the loader, and grows into place
+     as the camera flies through the planet (landing.css transitions it) */
+  @media (prefers-reduced-motion: no-preference) {
+    html.pp-booting .landing-overlay { opacity: 0; transform: scale(.92); filter: blur(8px); }
+  }
   @media (prefers-reduced-motion: reduce) {
-    .ppl-spin, .ppl-moon, .ppl-shine { animation: none; }
-    #pp-loader { transition-duration: .2s; }
+    .ppl-shine, .ppl-ui { animation: none; }
   }
 </style>
 </head>
 <body>
   <div id="pp-loader" data-pp-loader="studio" role="progressbar" aria-label="Loading Procedural Planets" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="ppl-bg"></div>
+    <canvas class="ppl-canvas" aria-hidden="true"></canvas>
     <div class="ppl-center">
-      <div class="ppl-mark" aria-hidden="true">
-        <div class="ppl-orbit"><div class="ppl-ring"></div><div class="ppl-spin"><div class="ppl-moon"></div></div></div>
-        <div class="ppl-planet"></div>
-        <div class="ppl-orbit front"><div class="ppl-ring"></div><div class="ppl-spin"><div class="ppl-moon"></div></div></div>
-      </div>
-      <div class="ppl-title">Procedural Planets</div>
-      <div class="ppl-progress">
-        <div class="ppl-track"><div class="ppl-fill"></div><div class="ppl-shine"></div></div>
-        <div class="ppl-status"><span class="ppl-stage" aria-live="polite">Loading studio</span><span class="ppl-pct">0%</span></div>
+      <div class="ppl-mark" aria-hidden="true"></div>
+      <div class="ppl-ui">
+        <div class="ppl-title">Procedural Planets</div>
+        <div class="ppl-progress">
+          <div class="ppl-track"><div class="ppl-fill"></div><div class="ppl-shine"></div></div>
+          <div class="ppl-status"><span class="ppl-stage" aria-live="polite">Loading studio</span><span class="ppl-pct">0%</span></div>
+        </div>
       </div>
     </div>
   </div>
   <script>
+    // The loader's planet: a cube sphere cut into tiles (the studio's own
+    // terrain layout) that fly in and settle as loading progresses, lit and
+    // drawn in perspective, with its orbit and moon. Self-contained — it runs
+    // as a worker's source when OffscreenCanvas is available. Takes messages:
+    // init {canvas, reduced}, layout {w, h, dpr, cx, cy, r}, progress {p}, zoom.
+    function ppPlanet() {
+      'use strict';
+      const N = 8, SEG = 2, GAP = 0.085, D0 = 4.2, FLY_MS = 520, ZOOM_MS = 1150, ZOOM_MAX = 70;
+      const TILT = 0.36, ROLL = -0.3, RING = 1.62;
+      const now = () => performance.now();
+      const raf = typeof requestAnimationFrame === 'function' ? (f) => requestAnimationFrame(f) : (f) => setTimeout(f, 16);
+      const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+      // ---- value noise for the continents
+      const hash = (x, y, z) => {
+        let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
+        h = Math.imul(h ^ (h >>> 13), 1103515245);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      };
+      const noise = (x, y, z) => {
+        const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+        const s = (t) => t * t * (3 - 2 * t);
+        const u = s(x - xi), v = s(y - yi), w = s(z - zi);
+        const c = (i, j, k) => hash(xi + i, yi + j, zi + k);
+        return lerp(lerp(lerp(c(0, 0, 0), c(1, 0, 0), u), lerp(c(0, 1, 0), c(1, 1, 0), u), v),
+          lerp(lerp(c(0, 0, 1), c(1, 0, 1), u), lerp(c(0, 1, 1), c(1, 1, 1), u), v), w);
+      };
+      const fbm = (x, y, z) => 0.55 * noise(x, y, z) + 0.3 * noise(x * 2.03 + 5.1, y * 2.03, z * 2.03) + 0.15 * noise(x * 4.1, y * 4.1 + 3.7, z * 4.1);
+
+      // ---- tiles: N x N per cube face, each a ring of 4*SEG points on the sphere
+      const toSphere = (x, y, z) => {
+        const x2 = x * x, y2 = y * y, z2 = z * z;
+        const p = [x * Math.sqrt(1 - y2 / 2 - z2 / 2 + y2 * z2 / 3), y * Math.sqrt(1 - z2 / 2 - x2 / 2 + z2 * x2 / 3), z * Math.sqrt(1 - x2 / 2 - y2 / 2 + x2 * y2 / 3)];
+        const l = Math.hypot(p[0], p[1], p[2]);
+        return [p[0] / l, p[1] / l, p[2] / l];
+      };
+      const tiles = [];
+      for (let f = 0; f < 6; f++) {
+        const axis = f >> 1, sign = f & 1 ? -1 : 1, ua = (axis + 1) % 3, va = (axis + 2) % 3;
+        const at = (a, b) => { const p = [0, 0, 0]; p[axis] = sign; p[ua] = -1 + 2 * a / N; p[va] = -1 + 2 * b / N; return toSphere(p[0], p[1], p[2]); };
+        for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+          const ring = [];
+          for (let s = 0; s < SEG; s++) ring.push(at(i + s / SEG, j));
+          for (let s = 0; s < SEG; s++) ring.push(at(i + 1, j + s / SEG));
+          for (let s = 0; s < SEG; s++) ring.push(at(i + 1 - s / SEG, j + 1));
+          for (let s = 0; s < SEG; s++) ring.push(at(i, j + 1 - s / SEG));
+          tiles.push({ c: at(i + 0.5, j + 0.5), ring, born: -1, sx: new Float32Array(ring.length), sy: new Float32Array(ring.length) });
+        }
+      }
+      const n = tiles.length;
+
+      // terrain colour and build order (spreading from one point, with stragglers)
+      const DEEP = [16, 40, 104], SHALLOW = [44, 104, 206], LOW = [52, 128, 98], MID = [106, 146, 84], HIGH = [150, 136, 104], ICE = [214, 228, 248];
+      const mix = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+      const seed = [0.3, 0.62, 0.72];
+      tiles.forEach((t, i) => {
+        const [x, y, z] = t.c;
+        t.h = fbm(x * 1.7 + 11, y * 1.7 + 3, z * 1.7 + 7);
+        t.rnd = hash(i, 7, 13);
+        t.k = 0.62 * Math.acos(clamp(x * seed[0] + y * seed[1] + z * seed[2], -1, 1)) / Math.PI + 0.38 * t.rnd;
+        t.ice = Math.abs(y) + (noise(x * 3 + 2, y * 3, z * 3) - 0.5) * 0.35 > 0.8;
+      });
+      const hs = tiles.map((t) => t.h).sort((a, b) => a - b);
+      const hMin = hs[0], hMax = hs[n - 1], coast = hs[Math.floor(n * 0.55)];
+      [...tiles].sort((a, b) => a.k - b.k).forEach((t, rank) => { t.thr = 0.02 + 0.94 * rank / (n - 1); });
+      tiles.forEach((t) => {
+        let base;
+        if (t.ice) base = ICE;
+        else if (t.h < coast) { const e = (t.h - hMin) / (coast - hMin); base = mix(DEEP, SHALLOW, e * e); t.ocean = true; }
+        else { const e = (t.h - coast) / (hMax - coast); base = e < 0.5 ? mix(LOW, MID, e * 2) : mix(MID, HIGH, e * 2 - 1); }
+        const j = 0.92 + 0.16 * t.rnd;
+        t.base = [base[0] * j, base[1] * j, base[2] * j];
+      });
+
+      const L = (() => { const l = Math.hypot(-0.55, 0.45, 0.7); return [-0.55 / l, 0.45 / l, 0.7 / l]; })();
+      const HV = (() => { const h = [L[0], L[1], L[2] + 1], l = Math.hypot(h[0], h[1], h[2]); return [h[0] / l, h[1] / l, h[2] / l]; })();
+
+      let canvas = null, ctx = null, W = 0, H = 0, cx = 0, cy = 0, R = 44, reduced = false;
+      let progress = 0, zoomAt = -1, running = false, built = 0;
+      const startAt = now();
+
+      function frame() {
+        if (!ctx) { running = false; return; }
+        const tNow = now();
+        const u = zoomAt < 0 ? 0 : clamp((tNow - zoomAt) / ZOOM_MS);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        if (u >= 1) { running = false; return; }
+        raf(frame);
+        if (!W) return;
+
+        // camera: perspective, flying toward the planet on zoom
+        const F = R * Math.sqrt(D0 * D0 - 1);
+        const Rs = R * Math.exp(Math.log(ZOOM_MAX) * Math.pow(u, 2.2));
+        const D = Math.sqrt(1 + (F / Rs) * (F / Rs));
+        const mv = sstep(0, 0.7, u);
+        const px = lerp(cx, W / 2, mv), py = lerp(cy, H / 2, mv);
+        const fade = 1 - sstep(0.55, 1, u);
+        const shrink = 1 - 0.8 * sstep(0.3, 1, u);
+
+        const time = (tNow - startAt) / 1000;
+        const spin = reduced ? 0.6 : 0.6 + time * 0.22 + u * u * 0.8;
+        const cs = Math.cos(spin), ss = Math.sin(spin), ct = Math.cos(TILT), st = Math.sin(TILT), cr = Math.cos(ROLL), sr = Math.sin(ROLL);
+        let rx = 0, ry = 0, rz = 0;
+        const rot = (x, y, z, spun) => {
+          const x1 = spun ? x * cs + z * ss : x, z1 = spun ? -x * ss + z * cs : z;
+          const y2 = y * ct - z1 * st; rz = y * st + z1 * ct;
+          rx = x1 * cr - y2 * sr; ry = x1 * sr + y2 * cr;
+        };
+
+        // tiles: born when progress passes them, then fly in and settle
+        const list = [];
+        let count = 0;
+        for (const t of tiles) {
+          if (t.born < 0 && progress >= t.thr) t.born = reduced ? tNow - FLY_MS * 3 : tNow;
+          const a = t.born < 0 ? 0 : clamp((tNow - t.born) / FLY_MS);
+          if (t.born >= 0) count++;
+          const e = 1 - (1 - a) * (1 - a) * (1 - a);
+          const r = t.born < 0 ? 1 : 1 + 0.75 * (1 - e) * (1 - e);
+          rot(t.c[0], t.c[1], t.c[2], true);
+          if (rz < r / D - 0.12) continue;
+          t.nx = rx; t.ny = ry; t.nz = rz; t.a = a; t.depth = rz * r;
+          const s = (1 - GAP) * (t.born < 0 ? 1 : 0.3 + 0.7 * e) * shrink;
+          let clipped = false;
+          for (let k = 0; k < t.ring.length; k++) {
+            const v = t.ring[k];
+            rot(t.c[0] + (v[0] - t.c[0]) * s, t.c[1] + (v[1] - t.c[1]) * s, t.c[2] + (v[2] - t.c[2]) * s, true);
+            const w = D - rz * r;
+            if (w < 0.03) { clipped = true; break; }
+            const q = F / w;
+            t.sx[k] = px + rx * r * q; t.sy[k] = py - ry * r * q;
+          }
+          if (!clipped) list.push(t);
+        }
+        list.sort((p, q) => p.depth - q.depth);
+        built += (count / n - built) * 0.08;
+
+        const Rsil = F / Math.sqrt(D * D - 1);
+        const ringA = (1 - sstep(0, 0.3, u)) * 0.24;
+        const drawRing = (front) => {
+          if (ringA <= 0.005) return;
+          ctx.beginPath();
+          let open = false;
+          for (let k = 0; k <= 128; k++) {
+            const th = k / 128 * Math.PI * 2;
+            rot(Math.cos(th) * RING, 0, Math.sin(th) * RING, false);
+            if ((rz >= 0) !== front) { open = false; continue; }
+            const q = F / (D - rz), x = px + rx * q, y = py - ry * q;
+            if (open) ctx.lineTo(x, y); else { ctx.moveTo(x, y); open = true; }
+          }
+          ctx.strokeStyle = `rgba(122, 162, 255, ${ringA})`;
+          ctx.lineWidth = Math.max(1, R / 34);
+          ctx.stroke();
+        };
+        const th = time * 0.75;
+        rot(Math.cos(th) * RING, 0, Math.sin(th) * RING, false);
+        const mq = F / (D - rz), mx = px + rx * mq, my = py - ry * mq, mz = rz, mr = 0.075 * mq;
+        const drawMoon = () => {
+          if (ringA <= 0.005) return;
+          const k = ringA / 0.24;
+          const glow = ctx.createRadialGradient(mx, my, 0, mx, my, mr * 4.5);
+          glow.addColorStop(0, `rgba(122, 162, 255, ${0.45 * k})`);
+          glow.addColorStop(1, 'rgba(122, 162, 255, 0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(mx, my, mr * 4.5, 0, Math.PI * 2); ctx.fill();
+          const body = ctx.createRadialGradient(mx - mr * 0.4, my - mr * 0.4, 0, mx, my, mr);
+          body.addColorStop(0, `rgba(240, 245, 255, ${k})`);
+          body.addColorStop(1, `rgba(150, 170, 215, ${k})`);
+          ctx.fillStyle = body;
+          ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+        };
+
+        drawRing(false);
+        if (mz < 0) drawMoon();
+
+        // atmosphere halo + the dark glass body the tiles settle onto
+        const halo = ctx.createRadialGradient(px, py, Rsil * 0.92, px, py, Rsil * 1.5);
+        halo.addColorStop(0, `rgba(64, 118, 255, ${(0.07 + 0.2 * built) * fade})`);
+        halo.addColorStop(1, 'rgba(64, 118, 255, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(px, py, Rsil * 1.5, 0, Math.PI * 2); ctx.fill();
+        const bodyA = 1 - sstep(0.08, 0.45, u);
+        if (bodyA > 0.01) {
+          const body = ctx.createRadialGradient(px - Rsil * 0.35, py - Rsil * 0.4, 0, px, py, Rsil);
+          body.addColorStop(0, `rgba(26, 42, 90, ${0.6 * bodyA})`);
+          body.addColorStop(1, `rgba(7, 11, 24, ${0.9 * bodyA})`);
+          ctx.fillStyle = body;
+          ctx.beginPath(); ctx.arc(px, py, Rsil, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = `rgba(122, 162, 255, ${0.16 * bodyA})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // unbuilt slots: a faint blueprint grid
+        ctx.beginPath();
+        for (const t of list) {
+          if (t.born >= 0) continue;
+          ctx.moveTo(t.sx[0], t.sy[0]);
+          for (let k = 1; k < t.ring.length; k++) ctx.lineTo(t.sx[k], t.sy[k]);
+          ctx.closePath();
+        }
+        ctx.strokeStyle = `rgba(122, 162, 255, ${0.13 * bodyA})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // built tiles: flat-shaded facets, a glint as each one lands
+        for (const t of list) {
+          if (t.born < 0) continue;
+          const dif = Math.max(0, t.nx * L[0] + t.ny * L[1] + t.nz * L[2]);
+          const rim = Math.pow(1 - clamp(t.nz), 3);
+          const spec = t.ocean ? Math.pow(Math.max(0, t.nx * HV[0] + t.ny * HV[1] + t.nz * HV[2]), 24) * 0.55 : 0;
+          const land = (tNow - t.born) / FLY_MS;
+          const glint = reduced ? 0 : (land < 1 ? land * land : Math.exp(-(land - 1) * 4)) * 0.4;
+          const lit = 0.12 + 0.95 * dif;
+          const r = t.base[0] * lit + 8 * (1 - dif) + 90 * rim * 0.5 + 200 * spec + 160 * glint;
+          const g = t.base[1] * lit + 14 * (1 - dif) + 140 * rim * 0.5 + 220 * spec + 200 * glint;
+          const b = t.base[2] * lit + 34 * (1 - dif) + 255 * rim * 0.5 + 255 * spec + 255 * glint;
+          ctx.fillStyle = `rgba(${Math.min(255, r) | 0}, ${Math.min(255, g) | 0}, ${Math.min(255, b) | 0}, ${Math.min(1, t.a * 2.5) * fade})`;
+          ctx.beginPath();
+          ctx.moveTo(t.sx[0], t.sy[0]);
+          for (let k = 1; k < t.ring.length; k++) ctx.lineTo(t.sx[k], t.sy[k]);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // atmospheric limb
+        if (built > 0.01 && fade > 0.01) {
+          const limb = ctx.createRadialGradient(px, py, Rsil * 0.78, px, py, Rsil * 1.02);
+          limb.addColorStop(0, 'rgba(110, 165, 255, 0)');
+          limb.addColorStop(1, `rgba(110, 165, 255, ${0.3 * built * fade * bodyA})`);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = limb;
+          ctx.beginPath(); ctx.arc(px, py, Rsil * 1.02, 0, Math.PI * 2); ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+        }
+
+        drawRing(true);
+        if (mz >= 0) drawMoon();
+      }
+
+      return (m) => {
+        if (m.type === 'init') { canvas = m.canvas; ctx = canvas.getContext('2d'); reduced = m.reduced; }
+        else if (m.type === 'layout') {
+          W = Math.round(m.w * m.dpr); H = Math.round(m.h * m.dpr);
+          canvas.width = W; canvas.height = H;
+          cx = m.cx * m.dpr; cy = m.cy * m.dpr; R = m.r * m.dpr;
+        } else if (m.type === 'progress') progress = m.p;
+        else if (m.type === 'zoom') zoomAt = now();
+        if (ctx && !running && !(zoomAt >= 0 && now() - zoomAt >= ZOOM_MS)) { running = true; raf(frame); }
+      };
+    }
+
     // Loading screen API for the app: progress(value 0..1, label, stageEnd)
-    // and done() (fills the bar, fades out, removes itself). While a stage
-    // runs, the bar creeps toward its end so it never looks stuck.
+    // and done() (assembles the last tiles, flies into the planet, removes
+    // itself). While a stage runs, the bar creeps toward its end so it never
+    // looks stuck; it never moves faster than a readable pace, so a fast
+    // (cached) load still shows the planet being built.
     window.__ppLoader = (() => {
       const el = document.getElementById('pp-loader');
       const fill = el.querySelector('.ppl-fill');
       const stageEl = el.querySelector('.ppl-stage');
       const pctEl = el.querySelector('.ppl-pct');
-      let target = 0, creepTo = 0.12, stageT = performance.now(), shown = 0, last = -1, closing = null;
+      const mark = el.querySelector('.ppl-mark');
+      const canvas = el.querySelector('.ppl-canvas');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // the planet: off the main thread when possible
+      let send = null, worker = null, workerUrl = null;
+      try {
+        if (canvas.transferControlToOffscreen && window.Worker) {
+          workerUrl = URL.createObjectURL(new Blob([`const h = (${ppPlanet})(); self.onmessage = (e) => h(e.data);`], { type: 'text/javascript' }));
+          worker = new Worker(workerUrl);
+          const offscreen = canvas.transferControlToOffscreen();
+          worker.postMessage({ type: 'init', canvas: offscreen, reduced }, [offscreen]);
+          send = (m) => worker.postMessage(m);
+        }
+      } catch (e) {
+        worker?.terminate();
+        worker = null;
+      }
+      if (!worker) {
+        const h = ppPlanet();
+        h({ type: 'init', canvas, reduced });
+        send = h;
+      }
+      const layout = () => {
+        const r = mark.getBoundingClientRect();
+        send({ type: 'layout', w: window.innerWidth, h: window.innerHeight, dpr: Math.min(2, window.devicePixelRatio || 1), cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: Math.min(r.width, r.height) * 0.26 });
+      };
+      layout();
+      window.addEventListener('resize', layout);
+
+      const MAX_RATE = 0.5; // progress per second, at most
+      let target = 0, creepTo = 0.12, stageT = performance.now(), shown = 0, last = -1, sent = -1, prev = performance.now();
+      let closing = null;
+      const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
       const tick = (now) => {
         if (!el.isConnected) return;
-        const creep = target + (creepTo - target) * (1 - Math.exp(-(now - stageT) / 1800));
-        const goal = closing ? 1 : Math.max(target, Math.min(creep, creepTo - 0.01));
-        shown += (goal - shown) * (closing ? 0.4 : 0.1);
-        if (goal - shown < 0.0005) shown = goal;
+        const dt = Math.min(0.1, Math.max(0, now - prev) / 1000);
+        prev = now;
+        if (closing) {
+          const u = Math.min(1, (now - closing.t0) / closing.ms);
+          shown = closing.from + (1 - closing.from) * ease(u);
+          if (u >= 1 && !closing.ended) { closing.ended = true; closing.end(); }
+        } else {
+          const creep = target + (creepTo - target) * (1 - Math.exp(-(now - stageT) / 1800));
+          const goal = Math.max(target, Math.min(creep, creepTo - 0.01));
+          shown += Math.max(0, Math.min((goal - shown) * 0.1, MAX_RATE * dt));
+        }
         fill.style.transform = `scaleX(${shown.toFixed(4)})`;
         const pct = Math.round(shown * 100);
         if (pct !== last) { last = pct; pctEl.textContent = `${pct}%`; el.setAttribute('aria-valuenow', pct); }
-        if (closing && shown >= 0.995) { const c = closing; closing = null; fill.style.transform = 'scaleX(1)'; c(); }
+        if (Math.abs(shown - sent) > 0.002 || (shown === 1 && sent !== 1)) { sent = shown; send({ type: 'progress', p: shown }); }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
       return {
         progress(value, label, stageEnd) {
+          if (closing) return;
           target = Math.min(1, Math.max(target, value));
           if (stageEnd !== undefined && stageEnd > creepTo - 0.001) { creepTo = Math.max(stageEnd, target); stageT = performance.now(); }
           if (label && stageEl.textContent !== label) stageEl.textContent = label;
         },
         done() {
           return new Promise((resolve) => {
-            if (!el.isConnected) { resolve(); return; }
-            stageEl.textContent = 'Ready';
-            closing = () => {
-              el.classList.add('done');
-              let finished = false;
-              const end = () => { if (finished) return; finished = true; el.remove(); resolve(); };
-              el.addEventListener('transitionend', (e) => { if (e.target === el && e.propertyName === 'opacity') end(); });
-              setTimeout(end, 700);
+            if (!el.isConnected || closing) { resolve(); return; }
+            let finished = false;
+            const end = () => {
+              if (finished) return;
+              finished = true;
+              window.removeEventListener('resize', layout);
+              document.documentElement.classList.remove('pp-booting');
+              el.remove();
+              worker?.terminate();
+              if (workerUrl) URL.revokeObjectURL(workerUrl);
+              resolve();
+            };
+            // a background tab gets no frames to animate: just get out of the way
+            if (document.hidden) { end(); return; }
+            stageEl.textContent = 'Assembling planet';
+            // the rest of the bar (and of the planet) at a pace you can follow
+            closing = {
+              from: shown,
+              t0: performance.now(),
+              ms: reduced ? 300 : 450 + 1100 * (1 - shown),
+              end() {
+                stageEl.textContent = 'Ready';
+                if (reduced) {
+                  document.documentElement.classList.remove('pp-booting');
+                  el.classList.add('done');
+                  setTimeout(end, 400);
+                  return;
+                }
+                // let the last tiles land, then fly into the planet
+                setTimeout(() => {
+                  el.classList.add('zooming');
+                  send({ type: 'zoom' });
+                  setTimeout(() => document.documentElement.classList.remove('pp-booting'), 360);
+                  setTimeout(end, 1250);
+                }, 380);
+              },
             };
           });
         },

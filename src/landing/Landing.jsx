@@ -326,6 +326,7 @@ export default function Landing({
           <button type="button" className={view === 'templates' ? 'active' : ''} onClick={() => openTemplates('Planet')}>Templates</button>
           <button type="button" className={view === 'community' ? 'active' : ''} onClick={() => showView('community')}>Community</button>
           <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">Docs</a>
+          <a href="https://www.npmjs.com/package/procedural-planets" target="_blank" rel="noopener noreferrer">Package</a>
         </nav>
         <div className="lp-nav-actions">
           <button type="button" className="lp-nav-credits" onClick={() => setCreditsOpen(true)} aria-label="Open credits and links" title="Credits and links"><CircleHelp size={17} /></button>
