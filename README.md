@@ -128,6 +128,9 @@ dashboard with users, visits, planets, security events and an audit log.
 The account service lives in [`api/`](api/README.md): Node.js 22, Fastify and
 MySQL / MariaDB, on port 7070. Vite proxies `/api` to it during development.
 
+For production on a VPS with GitHub Actions, see the
+[deployment guide](docs/deployment.md) (GitHub secrets, SSH, PM2 and Pangolin routing).
+
 ```sh
 cp api/.env.example api/.env   # set DB_PASSWORD, ADMIN_EMAILS, ...
 npm --prefix api install
