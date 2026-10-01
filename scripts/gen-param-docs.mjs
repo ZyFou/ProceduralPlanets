@@ -117,7 +117,7 @@ function parsePanels(src) {
     if (fn) { panel = fn[1]; continue; }
     const sec = line.match(/<Section title="([^"]+)"/);
     if (sec) section = sec[1];
-    const ctl = line.match(/<(Slider|Toggle|ColorRow|SelectRow)\s+label="([^"]+)"\s+value=\{p\.(\w+)\}(.*)/);
+    const ctl = line.match(/<(Slider|Toggle|ColorRow|SelectRow)\s+(?:param="[^"]+"\s+)?label="([^"]+)"\s+value=\{p\.(\w+)\}(.*)/);
     if (!ctl) continue;
     const [, kind, label, key, rest] = ctl;
     if (out[key]) continue;
@@ -261,7 +261,7 @@ let stale = false;
 for (const [rel, content] of Object.entries(outputs)) {
   const file = path.join(root, rel);
   const old = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-  if (old === content) continue;
+  if (old?.replace(/\r\n/g, '\n') === content) continue;
   if (check) { console.error(`stale: ${rel}`); stale = true; continue; }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
