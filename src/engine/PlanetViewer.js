@@ -78,15 +78,18 @@ export class PlanetViewer {
     }
     this.frame();
 
-    // resize handling
-    this._onResize = () => this._resize();
+    // Resizing the WebGL drawing buffer clears it. While running, do it only
+    // immediately before drawing, never in ResizeObserver after the frame.
+    // A stopped viewer still redraws when its container changes size.
+    this._onResize = () => {
+      if (!this._disposed && !this._running) this.renderOnce();
+    };
     window.addEventListener('resize', this._onResize);
     this._resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
-      : new ResizeObserver(() => {
-          if (!this._disposed) this._resize();
-        });
+      : new ResizeObserver(this._onResize);
     this._resizeObserver?.observe(canvas);
+    this._viewportSize = new THREE.Vector2();
     this._resize();
 
     // stats
@@ -199,6 +202,7 @@ export class PlanetViewer {
 
   /** One manual frame (no clock advance) — e.g. when rAF is frozen. */
   renderOnce() {
+    this._resize();
     this.controls?.update();
     this._renderFrame(0);
   }
@@ -216,18 +220,26 @@ export class PlanetViewer {
     const url = this.renderer.domElement.toDataURL('image/png');
     this.renderer.setPixelRatio(prevRatio);
     this.renderer.setSize(prevSize.x, prevSize.y, false);
-    this._resize();
+    this.renderOnce();
     return url;
   }
 
   // ------------------------------------------------------------------- loop
   _resize() {
     const canvas = this.renderer.domElement;
-    const w = canvas.clientWidth || window.innerWidth;
-    const h = canvas.clientHeight || window.innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / Math.max(h, 1);
-    this.camera.updateProjectionMatrix();
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    // Hidden containers can briefly measure zero; keep their last frame.
+    if (!w || !h) return;
+    this.renderer.getSize(this._viewportSize);
+    if (this._viewportSize.x !== w || this._viewportSize.y !== h) {
+      this.renderer.setSize(w, h, false);
+    }
+    const aspect = w / h;
+    if (this.camera.aspect !== aspect) {
+      this.camera.aspect = aspect;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   _tick() {
@@ -235,6 +247,7 @@ export class PlanetViewer {
     const dt = Math.min(this._clock.getDelta(), 0.05);
     this._applyControlLimits();
     this.controls?.update();
+    this._resize();
     this._renderFrame(dt);
 
     // stats at ~2 Hz

@@ -23,6 +23,8 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
         <span className="ctl-label">{label}</span>
         <input
           className="ctl-val"
+          inputMode="decimal"
+          aria-label={label}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={commit}
@@ -33,6 +35,7 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
         <div className="ctl-fill" style={{ width: `${fill}%` }} />
         <input
           type="range"
+          aria-label={label}
           min={min}
           max={max}
           step={step}

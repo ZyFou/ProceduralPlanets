@@ -17,12 +17,18 @@ const apiProxy = {
 };
 
 export default defineConfig({
+  // Keep the studio optimizer separate from Vitest and other Vite consumers.
+  cacheDir: 'node_modules/.vite-studio',
   plugins: [react()],
   resolve: {
+    dedupe: ['react', 'react-dom', 'three'],
     alias: [
       { find: /^procedural-planets\/export$/, replacement: resolve(__dirname, 'src/lib/export.js') },
       { find: /^procedural-planets$/, replacement: resolve(__dirname, 'src/lib/index.js') },
     ],
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'lucide-react', 'three'],
   },
   server: {
     port: 7071,

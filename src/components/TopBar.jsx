@@ -270,6 +270,9 @@ export default function TopBar({
             <button type="button" role="menuitem" onClick={run(onToggleUi)}>
               <EyeOff size={14} strokeWidth={1.75} aria-hidden /> Hide UI
             </button>
+            <button type="button" role="menuitem" onClick={run(onToggleHelp)}>
+              <HelpCircle size={14} strokeWidth={1.75} aria-hidden /> Shortcuts and controls
+            </button>
           </div>
         </div>
 
@@ -284,7 +287,7 @@ export default function TopBar({
       </div>
 
       <div className="tb-center">
-        <button type="button" className={`tb-btn tb-search-btn${searchOpen ? ' active' : ''}`} onClick={onOpenSearch} title={`Search settings (${shortcutText(SEARCH_SETTINGS_SHORTCUT)})`} aria-pressed={searchOpen}>
+        <button type="button" className={`tb-btn tb-search-btn${searchOpen ? ' active' : ''}`} onClick={onOpenSearch} title={`Search settings (${shortcutText(SEARCH_SETTINGS_SHORTCUT)})`} aria-label="Search settings" aria-pressed={searchOpen}>
           <Search size={13} />
           <span className="tb-text">Search settings</span>
           <ShortcutHint shortcut={SEARCH_SETTINGS_SHORTCUT} className="tb-shortcut" />
@@ -292,14 +295,14 @@ export default function TopBar({
       </div>
 
       <div className="tb-group tb-right">
-        <button type="button" className="tb-btn tb-icon-btn" onClick={onRandomize} title={`Random seed (${shortcutText(EDITOR_SHORTCUTS.randomSeed)})`} aria-label="Random seed"><Dices size={14} /></button>
+        <button type="button" className="tb-btn tb-icon-btn tb-random-btn" onClick={onRandomize} title={`Random seed (${shortcutText(EDITOR_SHORTCUTS.randomSeed)})`} aria-label="Random seed"><Dices size={14} /></button>
         <NotificationCenter
           recent={recentNotifications}
           notificationsIgnored={notificationsIgnored}
           onClear={onClearNotifications}
           onToggleIgnore={onToggleNotificationLogging}
         />
-        <button type="button" className={`tb-btn primary${exportActive ? ' active' : ''}`} onClick={onExport} title="Export the planet">
+        <button type="button" className={`tb-btn primary${exportActive ? ' active' : ''}`} onClick={onExport} title="Export the planet" aria-label="Export the planet">
           <Download size={14} /><span className="tb-text">Export</span>
         </button>
         <button type="button" className={`tb-btn tb-icon-btn tb-help-btn${helpOpen ? ' active' : ''}`} onClick={onToggleHelp} title="Keyboard shortcuts and controls" aria-label="Keyboard shortcuts and controls" aria-expanded={helpOpen}>
