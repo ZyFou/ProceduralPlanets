@@ -27,6 +27,7 @@ import { PANELS } from './components/panels.jsx';
 import { searchSettings } from './components/settingsSearch.js';
 import SettingsSearchOverlay from './components/SettingsSearchOverlay.jsx';
 import TopBar from './components/TopBar.jsx';
+import PanelResizeHandle, { DEFAULT_PANEL_SHARE } from './components/PanelResizeHandle.jsx';
 import { classifyToast } from './components/ui/Toast.jsx';
 import { usePopup } from './components/ui/PopupProvider.jsx';
 import { EDITOR_SHORTCUTS, SEARCH_SETTINGS_SHORTCUT, isTextEditingTarget, matchesShortcut } from './keyboardShortcuts.js';
@@ -105,6 +106,19 @@ export default function App({
   const [params, setParams] = useState({ ...DEFAULT_PARAMS });
   const [stats, setStats] = useState({ fps: 0, triangles: 0, drawCalls: 0, chunks: 0 });
   const [activePanel, setActivePanel] = useState('terrain');
+  const [retainedPanel, setRetainedPanel] = useState('terrain');
+  const [panelShare, setPanelShare] = useState(DEFAULT_PANEL_SHARE);
+  const [panelResizing, setPanelResizing] = useState(false);
+  // Keep the outgoing panel mounted until its closing transition finishes.
+  // Reopening cancels the removal, including when another tool is selected.
+  useEffect(() => {
+    if (activePanel) {
+      setRetainedPanel(activePanel);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setRetainedPanel(null), 260);
+    return () => window.clearTimeout(timer);
+  }, [activePanel]);
   const [booted, setBooted] = useState(false);
   // shaders still compiling for what the viewport should show (the last
   // frame stays up meanwhile; nothing freezes)
@@ -546,7 +560,8 @@ export default function App({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [landingMode, searchOpen, openSearch, closeSearch]);
 
-  const Panel = visiblePanels.find((panel) => panel.id === activePanel)?.component;
+  const displayedPanel = activePanel ?? retainedPanel;
+  const Panel = visiblePanels.find((panel) => panel.id === displayedPanel)?.component;
 
   return (
     <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel ? ' side-drawer-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
@@ -593,7 +608,7 @@ export default function App({
         </button>
       )}
 
-      <div id="main" className="main app-shell">
+      <div id="main" className={`main app-shell${panelResizing ? ' panel-resizing' : ''}`} style={{ '--panel-weight': `${panelShare / (1 - panelShare)}fr` }}>
         <nav className="left-toolbar" aria-label="Planet tools">
           {visiblePanels.map((panel) => {
             const Icon = ICONS[panel.id] ?? Orbit;
@@ -615,19 +630,20 @@ export default function App({
         )}
 
         <div className="viewport-mode-bar" role="tablist" aria-label="Editor mode" onPointerEnter={precompileTypes} onFocus={precompileTypes}>
-          <button type="button" role="tab" aria-selected={params.mode === 'planet'} className={params.mode === 'planet' ? 'active' : ''} onClick={() => onMode('planet')}><Orbit size={14} /> Planet</button>
-          <button type="button" role="tab" aria-selected={params.mode === 'gas'} className={params.mode === 'gas' ? 'active' : ''} onClick={() => onMode('gas')}><Waves size={14} /> Gas</button>
-          <button type="button" role="tab" aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /> Star</button>
+          <button type="button" role="tab" aria-label="Planet" title="Planet" aria-selected={params.mode === 'planet'} className={params.mode === 'planet' ? 'active' : ''} onClick={() => onMode('planet')}><Orbit size={14} /><span>Planet</span></button>
+          <button type="button" role="tab" aria-label="Gas" title="Gas" aria-selected={params.mode === 'gas'} className={params.mode === 'gas' ? 'active' : ''} onClick={() => onMode('gas')}><Waves size={14} /><span>Gas</span></button>
+          <button type="button" role="tab" aria-label="Star" title="Star" aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /><span>Star</span></button>
         </div>
 
         {Panel && (
-          <aside className="side-drawer open">
+          <aside className={`side-drawer${activePanel ? ' open' : ''}`} inert={activePanel ? undefined : ''} aria-hidden={!activePanel}>
             <div className="side-panel">
               <div className="side-panel-header">
                 <div className="side-panel-heading">
-                  <div className="side-panel-title">{PANELS.find((panel) => panel.id === activePanel).label}</div>
+                  <div className="side-panel-title">{PANELS.find((panel) => panel.id === displayedPanel).label}</div>
                   <div className="side-panel-desc">Adjust procedural {params.mode === 'star' ? 'star' : params.mode === 'gas' ? 'gas giant' : 'planet'} settings.</div>
                 </div>
+                <PanelResizeHandle share={panelShare} onChange={setPanelShare} onResizing={setPanelResizing} />
                 <button type="button" className="side-panel-close" onClick={() => setActivePanel(null)} aria-label="Close panel" title="Close panel"><X size={15} /></button>
               </div>
               <div className="side-panel-content">
