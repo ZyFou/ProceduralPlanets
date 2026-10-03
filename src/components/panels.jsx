@@ -388,14 +388,33 @@ export function ShaderPanel({ starShader, onStarShaderChange, onStarShaderApply,
 export function PerformancePanel({ params: p, onParam }) {
   return (
     <>
-      <Section title="LOD">
-        <Slider param="maxDepth" label="Max depth" value={p.maxDepth} min={2} max={7} step={1} digits={0} onChange={(v) => onParam('maxDepth', v)} title="Quadtree subdivision limit (rebuild)" />
-        <Slider param="splitFactor" label="Split factor" value={p.splitFactor} min={1.2} max={4} step={0.1} digits={1} onChange={(v) => onParam('splitFactor', v)} title="Higher = subdivide sooner (more detail, more chunks)" />
-        <Slider param="chunkRes" label="Chunk res" value={p.chunkRes} min={8} max={64} step={8} digits={0} onChange={(v) => onParam('chunkRes', v)} title="Grid quads per chunk side (rebuild)" />
+      <Section title="Rendering">
+        <SelectRow param="renderResolution" label="Resolution" value={p.renderResolution} options={[
+          { value: '1', label: '100% (Native)' },
+          { value: '0.85', label: '85%' },
+          { value: '0.75', label: '75%' },
+          { value: '0.67', label: '67%' },
+          { value: '0.5', label: '50%' },
+          { value: '0.33', label: '33%' },
+          { value: '0.25', label: '25%' },
+        ]} onChange={(v) => onParam('renderResolution', Number(v))} title="Render at a percentage of the display resolution. 50% uses one quarter of the pixels." />
+        <SelectRow param="upscaler" label="Upscaler" value={p.upscaler} options={[
+          { value: 'bilinear', label: 'Bilinear' },
+          { value: 'spatial', label: 'Spatial' },
+        ]} onChange={(v) => onParam('upscaler', v)} title="Reconstruct reduced-resolution frames: Bilinear is faster; Spatial uses sharper bicubic reconstruction. Active below 100%." />
       </Section>
-      <Section title="Debug">
-        <Toggle param="wireframe" label="Wireframe" value={p.wireframe} onChange={(v) => onParam('wireframe', v)} />
-      </Section>
+      {p.mode === 'planet' && (
+        <>
+          <Section title="LOD">
+            <Slider param="maxDepth" label="Max depth" value={p.maxDepth} min={2} max={7} step={1} digits={0} onChange={(v) => onParam('maxDepth', v)} title="Quadtree subdivision limit (rebuild)" />
+            <Slider param="splitFactor" label="Split factor" value={p.splitFactor} min={1.2} max={4} step={0.1} digits={1} onChange={(v) => onParam('splitFactor', v)} title="Higher = subdivide sooner (more detail, more chunks)" />
+            <Slider param="chunkRes" label="Chunk res" value={p.chunkRes} min={8} max={64} step={8} digits={0} onChange={(v) => onParam('chunkRes', v)} title="Grid quads per chunk side (rebuild)" />
+          </Section>
+          <Section title="Debug">
+            <Toggle param="wireframe" label="Wireframe" value={p.wireframe} onChange={(v) => onParam('wireframe', v)} />
+          </Section>
+        </>
+      )}
     </>
   );
 }
@@ -539,6 +558,6 @@ export const PANELS = [
   { id: 'starMotion', label: 'Motion', component: StarMotionPanel, modes: ['star'] },
   // Shader tab hidden for now — ShaderPanel + Engine.setStarShader stay wired,
   // re-add { id: 'shader', modes: ['star'] } here to bring it back.
-  { id: 'perf', label: 'Perf', component: PerformancePanel, modes: ['planet'] },
+  { id: 'perf', label: 'Perf', component: PerformancePanel, modes: ['planet', 'gas', 'star'] },
   { id: 'export', label: 'Export', component: ExportPanel, modes: ['planet', 'gas', 'star'] },
 ];

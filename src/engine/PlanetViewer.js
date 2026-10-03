@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Planet } from './Planet.js';
 import { PlanetRenderer } from './PlanetRenderer.js';
+import { RenderUpscaler } from './RenderUpscaler.js';
 
 const nextFrame = () => new Promise((resolve) => {
   const t = setTimeout(resolve, 100);
@@ -36,6 +37,8 @@ export class PlanetViewer {
     this.cb = { ...(options.callbacks ?? {}) };
     if (options.onStats) this.cb.onStats = options.onStats;
     this._disposed = false;
+    this._upscaler = null;
+    this._drawingSize = new THREE.Vector2();
 
     let canvas = canvasIn;
     if (!canvas) {
@@ -190,9 +193,24 @@ export class PlanetViewer {
 
   get running() { return this._running; }
 
-  _renderFrame(delta) {
+  _renderFrame(delta, { native = false } = {}) {
     this.renderer.info.reset();
-    this.planetRenderer.render(this.planet, this.camera, { target: null, delta });
+    const requested = this.planet.params.renderResolution;
+    const scale = native || !Number.isFinite(requested) ? 1 : THREE.MathUtils.clamp(requested, 0.25, 1);
+    if (scale < 1) {
+      this._upscaler ??= new RenderUpscaler();
+      this.renderer.getDrawingBufferSize(this._drawingSize);
+      this._upscaler.setSize(this._drawingSize.x, this._drawingSize.y, scale);
+      this.planetRenderer.render(this.planet, this.camera, { target: this._upscaler.target, delta });
+      // Keep the previous canvas frame while the offscreen variant compiles.
+      if (this.planetRenderer.pending === 0) this._upscaler.render(this.renderer, this.planet.params.upscaler);
+    } else {
+      if (!native && this._upscaler) {
+        this._upscaler.dispose();
+        this._upscaler = null;
+      }
+      this.planetRenderer.render(this.planet, this.camera, { target: null, delta });
+    }
     if (this._afterFrame.length) {
       // same task as the draw: the drawing buffer is still readable
       const ok = this.planetRenderer.pending === 0 && this.planetRenderer.info.planets > 0;
@@ -216,12 +234,15 @@ export class PlanetViewer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this._renderFrame(0);
-    const url = this.renderer.domElement.toDataURL('image/png');
-    this.renderer.setPixelRatio(prevRatio);
-    this.renderer.setSize(prevSize.x, prevSize.y, false);
-    this.renderOnce();
-    return url;
+    try {
+      // Performance settings apply to the viewport; PNGs keep full detail.
+      this._renderFrame(0, { native: true });
+      return this.renderer.domElement.toDataURL('image/png');
+    } finally {
+      this.renderer.setPixelRatio(prevRatio);
+      this.renderer.setSize(prevSize.x, prevSize.y, false);
+      this.renderOnce();
+    }
   }
 
   // ------------------------------------------------------------------- loop
@@ -277,6 +298,7 @@ export class PlanetViewer {
     this.controls?.dispose();
     if (this._ownsPlanet) this.planet.dispose();
     this.planetRenderer.dispose();
+    this._upscaler?.dispose();
     this.renderer.dispose();
     if (this._ownsCanvas) this.canvas.remove();
   }
