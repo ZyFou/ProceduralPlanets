@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Height graph WebGL checks</title>
+<style>body{background:#090c10;color:#dbe4ef;font:14px/1.5 system-ui;margin:32px;max-width:1100px}h1{font-size:24px}canvas{border:1px solid #293445}.tests{white-space:pre-wrap;background:#111821;padding:20px;border:1px solid #293445;border-radius:8px;font:12px/1.5 monospace}.status{color:#6cd9b2}</style>
+</head>
+<body><h1>Height graph — actual WebGL regression checks</h1><p>Seed 1337 · source direction samples, float GPU readback, real terrain linking and atomic candidate application.</p><p class="status">Running…</p><canvas id="canvas"></canvas><pre class="tests">Starting WebGL…</pre>
+<script type="module">
+import * as THREE from 'three';
+import { Planet } from '/src/engine/Planet.js';
+import { DEFAULT_PARAMS } from '/src/engine/presets.js';
+import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from '/src/engine/noiseGLSL.js';
+import { createSharedUniforms } from '/src/engine/materials.js';
+import { compileGraph, createInitialGraph, createRecipe, createNode } from '/src/engine/graph/index.js';
+
+const state = window.__graphChecks = { status: 'running', environment: {}, results: [] };
+const publish = () => { document.querySelector('.tests').textContent = JSON.stringify(state, null, 2); document.querySelector('.status').textContent = `${state.status} · ${state.results.filter(x => x.status === 'pass').length} passed · ${state.results.filter(x => x.status === 'fail').length} failed`; };
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+async function test(name, fn) { const start = performance.now(); try { state.results.push({ name, status: 'pass', ...(await fn()), durationMs: Math.round(performance.now() - start) }); } catch (error) { state.results.push({ name, status: 'fail', error: error.message, stack: error.stack }); } publish(); }
+const edge = (source, target, targetPort = 'height') => ({ id: `${source}-${target}-${targetPort}`, source, sourcePort: 'height', target, targetPort });
+const constant = value => { const graph = createInitialGraph(); graph.nodes[0] = createNode('constant', 'terrain', { value }); return graph; };
+const unit = vector => new THREE.Vector3(...vector).normalize();
+const directions = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1],[1,1,0.2],[1,-1,0.2],[1,0.3,1],[-1,0.3,1],[0.3,1,1],[1,1,1],[-1,-1,-1],[0.32,-0.47,0.81]].map(unit);
+const owned = [];
+const own = planet => { owned.push(planet); return planet; };
+let renderer;
+
+try {
+  renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('canvas'), antialias: false }); renderer.setSize(128, 64); renderer.toneMapping = THREE.NoToneMapping;
+  const gl = renderer.getContext(), info = gl.getExtension('WEBGL_debug_renderer_info');
+  state.environment = { date: new Date().toISOString(), seed: 1337, userAgent: navigator.userAgent, webgl: gl.getParameter(gl.VERSION), shadingLanguage: gl.getParameter(gl.SHADING_LANGUAGE_VERSION), vendor: info ? gl.getParameter(info.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR), renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), floatTargets: renderer.extensions.has('EXT_color_buffer_float'), parallelCompilation: renderer.extensions.has('KHR_parallel_shader_compile'), viewport: [innerWidth, innerHeight] }; publish();
+
+  function linkedPrograms(material) {
+    const programs = renderer.properties.get(material).programs;
+    assert(programs?.size > 0, 'No real GPU program was created.');
+    for (const p of programs.values()) assert(gl.getProgramParameter(p.program, gl.LINK_STATUS), gl.getProgramInfoLog(p.program) || 'GPU shader failed to link.');
+    return programs.size;
+  }
+  function sampleGpu(program, dirs = directions, classic = false) {
+    assert(state.environment.floatTargets, 'EXT_color_buffer_float is required for quantitative readback.');
+    const count = dirs.length;
+    const target = new THREE.WebGLRenderTarget(count, 2, { type: THREE.FloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, stencilBuffer: false });
+    const uniforms = { ...createSharedUniforms(DEFAULT_PARAMS), ...(classic ? {} : program.uniforms), ppDirections: { value: dirs } };
+    const material = new THREE.ShaderMaterial({ uniforms, defines: { OCTAVES: DEFAULT_PARAMS.octaves }, depthTest: false, depthWrite: false,
+      vertexShader: 'void main(){ gl_Position=vec4(position.xy,0.0,1.0); }',
+      fragmentShader: `${NOISE_UNIFORMS_GLSL}\n${classic ? NOISE_FUNCTIONS_GLSL : program.glsl}\nuniform vec3 ppDirections[${count}];\nvoid main(){ vec3 dir=normalize(ppDirections[int(gl_FragCoord.x)]); vec3 grad; float cl,mt; float h=heightField(dir,grad,cl,mt); gl_FragColor=gl_FragCoord.y<1.0?vec4(h,grad):vec4(cl,mt,0.0,1.0); }` });
+    const geometry = new THREE.PlaneGeometry(2, 2), scene = new THREE.Scene(), mesh = new THREE.Mesh(geometry, material), camera = new THREE.Camera(); mesh.frustumCulled = false; scene.add(mesh);
+    const pixels = new Float32Array(count * 2 * 4), before = renderer.getRenderTarget();
+    try { renderer.setRenderTarget(target); renderer.render(scene, camera); linkedPrograms(material); renderer.readRenderTargetPixels(target, 0, 0, count, 2, pixels); assert(gl.getError() === gl.NO_ERROR, 'GPU float readback returned a WebGL error.'); return dirs.map((_, i) => ({ height: pixels[i*4], gradient: Array.from(pixels.slice(i*4+1,i*4+4)), cLow: pixels[(count+i)*4], mtn: pixels[(count+i)*4+1] })); }
+    finally { renderer.setRenderTarget(before); geometry.dispose(); material.dispose(); target.dispose(); }
+  }
+  const differences = (a, b) => ({ height: Math.abs(a.height-b.height), gradient: Math.max(...a.gradient.map((v,i)=>Math.abs(v-b.gradient[i]))), cLow: Math.abs(a.cLow-b.cLow), mtn: Math.abs(a.mtn-b.mtn) });
+  const maxMetrics = samples => Object.fromEntries(['height','gradient','cLow','mtn'].map(key=>[key,Math.max(...samples.map(s=>s[key]))]));
+  const doubleCurrent = createRecipe('mix'); doubleCurrent.nodes[0] = createNode('currentTerrain', 'noiseA'); doubleCurrent.nodes[1] = createNode('currentTerrain', 'noiseB', { noiseScale: 4.5, octaves: 3, ridge: 0.9 });
+  await test('CPU / actual GPU height, gradient and material auxiliaries', () => {
+    const recipes = { current: createInitialGraph(), noiseRemap: createRecipe('noise'), twoNoises: createRecipe('mix'), twoCurrentSources: doubleCurrent }, measurements = {};
+    for (const [name, graph] of Object.entries(recipes)) {
+      const program = compileGraph(graph, DEFAULT_PARAMS), gpu = sampleGpu(program), cpu = directions.map(dir=>program.evaluate(dir));
+      assert(gpu.every(s=>[s.height,s.cLow,s.mtn,...s.gradient].every(Number.isFinite)), `${name}: nonfinite GPU samples.`);
+      const maxima = maxMetrics(gpu.map((s,i)=>differences(s,cpu[i])));
+      // Review thresholds are exposed and asserted without retuning to pass.
+      const reviewTolerance = { height: 0.03, gradient: 0.75, cLow: 0.03, mtn: 0.05 };
+      measurements[name] = { directions: directions.length, maxAbsoluteError: maxima, reviewTolerance, withinReviewTolerance: Object.entries(maxima).every(([key,value])=>value<=reviewTolerance[key]) };
+      assert(measurements[name].withinReviewTolerance, `${name}: CPU/GPU error exceeds the fixed review tolerance: ${JSON.stringify(measurements[name])}`);
+    }
+    return { measurements, note: 'Pass asserts real linking, finite float readback and CPU/GPU errors within the displayed fixed review tolerances for every recipe.' };
+  });
+  await test('First activation preserves classic GPU source exactly', () => {
+    const program = compileGraph(createInitialGraph(), DEFAULT_PARAMS), generated = sampleGpu(program), original = sampleGpu(program, directions, true), maxima = maxMetrics(generated.map((s,i)=>differences(s,original[i])));
+    assert(Object.values(maxima).every(v=>v<1e-5), `Classic GPU identity differs: ${JSON.stringify(maxima)}`); return { maxAbsoluteError: maxima };
+  });
+  await test('GPU cube-face junctions and poles share the same direction field', () => {
+    const O = [[-1,-1,1],[1,-1,-1],[1,-1,1],[-1,-1,-1],[-1,1,1],[-1,-1,-1]], U = [[2,0,0],[-2,0,0],[0,0,-2],[0,0,2],[2,0,0],[2,0,0]], V = [[0,2,0],[0,2,0],[0,2,0],[0,2,0],[0,0,-2],[0,0,2]];
+    const face = (f,u,v)=>new THREE.Vector3(...O[f]).addScaledVector(new THREE.Vector3(...U[f]),u).addScaledVector(new THREE.Vector3(...V[f]),v).normalize();
+    const pairs = [[face(0,1,0.37),face(2,0,0.37)],[face(0,0,0.37),face(3,1,0.37)],[face(0,0.31,1),face(4,0.31,0)],[face(0,0.31,0),face(5,0.31,1)],[unit([0,1,0]),face(4,0.5,0.5)],[unit([0,-1,0]),face(5,0.5,0.5)]];
+    const values = sampleGpu(compileGraph(createRecipe('mix'), DEFAULT_PARAMS), pairs.flat());
+    const maxima = maxMetrics(pairs.map((_,i)=>differences(values[i*2],values[i*2+1]))); assert(Object.values(maxima).every(v=>v<1e-5), `GPU seams differ: ${JSON.stringify(maxima)}`); return { facePairs: pairs.length, maxAbsoluteError: maxima, note: 'Direction continuity check; does not replace moving-camera LOD inspection.' };
+  });
+  await test('Real terrain materials link for all recipes', async () => {
+    const planet = own(new Planet({ params: { ...DEFAULT_PARAMS, chunkRes: 8, maxDepth: 0, waterEnabled: false, cloudsEnabled: false } })), recipes = [createInitialGraph(),createRecipe('noise'),createRecipe('mix'),doubleCurrent], details = [];
+    for (const graph of recipes) { const result = await planet.setTerrainGraph(graph,{renderer}); assert(result.ok, result.error || 'Terrain candidate rejected.'); details.push({ graph: graph.nodes.map(n=>n.type).join(' → '), compiled: result.compiled, linkedPrograms: planet.world.templateMaterials.reduce((sum,m)=>sum+linkedPrograms(m),0) }); }
+    return { details };
+  });
+  await test('Uniform scalar and seed edits retain real linked GPU programs', async () => {
+    const planet = own(new Planet({ terrain: { mode:'nodes', graph:createRecipe('noise') }, chunkRes:8,maxDepth:0 }));
+    // Force a topology edit so constructor-created materials are warmed first.
+    await planet.setTerrainGraph(createRecipe('mix'),{renderer}); await planet.setTerrainGraph(createRecipe('noise'),{renderer});
+    const materials = [...planet.world.templateMaterials], previous = planet._terrainProgram.evaluate(directions[13]).height;
+    let materialCreations=0,rendererCompileCalls=0;
+    const createMaterials=planet._terrainMaterials.bind(planet);
+    planet._terrainMaterials=program=>{const created=createMaterials(program);materialCreations+=created.length;return created;};
+    const measuredRenderer=new Proxy(renderer,{get(target,key){if(key==='compile')return(...args)=>{rendererCompileCalls++;return target.compile(...args);};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    const programObjects=()=>materials.flatMap(material=>Array.from(renderer.properties.get(material).programs.values()));
+    const initialProgramObjects=programObjects();
+    const snapshot=()=>({materialCreations,rendererCompileCalls,totalGpuPrograms:renderer.info.programs.length,linkedTerrainProgramReferences:programObjects().length});
+    const measuredEdit=async(graph)=>{const before=snapshot(),start=performance.now(),result=await planet.setTerrainGraph(graph,{renderer:measuredRenderer}),latencyMs=performance.now()-start,after=snapshot();assert(result.ok && result.compiled===false,'Nonstructural edit recompiled or failed.');assert(programObjects().every((p,i)=>p===initialProgramObjects[i]),'Nonstructural edit replaced an actual GPU program.');assert(after.materialCreations===before.materialCreations && after.rendererCompileCalls===before.rendererCompileCalls && after.totalGpuPrograms===before.totalGpuPrograms,'Nonstructural edit caused material creation or GPU compilation.');return {applicationLatencyMs:latencyMs,before,after,materialCreations:after.materialCreations-before.materialCreations,rendererCompileCalls:after.rendererCompileCalls-before.rendererCompileCalls,newGpuPrograms:after.totalGpuPrograms-before.totalGpuPrograms,compiled:result.compiled};};
+    const layout=planet.terrain.graph;layout.nodes[0].position={x:720,y:380};layout.nodes[0].label='Moved noise';layout.nodes.reverse();const layoutMeasurement=await measuredEdit(layout);
+    const unreachable=planet.terrain.graph;unreachable.nodes.push(createNode('mix','unreachableIncomplete'));const unreachableMeasurement=await measuredEdit(unreachable);
+    const graph=planet.terrain.graph;graph.nodes.find(node=>node.type==='noise3d').params.frequency=4.7;const scalarMeasurement=await measuredEdit(graph);const edited={compiled:scalarMeasurement.compiled};
+    assert(materials.every((m,i)=>m===planet.world.templateMaterials[i]),'Scalar edit replaced material.');
+    const seedBefore=snapshot(),seedStarted=performance.now();planet.set({seed:1338});const seedMeasurement={applicationLatencyMs:performance.now()-seedStarted,before:seedBefore,after:snapshot()};assert(materials.every((m,i)=>m===planet.world.templateMaterials[i]),'Seed edit replaced material.');assert(programObjects().every((p,i)=>p===initialProgramObjects[i]),'Seed edit replaced actual GPU programs.');planet._terrainMaterials=createMaterials;
+    const current = planet._terrainProgram.evaluate(directions[13]).height; assert(current!==previous,'Seed/value edits did not change CPU terrain.');
+    materials.forEach(linkedPrograms); const gpu = sampleGpu(planet._terrainProgram), cpu = directions.map(dir=>planet._terrainProgram.evaluate(dir));
+    return { compiled:edited.compiled, materialIdentityPreserved:true, before:previous,after:current, measurements:{layout:layoutMeasurement,unreachableIncompleteNode:unreachableMeasurement,numericUniform:scalarMeasurement,seedUniform:seedMeasurement},measurementScope:'One sequential run after terrain programs warmed. Application latency ends at atomic CPU/uniform install; it is not input-to-presented-frame latency or an FPS benchmark.',maxAbsoluteError:maxMetrics(gpu.map((s,i)=>differences(s,cpu[i]))) };
+  });
+  await test('Actual terrain draws survive discrete near/far LOD transitions',async()=>{
+    const planet=own(new Planet({terrain:{mode:'nodes',graph:createRecipe('mix')},radius:200,heightScale:20,chunkRes:8,maxDepth:3,waterEnabled:false,cloudsEnabled:false,atmoEnabled:false}));
+    await planet.setTerrainGraph(createRecipe('noise'),{renderer});await planet.setTerrainGraph(createRecipe('mix'),{renderer});
+    const target=new THREE.WebGLRenderTarget(128,128,{depthBuffer:true}),camera=new THREE.PerspectiveCamera(45,1,0.1,10000),pixels=new Uint8Array(128*128*4),beforeTarget=renderer.getRenderTarget(),beforeColor=renderer.getClearColor(new THREE.Color()),beforeAlpha=renderer.getClearAlpha(),frames=[];
+    const initialProgramCount=renderer.info.programs.length;
+    try{
+      renderer.setClearColor(0x000000,0);renderer.setRenderTarget(target);
+      for(const distance of [1200,800,500,360,280,240,360,500,800,1200]){
+        camera.position.set(0,distance*0.08,distance);camera.lookAt(0,0,0);camera.updateMatrixWorld();planet.world.update(camera.position,camera);const started=performance.now();renderer.render(planet._scene,camera);renderer.readRenderTargetPixels(target,0,0,128,128,pixels);
+        const coveredPixels=pixels.reduce((sum,value,index)=>sum+(index%4===3&&value>0?1:0),0),levels=Array.from(planet.world.chunks.values()).map(node=>node.level);
+        assert(coveredPixels>0,`Terrain disappeared at distance ${distance}.`);assert(gl.getError()===gl.NO_ERROR,`WebGL error at distance ${distance}.`);frames.push({distance,chunks:planet.world.chunkCount,depthRange:[Math.min(...levels),Math.max(...levels)],coveredPixels,drawAndReadbackMs:performance.now()-started});
+      }
+      assert(new Set(frames.map(frame=>frame.chunks)).size>1,'Camera sweep did not exercise different LOD chunk counts.');
+      const finalProgramCount=renderer.info.programs.length;assert(finalProgramCount===initialProgramCount,'LOD camera movement created a shader program.');
+      return {frames,initialProgramCount,finalProgramCount,newGpuPrograms:finalProgramCount-initialProgramCount,note:'Ten real rasterized frames move near then far and verify visible terrain, differing LOD selections, GL errors and no shader compilation. Discrete low-resolution readbacks do not prove absence of every visual seam or temporal popping; drawAndReadbackMs includes synchronous GPU readback.'};
+    }finally{renderer.setRenderTarget(beforeTarget);renderer.setClearColor(beforeColor,beforeAlpha);target.dispose();}
+  });
+  await test('Actual shader link failure retains previous graph, program and sampler and disposes candidate', async () => {
+    const planet = own(new Planet({terrain:{mode:'nodes',graph:constant(0.25)},chunkRes:8,maxDepth:0})), before = { terrain:JSON.stringify(planet.terrain), program:planet._terrainProgram,sampler:planet._sampler,materials:planet.world.templateMaterials,height:planet.getSurfaceRadius(directions[13]) }, original = planet._terrainMaterials.bind(planet), discarded=[];
+    planet._terrainMaterials = program => original(program).map(material=>{ const record={disposals:0}; discarded.push(record); material.addEventListener('dispose',()=>record.disposals++); material.fragmentShader += '\nTHIS_IS_AN_INTENTIONAL_LINK_FAILURE\n'; return material; });
+    const result = await planet.setTerrainGraph(createRecipe('noise'),{renderer}); planet._terrainMaterials=original;
+    assert(!result.ok && result.diagnostics?.some(d=>d.code==='shader'),'Invalid shader was accepted.'); assert(planet._terrainProgram===before.program && planet._sampler===before.sampler && planet.world.templateMaterials===before.materials,'Invalid candidate replaced previous runtime state.'); assert(JSON.stringify(planet.terrain)===before.terrain && planet.getSurfaceRadius(directions[13])===before.height,'Invalid candidate changed shape.'); assert(discarded.length===2 && discarded.every(r=>r.disposals===1),'Rejected candidate was not disposed exactly once.'); return { error:result.error, retainedPreviousState:true,candidateDisposals:discarded.map(r=>r.disposals) };
+  });
+  await test('Older real GPU candidate cannot replace a newer graph', async () => {
+    const planet=own(new Planet({terrain:{mode:'nodes',graph:constant(0.2)},chunkRes:8,maxDepth:0})); let gate=false; const records=[], original=planet._terrainMaterials.bind(planet);
+    planet._terrainMaterials=program=>original(program).map(material=>{const record={material,disposals:0};records.push(record);material.addEventListener('dispose',()=>record.disposals++);return material;});
+    // Compile and link real GPU programs, but hold their reported completion
+    // so this regression exercises the inverse-finish schedule deterministically.
+    const delayedRenderer=new Proxy(renderer,{get(target,key){if(key==='compile')return (scene,camera)=>{target.compile(scene,camera);const material=scene.children[0].material;for(const program of target.properties.get(material).programs.values()){const ready=program.isReady.bind(program);program.isReady=()=>gate&&ready();}};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    const stale=planet.setTerrainGraph(createRecipe('noise'),{renderer:delayedRenderer}); const newest=await planet.setTerrainGraph(constant(0.6),{renderer}); gate=true; const older=await stale; planet._terrainMaterials=original;
+    assert(newest.ok && older.obsolete,'Older candidate was not discarded.'); assert(Math.abs(planet._terrainProgram.evaluate(directions[13]).height-0.6)<1e-9,'Older candidate replaced newer shape.'); assert(records.every(record=>record.disposals===1),'Obsolete candidate resources leaked.'); return { older,newest,candidateDisposals:records.map(r=>r.disposals),schedule:'Controlled readiness gate around actually compiled GPU programs.' };
+  });
+  await test('Independent planets and disposal during pending GPU work',async()=>{
+    const a=own(new Planet({terrain:{mode:'nodes',graph:constant(0.2)},chunkRes:8,maxDepth:0})), b=own(new Planet({terrain:{mode:'nodes',graph:constant(0.8)},chunkRes:8,maxDepth:0})); await a.setTerrainGraph(constant(0.5),{renderer}); assert(b._terrainProgram.evaluate(directions[13]).height===0.8,'Planet A changed Planet B.');
+    let gate=false;const candidates=[],original=a._terrainMaterials.bind(a);a._terrainMaterials=program=>original(program).map(material=>{const record={disposals:0};candidates.push(record);material.addEventListener('dispose',()=>record.disposals++);return material;});
+    const delayed=new Proxy(renderer,{get(target,key){if(key==='compile')return(scene,camera)=>{target.compile(scene,camera);for(const p of target.properties.get(scene.children[0].material).programs.values()){const ready=p.isReady.bind(p);p.isReady=()=>gate&&ready();}};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    const pending=a.setTerrainGraph(createRecipe('mix'),{renderer:delayed});a.dispose();gate=true;const result=await pending;assert(result.obsolete,'Disposed planet accepted pending program.');assert(candidates.every(r=>r.disposals===1),'Disposed planet candidate leaked.');return {independent:true,disposedCandidateObsolete:true,candidateDisposals:candidates.map(r=>r.disposals)};
+  });
+  state.status=state.results.some(r=>r.status==='fail')?'failed':'complete';
+} catch(error) { state.status='failed';state.results.push({name:'WebGL harness initialization',status:'fail',error:error.message,stack:error.stack}); }
+finally { owned.forEach(planet=>{if(!planet._disposed)planet.dispose();}); if(renderer){state.resourcesAfterCleanup={geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,programs:renderer.info.programs?.length};renderer.dispose();}publish(); }
+</script></body></html>

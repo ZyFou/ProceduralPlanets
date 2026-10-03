@@ -1,0 +1,27 @@
+{
+  "state": "passed",
+  "checks": [
+    {
+      "name": "WebGL graph bake freezes geometry and shader texture state during live edits",
+      "passed": true
+    },
+    {
+      "name": "GLTFExporter binary output reimports with graph shape, normals and colors",
+      "passed": true
+    },
+    {
+      "name": "ZIP preset and GLB stay coherent while live edits happen during async packaging",
+      "passed": true
+    },
+    {
+      "name": "Studio Use in code snippet reconstructs the same applied surface",
+      "passed": true
+    }
+  ],
+  "shaderErrors": [],
+  "maxRadiusError": 0.000005583130274544601,
+  "meshes": 6,
+  "texturePixels": 24576,
+  "glbBytes": 89432,
+  "archiveBytes": 67443
+}

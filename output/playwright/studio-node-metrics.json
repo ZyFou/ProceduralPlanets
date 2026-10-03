@@ -1,0 +1,52 @@
+{
+  "scope": "One local development run. Timings include module loading and the next animation frame; no FPS guarantee.",
+  "samples": [
+    {
+      "phase": "Studio ready before opening nodes",
+      "atMs": 4433.199999999255,
+      "nodeEditorResources": []
+    },
+    {
+      "phase": "Node cards mounted",
+      "atMs": 23751,
+      "nodeEditorResources": [
+        {
+          "file": "NodeWorkspace.jsx?t=1791022755758",
+          "startMs": 23662.599999999627,
+          "durationMs": 4,
+          "bytes": 300
+        },
+        {
+          "file": "style.css",
+          "startMs": 23668.699999999255,
+          "durationMs": 3.7000000001862645,
+          "bytes": 300
+        },
+        {
+          "file": "useNodeWorkspaceLayout.js",
+          "startMs": 23668.699999999255,
+          "durationMs": 4.2000000001862645,
+          "bytes": 300
+        },
+        {
+          "file": "@xyflow_react.js?v=d625d9bc",
+          "startMs": 23668.699999999255,
+          "durationMs": 4.6000000005587935,
+          "bytes": 0
+        },
+        {
+          "file": "NodeWorkspace.css?t=1791020291456",
+          "startMs": 23668.799999999814,
+          "durationMs": 4.2000000001862645,
+          "bytes": 300
+        }
+      ]
+    },
+    {
+      "phase": "Input through valid graph to animation frame",
+      "control": "Factor value",
+      "value": "0.25",
+      "inputToFrameMs": 95.79999999981374
+    }
+  ]
+}

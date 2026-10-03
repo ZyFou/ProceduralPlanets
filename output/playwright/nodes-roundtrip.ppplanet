@@ -1,0 +1,414 @@
+{
+  "format": "procedural-planets-project",
+  "params": {
+    "mode": "planet",
+    "renderVersion": 3,
+    "starTemperature": 5772,
+    "starTint": [
+      1,
+      0.98,
+      0.7
+    ],
+    "starBrightness": 1,
+    "starNoiseScale": 3,
+    "starTurbulence": 0.6,
+    "starGranules": 0.9,
+    "starFlowSpeed": 1,
+    "starFaculae": 0.8,
+    "starSpotsEnabled": true,
+    "starSpots": 0.4,
+    "starSpotScale": 2.4,
+    "starLimbDarken": 1,
+    "starBloom": 1,
+    "starPulseAmount": 0,
+    "starPulseSpeed": 1.2,
+    "starCoronaEnabled": true,
+    "starCoronaColor": [
+      1,
+      0.94,
+      0.86
+    ],
+    "starCoronaSize": 0.6,
+    "starCoronaStrength": 0.6,
+    "starFlares": 0.7,
+    "starProminences": 0.5,
+    "starChromoColor": [
+      1,
+      0.3,
+      0.22
+    ],
+    "gasBandCount": 18,
+    "gasContrast": 0.6,
+    "gasBandWarp": 0.5,
+    "gasWarp": 0.75,
+    "gasScale": 3,
+    "gasFlowSpeed": 1,
+    "gasPolarHaze": 0.55,
+    "gasLimb": 0.5,
+    "gasTilt": 8,
+    "gasStormsEnabled": true,
+    "gasGreatSpot": 0.65,
+    "gasStorms": 0.5,
+    "gasStormScale": 1,
+    "gasColorZone": [
+      0.82,
+      0.74,
+      0.6
+    ],
+    "gasColorBelt": [
+      0.56,
+      0.4,
+      0.29
+    ],
+    "gasColorAccent": [
+      0.68,
+      0.38,
+      0.23
+    ],
+    "gasColorStorm": [
+      0.7,
+      0.33,
+      0.2
+    ],
+    "gasColorPolar": [
+      0.52,
+      0.53,
+      0.56
+    ],
+    "gasAtmoColor": [
+      0.55,
+      0.68,
+      1
+    ],
+    "gasAtmoStrength": 0.15,
+    "gasAtmoHaze": 0.5,
+    "gasRingsEnabled": false,
+    "gasRingInner": 1.25,
+    "gasRingOuter": 2.25,
+    "gasRingOpacity": 1,
+    "gasRingColor": [
+      0.86,
+      0.8,
+      0.69
+    ],
+    "seed": 506510914,
+    "radius": 2000,
+    "heightScale": 80,
+    "seaLevel": 0.48,
+    "noiseScale": 2.6,
+    "octaves": 6,
+    "persistence": 0.52,
+    "lacunarity": 2.05,
+    "warp": 0.65,
+    "ridge": 0.55,
+    "mountainScale": 2.4,
+    "craters": 0,
+    "craterScale": 6,
+    "continents": 0.75,
+    "sunAzimuth": 100,
+    "sunElevation": 18,
+    "sunIntensity": 1,
+    "ambient": 0.25,
+    "exposure": 1,
+    "toonEnabled": false,
+    "toonBands": 4,
+    "toonSoftness": 0.06,
+    "bandSoftness": 0.05,
+    "snowLine": 0.62,
+    "polarCaps": 0.55,
+    "biomeAmount": 1,
+    "tempBias": 0,
+    "moistureScale": 2,
+    "bioTundra": [
+      0.5,
+      0.48,
+      0.41
+    ],
+    "bioSteppe": [
+      0.53,
+      0.51,
+      0.35
+    ],
+    "bioTaiga": [
+      0.15,
+      0.22,
+      0.14
+    ],
+    "bioShrub": [
+      0.56,
+      0.5,
+      0.34
+    ],
+    "bioDesert": [
+      0.82,
+      0.68,
+      0.48
+    ],
+    "bioSavanna": [
+      0.56,
+      0.5,
+      0.28
+    ],
+    "bioJungle": [
+      0.09,
+      0.19,
+      0.07
+    ],
+    "colDeep": [
+      0.02,
+      0.075,
+      0.17
+    ],
+    "colShallow": [
+      0.3,
+      0.74,
+      0.74
+    ],
+    "colSand": [
+      0.78,
+      0.71,
+      0.56
+    ],
+    "colGrass": [
+      0.33,
+      0.4,
+      0.19
+    ],
+    "colForest": [
+      0.15,
+      0.24,
+      0.11
+    ],
+    "colRock": [
+      0.42,
+      0.38,
+      0.34
+    ],
+    "colSnow": [
+      0.93,
+      0.95,
+      0.97
+    ],
+    "colFoam": [
+      0.92,
+      0.95,
+      0.96
+    ],
+    "waterEnabled": true,
+    "waterOpacity": 0.78,
+    "waterClarity": 0.005,
+    "waveSize": 6,
+    "waveHeight": 0.8,
+    "waveSpeed": 1,
+    "waterSpec": 1,
+    "foamWidth": 0.25,
+    "foamAmount": 1,
+    "whitecaps": 0.3,
+    "waterEmissive": 0,
+    "cloudsEnabled": true,
+    "cloudCoverage": 0.45,
+    "cloudSoftness": 0.18,
+    "cloudDensity": 0.8,
+    "cloudScale": 3.2,
+    "cloudDetail": 0.7,
+    "cloudDetailScale": 1,
+    "cloudAltitude": 0.004,
+    "cloudThickness": 0.009,
+    "cloudSpeed": 0.6,
+    "cloudShadowStrength": 0.6,
+    "cloudQuality": 64,
+    "cloudResolution": 0.5,
+    "cloudColor": [
+      1,
+      1,
+      1
+    ],
+    "cloudShadow": [
+      0.78,
+      0.84,
+      0.95
+    ],
+    "atmoEnabled": true,
+    "atmoColor": [
+      0.35,
+      0.6,
+      1
+    ],
+    "atmoStrength": 1,
+    "atmoHeight": 0.045,
+    "atmoHaze": 0.3,
+    "chunkRes": 32,
+    "maxDepth": 5,
+    "splitFactor": 2.4,
+    "wireframe": false
+  },
+  "schemaVersion": 2,
+  "terrain": {
+    "mode": "nodes",
+    "graph": {
+      "format": "procedural-planets-height-graph",
+      "version": 1,
+      "nodes": [
+        {
+          "id": "noiseA",
+          "type": "noise3d",
+          "params": {
+            "frequency": 2.6,
+            "octaves": 6,
+            "lacunarity": 2.05,
+            "persistence": 0.52,
+            "seedOffset": 0
+          }
+        },
+        {
+          "id": "noiseB",
+          "type": "noise3d",
+          "params": {
+            "frequency": 8,
+            "octaves": 6,
+            "lacunarity": 2.05,
+            "persistence": 0.52,
+            "seedOffset": 17
+          }
+        },
+        {
+          "id": "mix",
+          "type": "mix",
+          "params": {
+            "factor": 0.5
+          }
+        },
+        {
+          "id": "output",
+          "type": "heightOutput",
+          "params": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "noiseA-mix-a",
+          "source": "noiseA",
+          "sourcePort": "height",
+          "target": "mix",
+          "targetPort": "a"
+        },
+        {
+          "id": "noiseB-mix-b",
+          "source": "noiseB",
+          "sourcePort": "height",
+          "target": "mix",
+          "targetPort": "b"
+        },
+        {
+          "id": "mix-output-height",
+          "source": "mix",
+          "sourcePort": "height",
+          "target": "output",
+          "targetPort": "height"
+        }
+      ],
+      "outputId": "output"
+    }
+  },
+  "editor": {
+    "draftGraph": {
+      "format": "procedural-planets-height-graph",
+      "version": 1,
+      "nodes": [
+        {
+          "id": "noiseA",
+          "type": "noise3d",
+          "params": {
+            "frequency": 2.6,
+            "octaves": 6,
+            "lacunarity": 2.05,
+            "persistence": 0.52,
+            "seedOffset": 0
+          }
+        },
+        {
+          "id": "noiseB",
+          "type": "noise3d",
+          "params": {
+            "frequency": 8,
+            "octaves": 6,
+            "lacunarity": 2.05,
+            "persistence": 0.52,
+            "seedOffset": 17
+          }
+        },
+        {
+          "id": "mix",
+          "type": "mix",
+          "params": {
+            "factor": 0.5
+          }
+        },
+        {
+          "id": "output",
+          "type": "heightOutput",
+          "params": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "noiseA-mix-a",
+          "source": "noiseA",
+          "sourcePort": "height",
+          "target": "mix",
+          "targetPort": "a"
+        },
+        {
+          "id": "noiseB-mix-b",
+          "source": "noiseB",
+          "sourcePort": "height",
+          "target": "mix",
+          "targetPort": "b"
+        },
+        {
+          "id": "mix-output-height",
+          "source": "mix",
+          "sourcePort": "height",
+          "target": "output",
+          "targetPort": "height"
+        }
+      ],
+      "outputId": "output"
+    },
+    "nodePositions": {
+      "noiseA": {
+        "x": 0,
+        "y": 60
+      },
+      "noiseB": {
+        "x": 264,
+        "y": 180
+      },
+      "mix": {
+        "x": 528,
+        "y": 60
+      },
+      "output": {
+        "x": 792,
+        "y": 60
+      }
+    },
+    "nodeLabels": {},
+    "groups": [],
+    "viewport": {
+      "x": 34,
+      "y": 36.142857142857146,
+      "zoom": 0.39591836734693875
+    }
+  },
+  "id": "00511c4e-5cbf-4f7f-87a1-2855f5e7ff10",
+  "metadata": {
+    "name": "Blank planet",
+    "description": "A clean Terran world ready to shape.",
+    "templateId": "blank",
+    "thumbnail": null,
+    "created": "2026-10-03T09:37:26.029Z",
+    "modified": "2026-10-03T10:13:50.641Z",
+    "communityIcon": "orbit"
+  }
+}

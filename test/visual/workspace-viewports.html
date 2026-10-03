@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Node workspace viewport comparison</title>
+<style>body{margin:0;background:#15191f;color:#ddd;font:14px system-ui}header{padding:12px;display:flex;gap:8px;align-items:center}button{background:#29374d;color:white;border:1px solid #45618a;padding:8px;cursor:pointer}iframe{display:block;border:1px solid #45618a;margin:0 12px 12px}output{margin-left:8px}</style></head>
+<body><header><button data-app="planets" data-width="1440" data-height="900">Planets 1440 × 900</button><button data-app="planets" data-width="1100" data-height="800">Planets 1100 × 800</button><button data-app="planets" data-width="390" data-height="844">Planets mobile</button><button data-app="terrains" data-width="1440" data-height="900">Terrains 1440 × 900</button><button data-app="terrains" data-width="1100" data-height="800">Terrains 1100 × 800</button><output>Planets — 1440 × 900</output></header>
+<iframe title="Workspace under test" width="1440" height="900" src="/"></iframe>
+<script>const frame=document.querySelector('iframe'); let current='planets';document.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>{frame.width=button.dataset.width;frame.height=button.dataset.height;if(current!==button.dataset.app){current=button.dataset.app;frame.src=current==='planets'?'/':'http://localhost:6061/';}document.querySelector('output').textContent=`${current} — ${frame.width} × ${frame.height}`;}));</script>
+<details><summary>Studio load and input measurements</summary><pre id="measurements">Waiting for the local Studio…</pre></details>
+<script>
+const measurements={scope:'One local development run. Timings include module loading and the next animation frame; no FPS guarantee.',samples:[]};
+frame.addEventListener('load',()=>{
+  let doc,view;try{doc=frame.contentDocument;view=frame.contentWindow;if(!doc)return;}catch{return;}
+  let startupRecorded=false,nodesRecorded=false,pending=null;
+  const resources=()=>view.performance.getEntriesByType('resource').filter(e=>/NodeWorkspace|@xyflow/.test(e.name)).map(e=>({file:e.name.split('/').at(-1),startMs:e.startTime,durationMs:e.duration,bytes:e.transferSize}));
+  const publish=()=>document.querySelector('#measurements').textContent=JSON.stringify(measurements,null,2);
+  const observe=()=>{
+    if(!startupRecorded&&!doc.querySelector('#pp-loader')&&doc.querySelector('#viewport')){startupRecorded=true;measurements.samples.push({phase:'Studio ready before opening nodes',atMs:view.performance.now(),nodeEditorResources:resources()});publish();}
+    if(!nodesRecorded&&doc.querySelector('[data-node-workspace] .react-flow__node')){nodesRecorded=true;measurements.samples.push({phase:'Node cards mounted',atMs:view.performance.now(),nodeEditorResources:resources()});publish();}
+    const status=doc.querySelector('.node-graph-summary__status')?.textContent;
+    if(pending&&status?.includes('Compiling'))pending.sawCompiling=true;
+    if(pending?.sawCompiling&&status?.includes('Live graph')){const sample=pending;pending=null;view.requestAnimationFrame(()=>{measurements.samples.push({phase:'Input through valid graph to animation frame',control:sample.control,value:sample.value,inputToFrameMs:view.performance.now()-sample.start});publish();});}
+  };
+  doc.addEventListener('input',event=>{if(event.target.closest('[data-node-workspace]')&&['range','number'].includes(event.target.type))pending={start:view.performance.now(),control:event.target.getAttribute('aria-label'),value:event.target.value,sawCompiling:false};},true);
+  new MutationObserver(observe).observe(doc.body,{subtree:true,childList:true,attributes:true,characterData:true});observe();
+});
+</script>
+</body></html>
