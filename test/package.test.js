@@ -23,7 +23,9 @@ describe('package', () => {
   });
 
   it('declares every runtime export', async () => {
-    const dts = read('types/index.d.ts');
+    const entry = read('types/index.d.ts');
+    expect(entry).toContain("export * from './graph'");
+    const dts = `${entry}\n${read('types/graph.d.ts')}`;
     const lib = await import('../src/lib/index.js');
     for (const name of Object.keys(lib)) {
       expect(dts, name).toMatch(new RegExp(`export (declare )?(class|function|const) ${name}\\b`));

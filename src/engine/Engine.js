@@ -22,6 +22,8 @@ export class Engine extends PlanetViewer {
     this.planet.setParam(key, value);
   }
 
+  setTerrain(terrain) { return this.planet.setTerrain(terrain, { renderer: this.renderer }); }
+
   /** Apply a planet preset patch; returns the merged params for the UI to mirror. */
   applyPreset(key) {
     this.planet._applyPlanetPreset(key);
@@ -79,7 +81,7 @@ export class Engine extends PlanetViewer {
       this.renderOnce();
       await PlanetExporter.export(
         this.renderer, this.params, this.uniforms,
-        { ...options, starShaderBody: this.starShaderBody },
+        { ...options, terrain: this.planet.terrain, terrainProgram: this.planet._terrainProgram, starShaderBody: this.starShaderBody },
         onProgress
       );
     } finally {

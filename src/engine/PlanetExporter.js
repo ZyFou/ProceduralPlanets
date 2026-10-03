@@ -2,7 +2,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
 import { zipSync } from 'fflate';
 import { DEFAULT_STAR_BODY } from './star.js';
-import { bakeGroup, disposeBaked } from './PlanetBaker.js';
+import { bakeGroup, cloneBakeUniforms, disposeBaked } from './PlanetBaker.js';
 
 // ============================================================================
 // PlanetExporter — packages a baked planet (PlanetBaker) as GLB or OBJ +
@@ -57,6 +57,11 @@ export class PlanetExporter {
    * exportPreset, starShaderBody.
    */
   static async buildFiles(renderer, params, uniforms, options = {}, onProgress = () => {}) {
+    // Freeze one coherent generation snapshot before the first await, including
+    // a graph retained while displaying a gas giant or a star.
+    params = JSON.parse(JSON.stringify(params));
+    uniforms = cloneBakeUniforms(uniforms, options);
+    options = { ...options, terrain: JSON.parse(JSON.stringify(options.terrain ?? { mode: 'procedural', graph: null })) };
     const mode = params.mode === 'star' || params.mode === 'gas' ? params.mode : 'planet';
     const names = NAMES[mode];
     const format = options.format === 'obj' ? 'obj' : 'glb';
@@ -65,30 +70,32 @@ export class PlanetExporter {
     const files = {};
 
     const group = await bakeGroup(renderer, params, uniforms, options, onProgress);
-
-    onProgress(`Packaging ${format.toUpperCase()}`);
-    if (includeMesh) {
-      if (format === 'glb') {
-        const model = await toGLB(group);
-        if (model) files[`${names.model}.glb`] = model;
-      } else {
-        files[`${names.model}.obj`] = new TextEncoder().encode(new OBJExporter().parse(group));
-        for (const child of group.children) {
-          if (child.material?.map?._exportCanvas) {
-            files[`textures/${child.name}.png`] = await canvasToPng(child.material.map._exportCanvas);
+    try {
+      onProgress(`Packaging ${format.toUpperCase()}`);
+      if (includeMesh) {
+        if (format === 'glb') {
+          const model = await toGLB(group);
+          if (model) files[`${names.model}.glb`] = model;
+        } else {
+          files[`${names.model}.obj`] = new TextEncoder().encode(new OBJExporter().parse(group));
+          for (const child of group.children) {
+            if (child.material?.map?._exportCanvas) {
+              files[`textures/${child.name}.png`] = await canvasToPng(child.material.map._exportCanvas);
+            }
           }
         }
       }
-    }
 
-    if (exportPreset) {
-      const preset = { app: 'procedural-planets', mode, version: 1, params };
-      if (mode === 'star') preset.starShader = options.starShaderBody || DEFAULT_STAR_BODY;
-      files[names.preset] = new TextEncoder().encode(JSON.stringify(preset, null, 2));
-    }
+      if (exportPreset) {
+        const preset = { app: 'procedural-planets', mode, version: 2, params, terrain: options.terrain };
+        if (mode === 'star') preset.starShader = options.starShaderBody || DEFAULT_STAR_BODY;
+        files[names.preset] = new TextEncoder().encode(JSON.stringify(preset, null, 2));
+      }
 
-    disposeBaked(group);
-    return { files, filename: `${names.zip}-${params.seed}.zip` };
+      return { files, filename: `${names.zip}-${params.seed}.zip` };
+    } finally {
+      disposeBaked(group);
+    }
   }
 
   /** Bake, package and download the ZIP (the studio's Export button). */

@@ -87,6 +87,16 @@ export class ProgramWarmer {
     for (const p of progs.values()) {
       if (!p.isReady()) return false;
     }
+    // Completion only means the driver finished. A failed link must never
+    // replace an applied graph or be reported as a ready program.
+    const gl = this.renderer.getContext();
+    for (const p of progs.values()) {
+      if (p.__ppVerified) continue;
+      if (!gl.getProgramParameter(p.program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(p.program) || 'Terrain shader failed to link.');
+      }
+      p.__ppVerified = true;
+    }
     if (!this.parallel) {
       // no status to poll: link now, one program per call
       for (const p of progs.values()) {

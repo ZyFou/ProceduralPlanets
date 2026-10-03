@@ -219,7 +219,7 @@ export class PlanetWorld {
   // one material per variant (0: per-pixel low octaves, 1: LOW_VARYING)
   _createMaterials() {
     return [0, 1].map((low) => {
-      const m = createTerrainMaterial(this.shared, this.opts.octaves, low === 1, this.opts.chunkRes);
+      const m = createTerrainMaterial(this.terrainUniforms ?? this.shared, this.terrainOctaves ?? this.opts.octaves, low === 1, this.opts.chunkRes, this.terrainProgram);
       m.wireframe = this.wireframe;
       return m;
     });
@@ -264,6 +264,17 @@ export class PlanetWorld {
   setWireframe(on) {
     this.wireframe = on;
     for (const m of this.templateMaterials) m.wireframe = on;
+  }
+
+  /** Swap only shaders: retain the grid, instance buffers and LOD tree. */
+  installTerrainMaterials(materials, { program = null, uniforms = null, octaves = null } = {}) {
+    const previous = this.templateMaterials;
+    this.terrainProgram = program;
+    this.terrainUniforms = uniforms;
+    this.terrainOctaves = octaves;
+    this.templateMaterials = materials;
+    this.meshes.forEach((mesh, index) => { mesh.material = materials[index]; });
+    for (const material of previous) material.dispose();
   }
 
   /** Rebuild everything (structural change: chunkRes / maxDepth / octaves). */
