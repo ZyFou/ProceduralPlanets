@@ -915,7 +915,8 @@ body:has(.landing-overlay) {
 .landing-create-dialog p { margin: 7px 0 0; color: var(--text-muted); font-size: 12.5px; line-height: 1.5; }
 .landing-create-dialog > header > button { width: 30px; height: 30px; display: grid; place-items: center; flex: none; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-dim); cursor: var(--cursor-pointer); }
 .landing-create-dialog > header > button:hover { border-color: var(--border-subtle); background: var(--bg-control); color: var(--text-main); }
-.landing-create-options { display: grid; min-height: 0; overflow-y: auto; overscroll-behavior: contain; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+/* Keep the hover lift inside the scrollable area so the top border stays visible. */
+.landing-create-options { display: grid; min-height: 0; overflow-y: auto; overscroll-behavior: contain; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; padding-top: 2px; }
 .landing-create-options > button { min-height: 210px; display: flex; flex-direction: column; align-items: flex-start; padding: 18px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-panel); color: var(--text-main); text-align: left; cursor: var(--cursor-pointer); transition: border-color .15s ease, background .15s ease, transform .15s ease; }
 .landing-create-options > button:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--border-active); background: #101010; }
 .landing-create-options > button:disabled { opacity: .55; cursor: default; }
