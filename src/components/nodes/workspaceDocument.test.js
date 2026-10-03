@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { createRecipe } from '../../engine/graph/GraphDocument.js';
+import { createInitialGraph, createRecipe } from '../../engine/graph/GraphDocument.js';
+import { normalizeProject } from '../../project/ProjectStore.js';
 import { canEditWorkspaceEditor, copySelection, groupSelection, movePresentation, pasteSelection, removeSelection } from './workspaceDocument.js';
 
 describe('height workspace presentation editing', () => {
+  it.each([{}, { schemaVersion: 1, params: { seed: 42 } }])('opens nodes for a normalized project before its first viewport is saved', source => {
+    const project = normalizeProject(source);
+    const graph = createInitialGraph(project.params);
+    const editor = { ...project.editor, draftGraph: graph };
+    const before = structuredClone(editor);
+    expect(editor.viewport).toBeNull();
+    expect(canEditWorkspaceEditor(editor, graph)).toBe(true);
+    const reopened = normalizeProject({ ...project, terrain: { mode: 'nodes', graph }, editor });
+    expect(canEditWorkspaceEditor(reopened.editor, reopened.editor.draftGraph)).toBe(true);
+    expect(editor).toEqual(before);
+  });
   it('rejects malformed presentation data without discarding imported content', () => {
     const graph = createRecipe('noise');
     const valid = groupSelection(graph, { nodePositions: { noise: { x: 0, y: 0 } }, viewport: { x: 0, y: 0, zoom: 1 }, unknownImportedField: { recovery: 'keep me' } }, new Set(['noise']));

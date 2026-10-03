@@ -8,7 +8,8 @@ export function canEditWorkspaceEditor(editor, graph) {
   if (!record(editor)) return false;
   if (editor.nodePositions !== undefined && (!record(editor.nodePositions) || !Object.values(editor.nodePositions).every(finitePoint))) return false;
   if (editor.nodeLabels !== undefined && (!record(editor.nodeLabels) || !Object.values(editor.nodeLabels).every(value => typeof value === 'string'))) return false;
-  if (editor.viewport !== undefined && (!finitePoint(editor.viewport) || !Number.isFinite(editor.viewport.zoom) || editor.viewport.zoom <= 0)) return false;
+  // A null viewport is the persisted default until the first fit or pan.
+  if (editor.viewport != null && (!finitePoint(editor.viewport) || !Number.isFinite(editor.viewport.zoom) || editor.viewport.zoom <= 0)) return false;
   const safeGraphShape = candidate => record(candidate) && Array.isArray(candidate.nodes) && Array.isArray(candidate.edges)
     && candidate.nodes.every(node => record(node) && identifier(node.id) && identifier(node.type) && (node.params === undefined || record(node.params)))
     && candidate.edges.every(edge => record(edge) && identifier(edge.id) && identifier(edge.source) && identifier(edge.target))
