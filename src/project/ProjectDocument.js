@@ -1,8 +1,8 @@
 import { normalizeProject } from './ProjectStore.js';
 
 // Editable project file (.ppplanet): the studio document as JSON. The params
-// are plain procedural-planets parameters, so the same file also feeds
-// `new Planet(document.params)` directly.
+// and terrain form a complete runtime snapshot. Pass the entire document
+// to Planet.fromJSON() to retain the applied node graph.
 export const EDITABLE_PROJECT_FORMAT = 'procedural-planets-project';
 export const PROJECT_FILE_EXTENSION = '.ppplanet';
 export const PROJECT_FILE_ACCEPT = '.ppplanet,.json,application/json';
@@ -24,7 +24,8 @@ export function readEditableProjectDocument(input, { fallbackName } = {}) {
   }
   if (input.params && typeof input.params === 'object') return normalizeProject(input);
   if (typeof input.mode === 'string' || typeof input.seed === 'number') {
-    return normalizeProject({ metadata: { name: fallbackName }, params: input });
+    const { terrain, editor, ...params } = input;
+    return normalizeProject({ metadata: { name: fallbackName }, params, terrain, editor });
   }
   throw new Error('This file is not an editable Procedural Planets project.');
 }

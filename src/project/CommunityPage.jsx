@@ -157,7 +157,7 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
     setBusy(`code:${project.id}`);
     try {
       const result = await projectApi.shared(project.shareCode);
-      await copyText(planetCodeSnippet(result.project.data.params ?? {}));
+      await copyText(planetCodeSnippet(result.project.data.params ?? {}, result.project.data.terrain));
       flashCopied(`code:${project.id}`);
       showPopup(`Code for ${project.name} copied. Paste it into a three.js project using procedural-planets.`, { type: 'success' });
     } catch (requestError) {

@@ -40,7 +40,18 @@ export function snippetParams(params) {
 const fmt = (v) => (Array.isArray(v) ? `[${v.join(', ')}]` : typeof v === 'string' ? `'${v}'` : String(v));
 
 /** JavaScript that recreates the planet with the procedural-planets package. */
-export function planetCodeSnippet(params) {
+export function planetCodeSnippet(params, terrain) {
+  if (terrain?.graph) {
+    const snapshot = { app: 'procedural-planets', version: 2, mode: params.mode ?? 'planet', params, terrain };
+    return [
+      "import { Planet, PlanetRenderer } from 'procedural-planets';", '',
+      `const planet = Planet.fromJSON(${JSON.stringify(snapshot, null, 2)});`,
+      'scene.add(planet);', '',
+      'const planets = new PlanetRenderer(renderer);',
+      '// every frame, after renderer.render(scene, camera):',
+      'planets.render(scene, camera);', '',
+    ].join('\n');
+  }
   const mode = params.mode ?? 'planet';
   const lines = [`  type: '${TYPE[mode]}',`];
   for (const [k, v] of Object.entries(snippetParams(params))) lines.push(`  ${k}: ${fmt(v)},`);

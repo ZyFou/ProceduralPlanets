@@ -7,15 +7,22 @@ import { planetCodeSnippet } from '../project/codeSnippet.js';
 // One component per side-panel tab. Each receives (params, onParam) and, for
 // the style panel, onPreset. Pure declarative mappings — no engine access.
 
-export function TerrainPanel({ params: p, onParam }) {
+export function TerrainPanel({ params: p, onParam, terrain = { mode: 'procedural' }, onTerrainMode, onOpenNodes }) {
   return (
     <>
+      <Section title="Terrain source">
+        <div className="terrain-source-switch" role="group" aria-label="Terrain source">
+          <button type="button" className={terrain.mode === 'procedural' ? 'active' : ''} onClick={() => onTerrainMode?.('procedural')}>Procedural</button>
+          <button type="button" className={terrain.mode === 'nodes' ? 'active' : ''} onClick={() => terrain.mode === 'nodes' ? onOpenNodes?.() : onTerrainMode?.('nodes')}>Nodes</button>
+        </div>
+        {terrain.mode === 'nodes' && <p className="terrain-source-note">The node graph controls the relief. <button type="button" onClick={onOpenNodes}>Open graph editor</button></p>}
+      </Section>
       <Section title="Planet">
         <Slider param="radius" label="Radius" value={p.radius} min={600} max={6000} step={50} digits={0} onChange={(v) => onParam('radius', v)} />
         <Slider param="heightScale" label="Height scale" value={p.heightScale} min={20} max={400} step={5} digits={0} onChange={(v) => onParam('heightScale', v)} />
         <Slider param="seaLevel" label="Sea level" value={p.seaLevel} min={0} max={0.9} step={0.01} onChange={(v) => onParam('seaLevel', v)} />
       </Section>
-      <Section title="Noise">
+      {terrain.mode !== 'nodes' && <><Section title="Noise">
         <Slider param="noiseScale" label="Scale" value={p.noiseScale} min={0.5} max={8} step={0.1} digits={1} onChange={(v) => onParam('noiseScale', v)} />
         <Slider param="octaves" label="Octaves" value={p.octaves} min={3} max={8} step={1} digits={0} onChange={(v) => onParam('octaves', v)} title="Rebuilds the shaders" />
         <Slider param="persistence" label="Persistence" value={p.persistence} min={0.3} max={0.7} step={0.01} onChange={(v) => onParam('persistence', v)} />
@@ -29,6 +36,7 @@ export function TerrainPanel({ params: p, onParam }) {
         <Slider param="craters" label="Craters" value={p.craters} min={0} max={1} step={0.05} onChange={(v) => onParam('craters', v)} />
         <Slider param="craterScale" label="Crater scale" value={p.craterScale} min={2} max={16} step={0.5} digits={1} onChange={(v) => onParam('craterScale', v)} />
       </Section>
+      </>}
     </>
   );
 }
@@ -411,7 +419,7 @@ const TEX_OPTIONS = [
   { value: '4096', label: '4096 x 4096 (UHD)' },
 ];
 
-export function ExportPanel({ params: p, onExport, onScreenshot }) {
+export function ExportPanel({ params: p, terrain, onExport, onScreenshot }) {
   const isStar = p.mode === 'star';
   const isGas = p.mode === 'gas';
   const [busy, setBusy] = useState(false);
@@ -483,16 +491,16 @@ export function ExportPanel({ params: p, onExport, onScreenshot }) {
         <Toggle param="exportPreset" label="Export Preset (JSON)" value={opt.exportPreset} onChange={(v) => set('exportPreset', v)} />
       </Section>
 
-      <UseInCodeSection params={p} />
+      <UseInCodeSection params={p} terrain={terrain} />
     </>
   );
 }
 
 // The current body as a procedural-planets constructor call, for pasting
 // into another three.js project.
-function UseInCodeSection({ params }) {
+function UseInCodeSection({ params, terrain }) {
   const [copied, setCopied] = useState('');
-  const code = planetCodeSnippet(params);
+  const code = planetCodeSnippet(params, terrain);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
