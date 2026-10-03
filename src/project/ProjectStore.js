@@ -116,16 +116,35 @@ export function projectMode(project) {
   return mode === 'gas' || mode === 'star' ? mode : 'planet';
 }
 
-export function normalizeProject(input = {}) {
+/** Clone document data without sharing graphs, positions or parameter arrays. */
+export function cloneProjectData(value) {
+  if (Array.isArray(value)) return value.map(cloneProjectData);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneProjectData(item)]));
+  return value;
+}
+
+/** Version 1 documents had only params. Migration never invents an applied graph. */
+export function migrateProjectDocument(input = {}) {
+  const document = cloneProjectData(input);
+  if (!document.schemaVersion || document.schemaVersion === 1) document.schemaVersion = 2;
+  document.terrain ??= { mode: 'procedural', graph: null };
+  document.editor ??= {};
+  return document;
+}
+
+export function normalizeProject(source = {}) {
+  const input = migrateProjectDocument(source);
   const created = input.metadata?.created ?? input.created ?? now();
-  const params = { ...(input.params ?? {}) };
+  const params = cloneProjectData(input.params ?? {});
   const communityIcon = COMMUNITY_ICONS.includes(input.metadata?.communityIcon)
     ? input.metadata.communityIcon
     : COMMUNITY_ICON_BY_MODE[projectMode({ params })];
   return {
-    schemaVersion: 1,
+    ...input,
+    schemaVersion: input.schemaVersion ?? 2,
     id: input.id ?? createId(),
     metadata: {
+      ...input.metadata,
       name: String(input.metadata?.name ?? input.name ?? 'Untitled planet').trim() || 'Untitled planet',
       description: String(input.metadata?.description ?? ''),
       created,
@@ -135,6 +154,8 @@ export function normalizeProject(input = {}) {
       communityIcon,
     },
     params,
+    terrain: { mode: 'procedural', graph: null, ...input.terrain },
+    editor: { draftGraph: null, nodePositions: {}, nodeLabels: {}, groups: [], viewport: null, ...input.editor },
   };
 }
 

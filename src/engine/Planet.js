@@ -4,7 +4,9 @@ import {
   STAR_DEFAULTS, STAR_KEYS, STAR_PRESETS,
   GAS_DEFAULTS, GAS_KEYS, GAS_PRESETS, seedToOffset, migrateParams,
 } from './presets.js';
-import { createSharedUniforms, UNIFORM_MAP } from './materials.js';
+import { createSharedUniforms, createTerrainMaterial, createTerrainUniforms, UNIFORM_MAP } from './materials.js';
+import { compileGraph } from './graph/index.js';
+import { ProgramWarmer } from './ProgramWarmer.js';
 import {
   DEFAULT_STAR_BODY, createStarSurfaceMaterial, validateStarShaderBody,
 } from './star.js';
@@ -121,6 +123,13 @@ export function normalizeParam(key, value) {
     const n = Number(value);
     return Number.isFinite(n) ? { ok: true, value: n >>> 0 } : { ok: false, reason: 'invalid' };
   }
+  if (key === 'renderResolution') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0.25 && value <= 1
+      ? { ok: true, value } : { ok: false, reason: 'invalid' };
+  }
+  if (key === 'upscaler') {
+    return ['bilinear', 'spatial'].includes(value) ? { ok: true, value } : { ok: false, reason: 'invalid' };
+  }
   if (Array.isArray(def)) {
     const c = toColorArray(value);
     return c ? { ok: true, value: c } : { ok: false, reason: 'invalid' };
@@ -158,7 +167,7 @@ function acceptParams(patch, where) {
   return params;
 }
 
-const OPTION_KEYS = new Set(['type', 'preset', 'params', 'lightSource', 'starShader', 'name']);
+const OPTION_KEYS = new Set(['type', 'preset', 'params', 'lightSource', 'starShader', 'name', 'terrain']);
 
 /**
  * Resolve Planet constructor options into a full parameter object:
@@ -230,6 +239,15 @@ export class Planet extends THREE.Object3D {
       octaves: this.params.octaves,
     });
     if (this.params.wireframe) this.world.setWireframe(true);
+    this._terrainRevision = 0;
+    this._terrainProgram = null;
+    this._terrain = { mode: 'procedural', graph: null };
+    this._disposed = false;
+    const terrain = options.terrain;
+    if (terrain) {
+      const program = this._compileTerrain(terrain);
+      this._installTerrain(terrain, program, this._terrainMaterials(program));
+    }
     this._buildStar(options.starShader);
     this._buildGas();
 
@@ -243,6 +261,93 @@ export class Planet extends THREE.Object3D {
 
   /** 'terrestrial' | 'gas' | 'star' */
   get planetType() { return MODE_TO_TYPE[this.params.mode]; }
+
+  /** Detached canonical generation data; the editor draft never enters the runtime. */
+  get terrain() { return JSON.parse(JSON.stringify(this._terrain)); }
+
+  _compileTerrain(terrain) {
+    if (!terrain || !['procedural', 'nodes'].includes(terrain.mode)) throw new Error('Unsupported terrain mode.');
+    if (terrain.mode === 'nodes' && !terrain.graph) throw new Error('Nodes terrain requires a valid height graph.');
+    return terrain.mode === 'nodes' ? compileGraph(terrain.graph, this.params) : null;
+  }
+
+  _terrainMaterials(program) {
+    const shared = createTerrainUniforms(this.uniforms, program);
+    const octaves = program?.identityParams?.octaves ?? this.params.octaves;
+    const shaderProgram = program?.identityParams ? null : program;
+    return [false, true].map((low) => {
+      const material = createTerrainMaterial(shared, octaves, low, this.params.chunkRes, shaderProgram);
+      material.wireframe = this.params.wireframe;
+      return material;
+    });
+  }
+
+  _createHeightSampler(params = this.params, uniforms = this.uniforms) {
+    return new PlanetHeightSampler(params, uniforms, this._terrainProgram);
+  }
+
+  _installTerrain(terrain, program, materials) {
+    this._terrain = JSON.parse(JSON.stringify(terrain));
+    this._terrainProgram = program;
+    this.world.installTerrainMaterials(materials, {
+      program: program?.identityParams ? null : program,
+      uniforms: program ? createTerrainUniforms(this.uniforms, program) : null,
+      octaves: program?.identityParams?.octaves ?? null,
+    });
+    this._sampler = this._createHeightSampler();
+    this._version++;
+  }
+
+  /** Validate and warm a candidate before swapping GPU and CPU generation together. */
+  async setTerrain(terrain, { renderer } = {}) {
+    const revision = ++this._terrainRevision;
+    let materials;
+    let warmer;
+    try {
+      const program = this._compileTerrain(terrain);
+      if (this._terrain.mode === terrain.mode && this._terrainProgram?.signature === program?.signature) {
+        this._terrain = JSON.parse(JSON.stringify(terrain));
+        return { ok: true, revision, compiled: false };
+      }
+      if (this._terrain.mode === terrain.mode && this._terrainProgram?.structureSignature === program?.structureSignature && !!this._terrainProgram === !!program) {
+        // An unchanged program only needs its uniform values and CPU evaluator swapped.
+        const shared = createTerrainUniforms(this.uniforms, program);
+        this.world.templateMaterials.forEach((material) => {
+          Object.entries(shared).forEach(([name, uniform]) => { if (name in material.uniforms) material.uniforms[name] = uniform; });
+        });
+        this._terrain = JSON.parse(JSON.stringify(terrain));
+        this._terrainProgram = program;
+        this.world.terrainProgram = program?.identityParams ? null : program;
+        this.world.terrainUniforms = program ? shared : null;
+        this._sampler = this._createHeightSampler();
+        this._version++;
+        return { ok: true, revision, compiled: false };
+      }
+      materials = this._terrainMaterials(program);
+      if (renderer) {
+        warmer = new ProgramWarmer(renderer);
+        const entries = materials.map((material) => ({ material, offscreen: true }));
+        while (!warmer.ensure(entries).ready) {
+          if (revision !== this._terrainRevision || this._disposed) return { ok: false, obsolete: true, revision };
+          await new Promise((resolve) => setTimeout(resolve, 16));
+        }
+      }
+      if (revision !== this._terrainRevision || this._disposed) return { ok: false, obsolete: true, revision };
+      this._installTerrain(terrain, program, materials);
+      materials = null;
+      return { ok: true, revision, compiled: true };
+    } catch (error) {
+      return { ok: false, revision, error: error.message, diagnostics: error.diagnostics ?? [{ code: 'shader', message: error.message }] };
+    } finally {
+      materials?.forEach((material) => material.dispose());
+      warmer?.dispose();
+    }
+  }
+
+  setTerrainGraph(graph, options) { return this.setTerrain({ mode: 'nodes', graph }, options); }
+
+  /** Cancel pending GPU work on document changes or a newer draft. */
+  cancelTerrainCompilation() { this._terrainRevision++; }
 
   /** Shader clock in seconds (waves, star surface, gas flow). */
   get time() { return this.uniforms.uTime.value; }
@@ -449,8 +554,20 @@ export class Planet extends THREE.Object3D {
 
     switch (key) {
       case 'seed': {
+        this.cancelTerrainCompilation();
         const off = seedToOffset(value);
         this.uniforms.uSeedOffset.value.set(off[0], off[1], off[2]);
+        if (this._terrain?.mode === 'nodes') {
+          const program = this._compileTerrain(this._terrain);
+          const shared = createTerrainUniforms(this.uniforms, program);
+          this.world.templateMaterials.forEach((material) => {
+            Object.entries(shared).forEach(([name, uniform]) => { if (name in material.uniforms) material.uniforms[name] = uniform; });
+          });
+          this._terrainProgram = program;
+          this.world.terrainProgram = program.identityParams ? null : program;
+          this.world.terrainUniforms = shared;
+          this._sampler = this._createHeightSampler();
+        }
         return;
       }
       case 'cloudResolution':
@@ -464,6 +581,7 @@ export class Planet extends THREE.Object3D {
         return;
       }
       case 'mode':
+        this.cancelTerrainCompilation();
         this._syncMode();
         return;
       case 'starCoronaEnabled':
@@ -546,10 +664,10 @@ export class Planet extends THREE.Object3D {
     if (!preset) return;
     const patch = { ...preset.patch };
     // reset every planet param a previous preset may have touched — but leave
-    // the star and gas domains and the mode alone
+    // the star and gas domains, mode and viewer performance settings alone
     const base = { ...DEFAULT_PARAMS, seed: this.params.seed };
     for (const [k, v] of Object.entries(base)) {
-      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode') continue;
+      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode' || k === 'renderResolution' || k === 'upscaler') continue;
       if (!(k in patch)) patch[k] = v;
     }
     let structural = false;
@@ -608,7 +726,7 @@ export class Planet extends THREE.Object3D {
   getSurfaceRadius(direction) {
     const p = this.params;
     if (p.mode !== 'planet') return p.radius;
-    this._sampler ??= new PlanetHeightSampler(this.params, this.uniforms);
+    this._sampler ??= this._createHeightSampler();
     const d = _v1.copy(direction).normalize();
     return p.radius + this._sampler.heightAtDirection(d);
   }
@@ -757,9 +875,11 @@ export class Planet extends THREE.Object3D {
   serialize() {
     return {
       app: 'procedural-planets',
-      version: 1,
+      version: 2,
       mode: this.params.mode,
       params: JSON.parse(JSON.stringify(this.params)),
+      terrain: this.terrain,
+      ...(this.starShaderBody !== DEFAULT_STAR_BODY ? { starShader: this.starShaderBody } : {}),
     };
   }
 
@@ -778,13 +898,17 @@ export class Planet extends THREE.Object3D {
     const known = {};
     for (const [k, v] of Object.entries(migrated)) if (k in DEFAULT_PARAMS) known[k] = v;
     const starShader = options.starShader ?? (typeof data.starShader === 'string' ? data.starShader : undefined);
-    return new Planet({ ...options, starShader, params: { ...known, mode, ...(options.params ?? {}) } });
+    return new Planet({ ...options, terrain: options.terrain ?? data.terrain, starShader, params: { ...known, mode, ...(options.params ?? {}) } });
   }
 
   copy(source, recursive) {
     super.copy(source, recursive);
     if (source.isPlanet) {
       this.set(JSON.parse(JSON.stringify(source.params)));
+      this.cancelTerrainCompilation();
+      const terrain = source.terrain;
+      const program = this._compileTerrain(terrain);
+      this._installTerrain(terrain, program, this._terrainMaterials(program));
       this.lightSource = source.lightSource;
       if (source.starShaderBody !== this.starShaderBody) this.setStarShader(source.starShaderBody, null);
     }
@@ -793,6 +917,8 @@ export class Planet extends THREE.Object3D {
 
   /** Free every GPU resource owned by this planet. */
   dispose() {
+    this._disposed = true;
+    this.cancelTerrainCompilation();
     this.world.dispose();
     this.ringMesh.geometry.dispose();
     this.gasMesh.geometry.dispose();

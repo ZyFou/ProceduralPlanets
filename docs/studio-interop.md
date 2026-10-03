@@ -7,8 +7,9 @@ studio into your code.
 ## 1. "Use in code" (Export panel)
 
 The Export panel's **Use in code** section shows, and copies, the current
-body as a constructor call. It lists only the parameters that differ from the
-defaults:
+body as a constructor call. Procedural terrain lists the parameters that differ
+from the defaults. A planet containing a node graph uses a complete
+`Planet.fromJSON()` snapshot, preserving numeric precision and its applied graph:
 
 ```js
 import { Planet, PlanetRenderer } from 'procedural-planets';
@@ -36,10 +37,10 @@ const planet = Planet.fromJSON(presetJson, { lightSource: sun });
 ## 3. Saved projects
 
 Studio projects live in the browser (IndexedDB). A project object, or just
-its `params`, loads the same way:
+its complete document loads the same way:
 
 ```js
-const planet = Planet.fromJSON({ params: project.params });
+const planet = Planet.fromJSON(project);
 ```
 
 Parameter sets saved by older studio versions are migrated automatically. The
@@ -47,6 +48,50 @@ shape is kept, and the look keys are upgraded to the current render model.
 
 ## Round trip
 
-`planet.serialize()` returns the same `{ app, version, mode, params }` shape
+`planet.serialize()` returns the same `{ app, version: 2, mode, params, terrain }` shape
 as the studio export. You can store it, send it, and restore it with
 `Planet.fromJSON()`.
+
+## Height node graphs
+
+Terrain source and body type are separate. `params.mode` selects Planet, Gas or
+Star; `terrain.mode` selects `procedural` or `nodes`. Switching body type retains
+the terrestrial graph. Nodes evaluate a height field on normalized local sphere
+directions; the final height is clamped to `[0, 1]` and the surface radius is
+`radius + height * heightScale`.
+
+```js
+import { Planet, createRecipe, validateGraph } from 'procedural-planets';
+
+const graph = createRecipe('two-noises');
+const result = validateGraph(graph);
+if (!result.valid) throw new Error(result.diagnostics[0].message);
+const planet = new Planet({ seed: 42, terrain: { mode: 'nodes', graph } });
+
+// Supply the renderer to validate shader compilation before changing the planet.
+const applied = await planet.setTerrainGraph(createRecipe('noise-remap'), { renderer });
+if (!applied.ok) console.error(applied.diagnostics);
+```
+
+Other recipes are `current` (a faithful copy of classic terrain parameters),
+`noise-remap`, and `two-noises`. Available node types are `currentTerrain`,
+`noise3d`, `constant`, `mix`, `remap`, and `heightOutput`. The graph is plain JSON:
+`{ format: 'procedural-planets-height-graph', version: 1, nodes, edges, outputId }`.
+Nodes contain `id`, `type`, `params`; connections contain `id`, `source`,
+`sourcePort`, `target`, `targetPort`. The public library has no React Flow dependency.
+
+Studio schema version 2 adds `terrain` and `editor` beside `params`. `terrain.graph`
+is the last applied, validated graph. `editor.draftGraph` may contain incomplete
+connections; positions, presentation names, groups and viewport also live in
+`editor`. Saving and reopening retains both states, and the runtime ignores the
+editor. Invalid or unsupported imported data remains available for recovery.
+Old projects migrate to procedural terrain without changing their parameter values.
+
+Runtime JSON, mesh bakes, ZIP archives and GLB exports use the applied state only.
+Export jobs capture a coherent snapshot before asynchronous packaging, so editing
+the live planet during an export does not alter its mesh or preset. ZIP presets
+include the complete terrain configuration; editor drafts are excluded. Cloud
+projects retain both applied graphs and drafts within the existing 1 MB limit.
+
+The [standalone example](../examples/node-graph.html) demonstrates construction,
+serialization and switching between procedural and node terrain through the public API.

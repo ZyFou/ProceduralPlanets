@@ -169,6 +169,8 @@ export const DEFAULT_PARAMS = {
   atmoHaze: 0.3,                     // aerosols / dust (Mie)
 
   // performance / render
+  renderResolution: 1.0,   // PlanetViewer render scale per axis (0.25–1); 1 = native resolution
+  upscaler: 'bilinear',    // PlanetViewer reconstruction: 'bilinear' or 'spatial' (clamped bicubic)
   chunkRes: 32,            // grid quads per chunk side (rebuild)
   maxDepth: 5,             // quadtree depth (rebuild)
   splitFactor: 2.4,        // LOD split distance, in node sizes

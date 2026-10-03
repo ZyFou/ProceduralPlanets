@@ -1,6 +1,6 @@
 {
   "name": "procedural-planets",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Procedural planets, gas giants and stars for three.js: GPU terrain with quadtree LOD, volumetric clouds, analytic oceans, physically based atmospheres — as objects you add to your own scene.",
   "keywords": [
     "three",
@@ -63,6 +63,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "@xyflow/react": "^12.12.0",
     "concurrently": "^10.0.5",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",

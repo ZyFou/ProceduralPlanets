@@ -2248,3 +2248,16 @@ input {
 @media (prefers-reduced-motion: reduce) {
   .side-drawer, .side-drawer.open, .main.app-shell { animation: none; transition: none; }
 }
+.terrain-source-switch { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--border-subtle); border-radius: 6px; background: #090c10; }
+.terrain-source-switch button { flex: 1; padding: 7px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.terrain-source-switch button.active { background: #1a334b; color: #8fcaff; }
+.terrain-source-note { color: var(--text-secondary); font-size: 11px; line-height: 1.6; }
+.terrain-source-note button { color: #8fcaff; background: none; border: 0; cursor: pointer; font-size: inherit; }
+.terrain-render-error { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: #090c10; color: #eeadad; line-height: 2; z-index: 3; }
+.nodes-editor-loading, .nodes-recovery-notice { position:absolute; bottom:10px; left:80px; z-index:24; background:#111820; border:1px solid #324051; padding:16px; border-radius:8px; color:#b8c3d1; font-size:12px; }
+@media(min-width:821px) {
+  #app.nodes-open .pp-nodes.nodes-workspace { left:64px; }
+  #app.nodes-open .viewport-area { left:var(--nodes-left); right:var(--nodes-right); top:var(--nodes-top); bottom:var(--nodes-bottom); }
+  #app.nodes-open .viewport-mode-bar { z-index:24; bottom:auto; top:8px; left:calc(50% + 32px); }
+}
+@media(max-width:1100px) and (min-width:821px) { #app.nodes-open .pp-nodes .node-graph-dock { min-width:0; } }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   Disc3,
@@ -32,6 +32,10 @@ import { classifyToast } from './components/ui/Toast.jsx';
 import { usePopup } from './components/ui/PopupProvider.jsx';
 import { EDITOR_SHORTCUTS, SEARCH_SETTINGS_SHORTCUT, isTextEditingTarget, matchesShortcut } from './keyboardShortcuts.js';
 import ShortcutsHelp from './components/ShortcutsHelp.jsx';
+const NodeWorkspace = lazy(() => import('./components/nodes/NodeWorkspace.jsx'));
+import { createInitialGraph, compileGraph } from './engine/graph/index.js';
+import { applyTerrainDraft, canEditGraph, terrainDraftState } from './project/terrainDraft.js';
+import { canEditWorkspaceEditor } from './components/nodes/workspaceDocument.js';
 
 const toHex = (rgb) => `#${rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('')}`;
 
@@ -101,9 +105,17 @@ export default function App({
   const skipPersistRef = useRef(false);
   const loadedProjectIdRef = useRef(null);
   const loadedParamsRef = useRef(null);
+  const historyLoadingRef = useRef(null);
   const { showPopup } = usePopup();
 
   const [params, setParams] = useState({ ...DEFAULT_PARAMS });
+  const [design, setDesign] = useState({ terrain: { mode: 'procedural', graph: null }, editor: {} });
+  const designRef = useRef(design);
+  designRef.current = design;
+  const [nodesOpen, setNodesOpen] = useState(false);
+  const [graphStatus, setGraphStatus] = useState({ state: 'ready', diagnostics: [] });
+  const [invalidImportedTerrain, setInvalidImportedTerrain] = useState(false);
+  const [nodeLayout, setNodeLayout] = useState({ graphEdge: 'bottom', graphRatio: .38, paletteDetached: true, paletteCollapsed: false, paletteSide: 'left', paletteWidth: 208, inspectorSide: 'right', inspectorWidth: 372 });
   const [stats, setStats] = useState({ fps: 0, triangles: 0, drawCalls: 0, chunks: 0 });
   const [activePanel, setActivePanel] = useState('terrain');
   const [retainedPanel, setRetainedPanel] = useState('terrain');
@@ -195,9 +207,16 @@ export default function App({
     const next = { ...DEFAULT_PARAMS, ...migrateParams(project.params, presetKey, modePreset) };
     loadedProjectIdRef.current = project.id;
     loadedParamsRef.current = next;
+    historyLoadingRef.current = next;
     skipPersistRef.current = true;
     skipHistoryRef.current = true;
     resetHistory();
+    engine.planet.cancelTerrainCompilation();
+    const nextDesign = JSON.parse(JSON.stringify({ terrain: project.terrain ?? { mode: 'procedural', graph: null }, editor: project.editor ?? {} }));
+    setDesign(nextDesign);
+    designRef.current = nextDesign;
+    setNodesOpen(nextDesign.terrain.mode === 'nodes');
+    setInvalidImportedTerrain(false);
     Object.entries(next).forEach(([key, value]) => engine.setParam(key, value));
     setParams(next);
     watchCompile();
@@ -220,8 +239,8 @@ export default function App({
       loadedParamsRef.current = null;
       return;
     }
-    onProjectChange(params);
-  }, [params, project?.id, project?.preview, onProjectChange]);
+    onProjectChange(params, design);
+  }, [params, design, project?.id, project?.preview, onProjectChange]);
 
   // ---- undo / redo: snapshots of the whole params object ------------------
   // A snapshot is pushed when an edit group starts; edits within
@@ -252,13 +271,15 @@ export default function App({
     const history = historyRef.current;
     clearTimeout(history.timer);
     history.grouping = false;
-    committedRef.current = paramsRef.current;
+    committedRef.current = { params: paramsRef.current, design: designRef.current };
   }, []);
 
   useEffect(() => {
     if (skipHistoryRef.current || committedRef.current === null) {
+      if (historyLoadingRef.current && params !== historyLoadingRef.current) return;
+      historyLoadingRef.current = null;
       skipHistoryRef.current = false;
-      committedRef.current = params;
+      committedRef.current = { params, design: designRef.current };
       return;
     }
     const history = historyRef.current;
@@ -271,7 +292,7 @@ export default function App({
     clearTimeout(history.timer);
     history.timer = setTimeout(endHistoryGroup, HISTORY_GROUP_MS);
     syncHistoryState();
-  }, [params, endHistoryGroup, syncHistoryState]);
+  }, [params, design.editor, design.terrain.mode, endHistoryGroup, syncHistoryState]);
 
   const applyParams = useCallback((next) => {
     const engine = engineRef.current;
@@ -286,25 +307,89 @@ export default function App({
     if (modeChanged) setActivePanel(next.mode === 'star' ? 'starSurface' : next.mode === 'gas' ? 'gasFlow' : 'terrain');
   }, [watchCompile]);
 
+  const applyDocument = useCallback((snapshot) => {
+    engineRef.current?.planet.cancelTerrainCompilation();
+    applyParams(snapshot.params);
+    setDesign(snapshot.design);
+    designRef.current = snapshot.design;
+  }, [applyParams]);
+
   const undo = useCallback(() => {
     const history = historyRef.current;
     if (history.grouping) endHistoryGroup();
     const previous = history.past.pop();
     if (!previous) return;
-    history.future.push(paramsRef.current);
-    applyParams(previous);
+    history.future.push({ params: paramsRef.current, design: designRef.current });
+    applyDocument(previous);
     syncHistoryState();
-  }, [applyParams, endHistoryGroup, syncHistoryState]);
+  }, [applyDocument, endHistoryGroup, syncHistoryState]);
 
   const redo = useCallback(() => {
     const history = historyRef.current;
     if (history.grouping) endHistoryGroup();
     const next = history.future.pop();
     if (!next) return;
-    history.past.push(paramsRef.current);
-    applyParams(next);
+    history.past.push({ params: paramsRef.current, design: designRef.current });
+    applyDocument(next);
     syncHistoryState();
-  }, [applyParams, endHistoryGroup, syncHistoryState]);
+  }, [applyDocument, endHistoryGroup, syncHistoryState]);
+
+  const draftGraph = design.editor.draftGraph ?? design.terrain.graph;
+  const editableWorkspace = canEditGraph(draftGraph) && canEditWorkspaceEditor(design.editor, draftGraph);
+  const graphKey = JSON.stringify(draftGraph);
+  const appliedKey = JSON.stringify(design.terrain.graph);
+  // Layout never enters this dependency list. A rejected draft remains editable
+  // while the last applied shader and its sampler keep drawing the same terrain.
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!booted || !engine || loadedProjectIdRef.current !== project?.id) return undefined;
+    let cancelled = false;
+    engine.planet.cancelTerrainCompilation();
+    const current = designRef.current;
+    const validation = terrainDraftState(current);
+    if (!validation.valid && !validation.recoverable) {
+      setInvalidImportedTerrain(true);
+      setGraphStatus({ state: 'error', diagnostics: validation.diagnostics });
+      return undefined;
+    }
+    setGraphStatus({ state: validation.valid ? 'compiling' : 'error', diagnostics: validation.diagnostics });
+    let delay = validation.valid ? 280 : 0;
+    if (validation.valid && validation.candidate.mode === 'nodes') {
+      try {
+        if (compileGraph(validation.candidate.graph, paramsRef.current).structureSignature === engine.planet._terrainProgram?.structureSignature) delay = 16;
+      } catch { /* Planet returns the precise compilation diagnostic below. */ }
+    }
+    const timer = setTimeout(async () => {
+      const result = await applyTerrainDraft(engine.planet, current, { renderer: engine.renderer, isCurrent: () => !cancelled });
+      if (cancelled || result.obsolete) return;
+      if (result.ok) {
+        if (result.draftValid) setDesign((state) => JSON.stringify(state.terrain) === JSON.stringify(result.terrain) ? state : { ...state, terrain: result.terrain });
+        setInvalidImportedTerrain(false);
+        setGraphStatus({ state: validation.valid ? 'ready' : 'error', diagnostics: validation.diagnostics });
+      } else {
+        setInvalidImportedTerrain(result.noAppliedTerrain ?? false);
+        setGraphStatus({ state: 'error', diagnostics: result.diagnostics ?? [{ message: result.error }] });
+      }
+    }, delay);
+    return () => { cancelled = true; clearTimeout(timer); engine.planet.cancelTerrainCompilation(); };
+  }, [booted, project?.id, design.terrain.mode, graphKey, appliedKey, params.seed, params.mode]);
+
+  const onGraphChange = useCallback((graph, editor, action = {}) => {
+    if (action.gesture === 'end') { endHistoryGroup(); return; }
+    if (action.gesture !== 'parameter') endHistoryGroup();
+    if (action.history === false) skipHistoryRef.current = true;
+    setDesign((current) => ({ ...current, editor: { ...editor, draftGraph: graph } }));
+  }, [endHistoryGroup]);
+
+  const onTerrainMode = useCallback((mode) => {
+    endHistoryGroup();
+    setDesign((current) => {
+      const graph = current.editor.draftGraph ?? current.terrain.graph ?? createInitialGraph(paramsRef.current);
+      return { ...current, terrain: { ...current.terrain, mode }, editor: { ...current.editor, draftGraph: graph } };
+    });
+    setNodesOpen(mode === 'nodes');
+    if (mode === 'nodes') setActivePanel(null);
+  }, [endHistoryGroup]);
 
   useEffect(() => {
     if (landingMode) return undefined;
@@ -361,12 +446,13 @@ export default function App({
 
   const onCopyCode = useCallback(async () => {
     try {
-      await copyText(planetCodeSnippet(paramsRef.current));
-      notify('Code snippet copied to the clipboard.', 'success');
+      if (invalidImportedTerrain) throw new Error('No valid terrain is available.');
+      await copyText(planetCodeSnippet(paramsRef.current, engineRef.current?.planet.terrain));
+      notify(graphStatus.state === 'ready' ? 'Code snippet copied to the clipboard.' : 'Code snippet of the last valid terrain copied.', 'success');
     } catch {
       notify('Could not copy the code snippet.', 'error');
     }
-  }, [notify]);
+  }, [notify, graphStatus.state, invalidImportedTerrain]);
 
   // project card thumbnail: a small copy of the next drawn frame once edits
   // settle (no extra render, no render-target resize, a few KB of WebP)
@@ -382,7 +468,7 @@ export default function App({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [booted, params, project?.id, onThumbnail]);
+  }, [booted, params, design.terrain, project?.id, onThumbnail]);
 
   const onParam = useCallback((key, value) => {
     engineRef.current?.setParam(key, value);
@@ -437,8 +523,10 @@ export default function App({
   }, [params.seed]);
 
   const onExport = useCallback(async (options, onProgress) => {
+    if (invalidImportedTerrain) throw new Error('No valid terrain is available for export.');
+    if (graphStatus.state !== 'ready') throw new Error('Apply a valid graph before exporting. The last valid terrain is still visible.');
     await engineRef.current?.exportPlanet(options, onProgress);
-  }, []);
+  }, [graphStatus.state, invalidImportedTerrain]);
 
   const visiblePanels = PANELS.filter((panel) => panel.modes.includes(params.mode));
   const [searchOpen, setSearchOpen] = useState(false);
@@ -562,9 +650,20 @@ export default function App({
 
   const displayedPanel = activePanel ?? retainedPanel;
   const Panel = visiblePanels.find((panel) => panel.id === displayedPanel)?.component;
+  const showNodes = nodesOpen && params.mode === 'planet' && !landingMode && !uiHidden;
+  const paletteWidth = nodeLayout.paletteDetached && !nodeLayout.paletteCollapsed ? nodeLayout.paletteWidth : 0;
+  const leftOffset = 64 + (nodeLayout.paletteSide === 'left' ? paletteWidth : 0) + (nodeLayout.inspectorSide === 'left' ? nodeLayout.inspectorWidth : 0);
+  const rightOffset = (nodeLayout.paletteSide === 'right' ? paletteWidth : 0) + (nodeLayout.inspectorSide === 'right' ? nodeLayout.inspectorWidth : 0);
+  const viewportStyle = showNodes ? {
+    '--nodes-left': `${leftOffset}px`, '--nodes-right': `${rightOffset}px`,
+    '--nodes-top': nodeLayout.graphEdge === 'top' ? `max(220px, ${nodeLayout.graphRatio * 100}%)` : '0px',
+    '--nodes-bottom': nodeLayout.graphEdge === 'bottom' ? `max(220px, ${nodeLayout.graphRatio * 100}%)` : '0px',
+    ...(nodeLayout.graphEdge === 'left' ? { '--nodes-left': `calc(${leftOffset}px + max(320px, (100% - ${leftOffset + rightOffset}px) * ${nodeLayout.graphRatio}))` } : {}),
+    ...(nodeLayout.graphEdge === 'right' ? { '--nodes-right': `calc(${rightOffset}px + max(320px, (100% - ${leftOffset + rightOffset}px) * ${nodeLayout.graphRatio}))` } : {}),
+  } : {};
 
   return (
-    <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel ? ' side-drawer-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
+    <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel && !showNodes ? ' side-drawer-open' : ''}${showNodes ? ' nodes-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
       <TopBar
         projectName={project?.metadata?.name ?? 'Untitled planet'}
         documentState={documentState}
@@ -613,7 +712,7 @@ export default function App({
           {visiblePanels.map((panel) => {
             const Icon = ICONS[panel.id] ?? Orbit;
             return (
-              <button key={panel.id} type="button" className={`toolbar-btn${activePanel === panel.id ? ' active' : ''}`} onClick={() => setActivePanel(activePanel === panel.id ? null : panel.id)} title={panel.label}>
+              <button key={panel.id} type="button" className={`toolbar-btn${activePanel === panel.id ? ' active' : ''}`} onClick={() => { setNodesOpen(false); setActivePanel(activePanel === panel.id ? null : panel.id); }} title={panel.label}>
                 <Icon aria-hidden />
                 <span className="toolbar-btn-label">{panel.label}</span>
               </button>
@@ -621,8 +720,9 @@ export default function App({
           })}
         </nav>
 
-        <div className="viewport-wrap viewport-area">
+        <div className="viewport-wrap viewport-area" style={viewportStyle}>
           <canvas id="viewport" ref={canvasRef} />
+          {invalidImportedTerrain && <div className="terrain-render-error" role="alert">This project's terrain graph cannot be rendered.<br />{graphStatus.diagnostics[0]?.message}<br />The document is preserved for recovery.</div>}
         </div>
 
         {compiling && (
@@ -635,7 +735,10 @@ export default function App({
           <button type="button" role="tab" aria-label="Star" title="Star" aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /><span>Star</span></button>
         </div>
 
-        {Panel && (
+        {showNodes && editableWorkspace && <Suspense fallback={<div className="nodes-editor-loading">Loading node editor…</div>}><NodeWorkspace graph={draftGraph} editor={design.editor} params={params} status={graphStatus} onChange={onGraphChange} onLayoutChange={setNodeLayout} onClose={() => { setNodesOpen(false); setActivePanel('terrain'); }} onUndo={undo} onRedo={redo} /></Suspense>}
+        {showNodes && !editableWorkspace && <div className="nodes-recovery-notice" role="alert">The imported graph or editor layout is malformed. Its data is preserved in the project file.<br />{graphStatus.diagnostics[0]?.message}<br /><button type="button" onClick={() => { setNodesOpen(false); setActivePanel('terrain'); }}>Return to viewer</button></div>}
+
+        {Panel && !showNodes && (
           <aside className={`side-drawer${activePanel ? ' open' : ''}`} inert={activePanel ? undefined : ''} aria-hidden={!activePanel}>
             <div className="side-panel">
               <div className="side-panel-header">
@@ -649,6 +752,9 @@ export default function App({
               <div className="side-panel-content">
                 <Panel
                   params={params}
+                  terrain={displayedPanel === 'export' ? (engineRef.current?.planet.terrain ?? design.terrain) : design.terrain}
+                  onTerrainMode={onTerrainMode}
+                  onOpenNodes={() => { setNodesOpen(true); setActivePanel(null); }}
                   onParam={onParam}
                   onPreset={onPreset}
                   onStarPreset={onStarPreset}

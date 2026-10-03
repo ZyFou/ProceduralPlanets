@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph export checks — procedural-planets</title>
+  <style>
+    body { margin: 0; font: 14px system-ui, sans-serif; color: #dce8f1; background: #090c10; }
+    main { max-width: 1050px; margin: 24px auto; padding: 0 24px; }
+    h1 { font-size: 23px; } p { color: #97a8b8; }
+    #result { padding: 12px; border: 1px solid #354353; border-radius: 6px; }
+    #result[data-state="passed"] { color: #75e4b8; border-color: #258a67; }
+    #result[data-state="failed"] { color: #ff9f9f; border-color: #963e3e; }
+    li { margin: 8px 0; } .passed { color: #75e4b8; } .failed { color: #ff9f9f; }
+    canvas { display: block; width: 100%; height: 400px; background: #05070a; border: 1px solid #22303e; }
+    pre { white-space: pre-wrap; font-size: 12px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Actual WebGL graph bake and GLB round trip</h1>
+  <p>This page runs automatically. The canvas shows the reimported GLB. A requested 32 px texture uses the baker's minimum 64 px face size.</p>
+  <div id="result" data-state="running">Running graph export checks…</div>
+  <ol id="checks"></ol>
+  <canvas id="preview"></canvas>
+  <pre id="details"></pre>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Planet, bakePlanet, createRecipe } from 'procedural-planets';
+import { createPlanetArchive, toGLB } from 'procedural-planets/export';
+import { planetCodeSnippet } from '../../src/project/codeSnippet.js';
+
+const result = document.getElementById('result');
+const checks = document.getElementById('checks');
+const details = document.getElementById('details');
+const report = { state: 'running', checks: [], shaderErrors: [], maxRadiusError: 0, meshes: 0, texturePixels: 0 };
+window.__graphExportChecks = report;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('preview'), antialias: true });
+renderer.setSize(960, 400, false);
+renderer.debug.onShaderError = (gl, program, vertex, fragment) => {
+  report.shaderErrors.push([gl.getProgramInfoLog(program), gl.getShaderInfoLog(vertex), gl.getShaderInfoLog(fragment)].filter(Boolean).join('\n'));
+};
+const resources = [];
+const own = planet => { resources.push(planet); return planet; };
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+async function check(name, callback) {
+  const item = document.createElement('li');
+  item.textContent = `${name}: running…`; checks.appendChild(item);
+  try {
+    await callback();
+    item.className = 'passed'; item.textContent = `${name}: PASS`;
+    report.checks.push({ name, passed: true });
+  } catch (error) {
+    item.className = 'failed'; item.textContent = `${name}: FAIL — ${error.message}`;
+    report.checks.push({ name, passed: false, error: error.message });
+    throw error;
+  }
+}
+const meshesOf = group => { const meshes = []; group.traverse(object => { if (object.isMesh) meshes.push(object); }); return meshes; };
+const loader = new GLTFLoader();
+const parseGlb = data => new Promise((resolve, reject) => {
+  const bytes = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  loader.parse(bytes, '', resolve, reject);
+});
+function verifyRadii(group, expected) {
+  const meshes = meshesOf(group);
+  assert(meshes.length === 6, `Expected six cube-sphere faces; found ${meshes.length}.`);
+  const point = new THREE.Vector3();
+  let maxError = 0;
+  for (const mesh of meshes) {
+    const positions = mesh.geometry.attributes.position;
+    assert(positions.count === 81, 'meshResolution=8 must produce 81 face vertices.');
+    assert(mesh.geometry.attributes.normal?.count === positions.count, 'Exported normals are missing.');
+    for (let index = 0; index < positions.count; index++) {
+      point.fromBufferAttribute(positions, index);
+      const radius = point.length();
+      const difference = Math.abs(radius - expected.getSurfaceRadius(point.clone().normalize()));
+      maxError = Math.max(maxError, difference);
+      assert(Number.isFinite(radius) && difference < 0.0001, `Graph geometry differs from CPU surface by ${difference}.`);
+    }
+  }
+  report.maxRadiusError = Math.max(report.maxRadiusError, maxError);
+  report.meshes = meshes.length;
+}
+function verifyTextures(group) {
+  let samples = 0, nonzero = 0;
+  const colors = new Set();
+  for (const mesh of meshesOf(group)) {
+    const image = mesh.material.map?.image;
+    assert(image, 'Baked color texture is missing.');
+    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+    assert(canvas.width === 64 && canvas.height === 64, 'The baker texture minimum should be 64 px per face.');
+    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 0; index < data.length; index += 4) {
+      samples++;
+      if (data[index] + data[index + 1] + data[index + 2] > 0 && data[index + 3] > 0) nonzero++;
+      colors.add(`${data[index]},${data[index + 1]},${data[index + 2]}`);
+    }
+  }
+  assert(nonzero > samples * 0.95, 'The graph bake produced mostly empty or black texture pixels.');
+  assert(colors.size > 16, 'The graph textures contain no meaningful variation.');
+  report.texturePixels = samples;
+}
+const graph = createRecipe('noise');
+Object.assign(graph.nodes.find(node => node.type === 'noise3d').params, { frequency: 1.7, octaves: 3 });
+Object.assign(graph.nodes.find(node => node.type === 'remap').params, { outMin: 0.25, outMax: 0.7 });
+const expected = own(new Planet({ radius: 100, heightScale: 20, seed: 42, waterEnabled: false, cloudsEnabled: false,
+  atmoEnabled: false, terrain: { mode: 'nodes', graph } }));
+const snapshot = expected.serialize();
+let baked, imported, archive;
+try {
+  await check('WebGL graph bake freezes geometry and shader texture state during live edits', async () => {
+    const source = own(Planet.fromJSON(snapshot));
+    let edited = false;
+    baked = await bakePlanet(renderer, { planet: source, meshResolution: 8, textureSize: 32, water: false,
+      atmosphere: false, rings: false, onProgress: () => {
+        if (!edited) { edited = true; source.set({ seed: 99, radius: 180, heightScale: 30 }); }
+      } });
+    assert(edited && source.params.radius === 180, 'The live-edit callback did not run.');
+    assert(baked.userData.params.seed === 42 && baked.userData.params.radius === 100, 'The baked snapshot was mutated by live edits.');
+    verifyRadii(baked, expected); verifyTextures(baked);
+    assert(report.shaderErrors.length === 0, `GLSL compilation failed: ${report.shaderErrors.join('\n')}`);
+    assert(renderer.getContext().getError() === renderer.getContext().NO_ERROR, 'WebGL reported an error during the bake.');
+  });
+
+  await check('GLTFExporter binary output reimports with graph shape, normals and colors', async () => {
+    const glb = await toGLB(baked);
+    assert(glb?.byteLength > 1000, 'GLTFExporter did not create a GLB.');
+    assert(new DataView(glb.buffer, glb.byteOffset).getUint32(0, true) === 0x46546c67, 'Invalid binary glTF header.');
+    imported = await parseGlb(glb);
+    verifyRadii(imported.scene, expected); verifyTextures(imported.scene);
+    report.glbBytes = glb.byteLength;
+  });
+
+  await check('ZIP preset and GLB stay coherent while live edits happen during async packaging', async () => {
+    const source = own(Planet.fromJSON(snapshot));
+    let edited = false;
+    archive = await createPlanetArchive(renderer, source, { format: 'glb', meshResolution: 8, textureSize: 32,
+      water: false, onProgress: message => {
+        if (message.startsWith('Packaging') && !edited) {
+          edited = true;
+          source.set({ seed: 711, radius: 220 });
+          const changed = createRecipe('noise');
+          changed.nodes.find(node => node.type === 'remap').params.outMin = 0.85;
+          changed.nodes.find(node => node.type === 'remap').params.outMax = 0.9;
+          source.setTerrainGraph(changed);
+        }
+      } });
+    assert(edited && source.params.radius === 220, 'No live edit occurred during packaging.');
+    const preset = JSON.parse(new TextDecoder().decode(archive.files['planet_preset.json']));
+    assert(preset.version === 2 && preset.params.seed === 42 && preset.params.radius === 100, 'The ZIP preset mixed live and snapshot parameters.');
+    assert(JSON.stringify(preset.terrain) === JSON.stringify(snapshot.terrain), 'The applied graph changed inside the archive.');
+    const restored = own(Planet.fromJSON(preset));
+    for (const direction of [[1, 1, 1], [0, 1, -1], [-1, 0.5, 0.3]]) {
+      const vector = new THREE.Vector3(...direction);
+      assert(Math.abs(restored.getSurfaceRadius(vector) - expected.getSurfaceRadius(vector)) < 1e-8, 'Preset restore changes the CPU surface.');
+    }
+    const loadedArchive = await parseGlb(archive.files['planet.glb']);
+    verifyRadii(loadedArchive.scene, restored); verifyTextures(loadedArchive.scene);
+    loadedArchive.scene.traverse(mesh => { if (mesh.isMesh) { mesh.geometry.dispose(); mesh.material.map?.dispose(); mesh.material.dispose(); } });
+    report.archiveBytes = archive.blob.size;
+  });
+
+  await check('Studio Use in code snippet reconstructs the same applied surface', async () => {
+    const snippet = planetCodeSnippet(snapshot.params, snapshot.terrain);
+    const start = snippet.indexOf('Planet.fromJSON(') + 'Planet.fromJSON('.length;
+    const end = snippet.indexOf(');', start);
+    assert(start > 'Planet.fromJSON('.length && end > start, 'The snippet does not contain a serialized runtime snapshot.');
+    const reconstructed = own(Planet.fromJSON(JSON.parse(snippet.slice(start, end))));
+    for (const direction of [[1, 0, 0], [1, 1, 1], [-1, -1, 1], [0.2, -0.3, 0.9]]) {
+      const vector = new THREE.Vector3(...direction);
+      assert(Math.abs(reconstructed.getSurfaceRadius(vector) - expected.getSurfaceRadius(vector)) < 1e-8, 'The standalone snippet changes the surface.');
+    }
+  });
+
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x05070a); scene.add(imported.scene);
+  scene.add(new THREE.AmbientLight(0xbfd9ff, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 3); sun.position.set(1, 2, 3); scene.add(sun);
+  const camera = new THREE.PerspectiveCamera(42, 960 / 400, 1, 1000); camera.position.set(180, 90, 330); camera.lookAt(0, 0, 0);
+  renderer.render(scene, camera);
+  report.state = 'passed'; result.dataset.state = 'passed'; result.textContent = `${report.checks.length} checks passed — actual WebGL bake, GLB reimport, ZIP snapshot and snippet.`;
+} catch (error) {
+  report.state = 'failed'; report.error = error.stack ?? error.message;
+  result.dataset.state = 'failed'; result.textContent = `Graph export checks failed: ${error.message}`;
+} finally {
+  resources.forEach(planet => planet.dispose());
+  baked?.dispose();
+  details.textContent = JSON.stringify(report, null, 2);
+  report.done = true;
+}
+</script>
+</body>
+</html>

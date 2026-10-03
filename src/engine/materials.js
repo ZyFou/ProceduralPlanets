@@ -396,15 +396,28 @@ void main() {
 // for chunks fine enough (quadtree level >= 2) that their vertex spacing
 // resolves those octaves; coarse chunks evaluate them per pixel.
 // Draws instanced chunks of a gridRes x gridRes grid (PlanetWorld).
-export function createTerrainMaterial(shared, octaves, lowVarying = false, gridRes = 32) {
-  const defines = { OCTAVES: octaves, WARP_VARYING: 1 };
-  if (lowVarying) defines.LOW_VARYING = 1;
+/** Source uniforms of an identity graph must not overwrite procedural controls. */
+export function createTerrainUniforms(shared, program) {
+  const result = { ...shared, ...program?.uniforms };
+  if (program?.identityParams) {
+    for (const key of ['noiseScale', 'persistence', 'lacunarity', 'warp', 'ridge', 'mountainScale', 'craters', 'craterScale', 'continents']) {
+      const name = UNIFORM_MAP[key];
+      if (name && key in program.identityParams) result[name] = { value: program.identityParams[key] };
+    }
+  }
+  return result;
+}
+
+export function createTerrainMaterial(shared, octaves, lowVarying = false, gridRes = 32, graphProgram = null) {
+  const defines = { OCTAVES: octaves };
+  if (!graphProgram) defines.WARP_VARYING = 1;
+  if (lowVarying && !graphProgram) defines.LOW_VARYING = 1;
   return new THREE.ShaderMaterial({
     name: lowVarying ? 'pp.terrain.lowVarying' : 'pp.terrain',
-    uniforms: { ...shared, uGridRes: { value: gridRes } },
+    uniforms: { ...shared, ...graphProgram?.uniforms, uGridRes: { value: gridRes } },
     defines,
-    vertexShader: TERRAIN_VERTEX,
-    fragmentShader: TERRAIN_FRAGMENT,
+    vertexShader: graphProgram ? TERRAIN_VERTEX.replace(NOISE_FUNCTIONS_GLSL, graphProgram.glsl) : TERRAIN_VERTEX,
+    fragmentShader: graphProgram ? TERRAIN_FRAGMENT.replace(NOISE_FUNCTIONS_GLSL, graphProgram.glsl) : TERRAIN_FRAGMENT,
     side: THREE.FrontSide,
   });
 }

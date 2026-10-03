@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import App from './App.jsx';
 import Landing from './landing/Landing.jsx';
 import { PROJECT_TEMPLATES, createTemplateParams, getProjectTemplate } from './project/ProjectTemplates.js';
-import { normalizeProject, projectStore, projectSyncStore } from './project/ProjectStore.js';
+import { cloneProjectData, normalizeProject, projectStore, projectSyncStore } from './project/ProjectStore.js';
 import { downloadProjectDocument, readProjectFile } from './project/ProjectDocument.js';
 import { pushBoundProject } from './project/cloudSync.js';
 import { adminApi } from './admin/adminApi.js';
@@ -130,10 +130,15 @@ export default function Root() {
     refreshProjects();
   }, [refreshProjects]);
 
-  const updateProjectParams = useCallback((params) => {
+  const updateProjectParams = useCallback((params, design = {}) => {
     setCurrentProject((project) => {
       if (!project || project.preview) return project;
-      const updated = { ...project, params: { ...params } };
+      const updated = {
+        ...project,
+        params: cloneProjectData(params),
+        ...(design.terrain !== undefined ? { terrain: cloneProjectData(design.terrain) } : {}),
+        ...(design.editor !== undefined ? { editor: cloneProjectData(design.editor) } : {}),
+      };
       scheduleSave(updated);
       return updated;
     });

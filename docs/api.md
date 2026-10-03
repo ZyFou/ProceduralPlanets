@@ -159,9 +159,20 @@ A self-contained single-planet view: its own `WebGLRenderer`, camera,
 | `start()` / `stop()` / `running` | Render loop |
 | `renderOnce()` | One frame, without advancing time |
 | `prepare({ onProgress?, modes? })` | `Promise`: compile the shaders, run the bakes and draw the first frame. Resolves once that final-quality frame is on the canvas |
-| `screenshot(w = 1920, h = 1080)` | PNG data URL |
+| `screenshot(w = 1920, h = 1080)` | PNG data URL at native resolution, regardless of viewport performance settings |
 | `captureThumbnail(w = 480, h, type = 'image/webp', quality)` | `Promise<string>`: a small copy of the next frame that draws the planet (no extra render) |
 | `dispose()` | Free everything (and remove the canvas it created) |
+
+The studio's **Perf → Rendering** controls apply to all three body types.
+Set `viewer.planet.set({ renderResolution: 0.5, upscaler: 'spatial' })` to render
+at half the drawing-buffer width and height (one quarter of the pixels), then
+reconstruct the frame at the canvas's full resolution. `renderResolution`
+accepts 0.25–1 and defaults to 1; at 1 the reconstruction pass is bypassed.
+`upscaler` defaults to `'bilinear'` (hardware linear interpolation). `'spatial'`
+uses Catmull-Rom bicubic reconstruction, clamped to the local colour range to
+avoid ringing, with no frame history. These settings are saved with the planet
+but affect only `PlanetViewer`, including the studio, rather than host scenes
+drawn with `PlanetRenderer`. Preset changes preserve them.
 
 ---
 

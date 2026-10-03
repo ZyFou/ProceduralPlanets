@@ -1,0 +1,391 @@
+{
+  "status": "complete",
+  "environment": {
+    "date": "2026-10-03T10:09:16.482Z",
+    "seed": 1337,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "webgl": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)",
+    "vendor": "Google Inc. (NVIDIA)",
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 5060 Ti (0x00002D04) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "floatTargets": true,
+    "parallelCompilation": true,
+    "viewport": [
+      1707,
+      735
+    ]
+  },
+  "results": [
+    {
+      "name": "CPU / actual GPU height, gradient and material auxiliaries",
+      "status": "pass",
+      "measurements": {
+        "current": {
+          "directions": 14,
+          "maxAbsoluteError": {
+            "height": 0.00007495210153629639,
+            "gradient": 0.09948610862718432,
+            "cLow": 0.000023695031647730236,
+            "mtn": 0.00007753280475987501
+          },
+          "reviewTolerance": {
+            "height": 0.03,
+            "gradient": 0.75,
+            "cLow": 0.03,
+            "mtn": 0.05
+          },
+          "withinReviewTolerance": true
+        },
+        "noiseRemap": {
+          "directions": 14,
+          "maxAbsoluteError": {
+            "height": 0.000019512688710920933,
+            "gradient": 0.0035070328877935264,
+            "cLow": 0.000018463783233113595,
+            "mtn": 0
+          },
+          "reviewTolerance": {
+            "height": 0.03,
+            "gradient": 0.75,
+            "cLow": 0.03,
+            "mtn": 0.05
+          },
+          "withinReviewTolerance": true
+        },
+        "twoNoises": {
+          "directions": 14,
+          "maxAbsoluteError": {
+            "height": 0.000018226351401584573,
+            "gradient": 0.007653500196068697,
+            "cLow": 0.000009348184661472914,
+            "mtn": 0
+          },
+          "reviewTolerance": {
+            "height": 0.03,
+            "gradient": 0.75,
+            "cLow": 0.03,
+            "mtn": 0.05
+          },
+          "withinReviewTolerance": true
+        },
+        "twoCurrentSources": {
+          "directions": 14,
+          "maxAbsoluteError": {
+            "height": 0.00029523028067413026,
+            "gradient": 0.04620339537005069,
+            "cLow": 0.00001802325599581378,
+            "mtn": 0.00021025307946959115
+          },
+          "reviewTolerance": {
+            "height": 0.03,
+            "gradient": 0.75,
+            "cLow": 0.03,
+            "mtn": 0.05
+          },
+          "withinReviewTolerance": true
+        }
+      },
+      "note": "Pass asserts real linking, finite float readback and CPU/GPU errors within the displayed fixed review tolerances for every recipe.",
+      "durationMs": 3002
+    },
+    {
+      "name": "First activation preserves classic GPU source exactly",
+      "status": "pass",
+      "maxAbsoluteError": {
+        "height": 0,
+        "gradient": 0,
+        "cLow": 0,
+        "mtn": 0
+      },
+      "durationMs": 1527
+    },
+    {
+      "name": "GPU cube-face junctions and poles share the same direction field",
+      "status": "pass",
+      "facePairs": 6,
+      "maxAbsoluteError": {
+        "height": 0,
+        "gradient": 0,
+        "cLow": 0,
+        "mtn": 0
+      },
+      "note": "Direction continuity check; does not replace moving-camera LOD inspection.",
+      "durationMs": 150
+    },
+    {
+      "name": "Real terrain materials link for all recipes",
+      "status": "pass",
+      "details": [
+        {
+          "graph": "currentTerrain → heightOutput",
+          "compiled": true,
+          "linkedPrograms": 2
+        },
+        {
+          "graph": "noise3d → remap → heightOutput",
+          "compiled": true,
+          "linkedPrograms": 2
+        },
+        {
+          "graph": "noise3d → noise3d → mix → heightOutput",
+          "compiled": true,
+          "linkedPrograms": 2
+        },
+        {
+          "graph": "currentTerrain → currentTerrain → mix → heightOutput",
+          "compiled": true,
+          "linkedPrograms": 2
+        }
+      ],
+      "durationMs": 6199
+    },
+    {
+      "name": "Uniform scalar and seed edits retain real linked GPU programs",
+      "status": "pass",
+      "compiled": false,
+      "materialIdentityPreserved": true,
+      "before": 0.5555082183237817,
+      "after": 0.5428744904791447,
+      "measurements": {
+        "layout": {
+          "applicationLatencyMs": 0.2999999998137355,
+          "before": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "after": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "materialCreations": 0,
+          "rendererCompileCalls": 0,
+          "newGpuPrograms": 0,
+          "compiled": false
+        },
+        "unreachableIncompleteNode": {
+          "applicationLatencyMs": 0.09999999962747097,
+          "before": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "after": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "materialCreations": 0,
+          "rendererCompileCalls": 0,
+          "newGpuPrograms": 0,
+          "compiled": false
+        },
+        "numericUniform": {
+          "applicationLatencyMs": 0.39999999944120646,
+          "before": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "after": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "materialCreations": 0,
+          "rendererCompileCalls": 0,
+          "newGpuPrograms": 0,
+          "compiled": false
+        },
+        "seedUniform": {
+          "applicationLatencyMs": 0.20000000018626451,
+          "before": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          },
+          "after": {
+            "materialCreations": 0,
+            "rendererCompileCalls": 0,
+            "totalGpuPrograms": 2,
+            "linkedTerrainProgramReferences": 2
+          }
+        }
+      },
+      "measurementScope": "One sequential run after terrain programs warmed. Application latency ends at atomic CPU/uniform install; it is not input-to-presented-frame latency or an FPS benchmark.",
+      "maxAbsoluteError": {
+        "height": 0.000013133062624293146,
+        "gradient": 0.002215268597004716,
+        "cLow": 0.000008078109986542348,
+        "mtn": 0
+      },
+      "durationMs": 1455
+    },
+    {
+      "name": "Actual terrain draws survive discrete near/far LOD transitions",
+      "status": "pass",
+      "frames": [
+        {
+          "distance": 1200,
+          "chunks": 20,
+          "depthRange": [
+            1,
+            1
+          ],
+          "coveredPixels": 2344,
+          "drawAndReadbackMs": 3.7000000001862645
+        },
+        {
+          "distance": 800,
+          "chunks": 20,
+          "depthRange": [
+            1,
+            1
+          ],
+          "coveredPixels": 5512,
+          "drawAndReadbackMs": 1.5
+        },
+        {
+          "distance": 500,
+          "chunks": 56,
+          "depthRange": [
+            1,
+            2
+          ],
+          "coveredPixels": 14732,
+          "drawAndReadbackMs": 1
+        },
+        {
+          "distance": 360,
+          "chunks": 76,
+          "depthRange": [
+            1,
+            3
+          ],
+          "coveredPixels": 16384,
+          "drawAndReadbackMs": 1.400000000372529
+        },
+        {
+          "distance": 280,
+          "chunks": 22,
+          "depthRange": [
+            2,
+            3
+          ],
+          "coveredPixels": 16384,
+          "drawAndReadbackMs": 1.2000000001862645
+        },
+        {
+          "distance": 240,
+          "chunks": 6,
+          "depthRange": [
+            3,
+            3
+          ],
+          "coveredPixels": 16384,
+          "drawAndReadbackMs": 0.7999999998137355
+        },
+        {
+          "distance": 360,
+          "chunks": 76,
+          "depthRange": [
+            1,
+            3
+          ],
+          "coveredPixels": 16384,
+          "drawAndReadbackMs": 0.7999999998137355
+        },
+        {
+          "distance": 500,
+          "chunks": 56,
+          "depthRange": [
+            1,
+            2
+          ],
+          "coveredPixels": 14732,
+          "drawAndReadbackMs": 0.900000000372529
+        },
+        {
+          "distance": 800,
+          "chunks": 20,
+          "depthRange": [
+            1,
+            1
+          ],
+          "coveredPixels": 5512,
+          "drawAndReadbackMs": 1.099999999627471
+        },
+        {
+          "distance": 1200,
+          "chunks": 20,
+          "depthRange": [
+            1,
+            1
+          ],
+          "coveredPixels": 2344,
+          "drawAndReadbackMs": 1.099999999627471
+        }
+      ],
+      "initialProgramCount": 3,
+      "finalProgramCount": 3,
+      "newGpuPrograms": 0,
+      "note": "Ten real rasterized frames move near then far and verify visible terrain, differing LOD selections, GL errors and no shader compilation. Discrete low-resolution readbacks do not prove absence of every visual seam or temporal popping; drawAndReadbackMs includes synchronous GPU readback.",
+      "durationMs": 42
+    },
+    {
+      "name": "Actual shader link failure retains previous graph, program and sampler and disposes candidate",
+      "status": "pass",
+      "error": "Fragment shader is not compiled.\n",
+      "retainedPreviousState": true,
+      "candidateDisposals": [
+        1,
+        1
+      ],
+      "durationMs": 28
+    },
+    {
+      "name": "Older real GPU candidate cannot replace a newer graph",
+      "status": "pass",
+      "older": {
+        "ok": false,
+        "obsolete": true,
+        "revision": 1
+      },
+      "newest": {
+        "ok": true,
+        "revision": 2,
+        "compiled": false
+      },
+      "candidateDisposals": [
+        1,
+        1
+      ],
+      "schedule": "Controlled readiness gate around actually compiled GPU programs.",
+      "durationMs": 25
+    },
+    {
+      "name": "Independent planets and disposal during pending GPU work",
+      "status": "pass",
+      "independent": true,
+      "disposedCandidateObsolete": true,
+      "candidateDisposals": [
+        1,
+        1
+      ],
+      "durationMs": 29
+    }
+  ],
+  "resourcesAfterCleanup": {
+    "geometries": 0,
+    "textures": 0,
+    "programs": 0
+  }
+}

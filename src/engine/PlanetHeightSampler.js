@@ -158,13 +158,15 @@ const RIDGE_BIAS = 0.62;
 const RIDGE_GAIN = 3.3;
 
 export class PlanetHeightSampler {
-  constructor(params, uniforms) {
+  constructor(params, uniforms, program = null) {
     this.params = params;
     this.uniforms = uniforms;
     this._tmp = { cLow: 0 };
+    this.program = program;
   }
 
   height01(x, y, z) {
+    if (this.program) return this.program.evaluate({ x, y, z }).height;
     const p = this.params;
     const seed = this.uniforms.uSeedOffset.value;
     const px = x * p.noiseScale + seed.x;

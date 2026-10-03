@@ -8,8 +8,10 @@ import type {
 import type { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { PlanetParams, ResolvedPlanetParams, ColorInput } from './params';
+import type { HeightGraph, TerrainConfiguration, TerrainResult } from './graph';
 
 export type { PlanetParams, ResolvedPlanetParams, ColorInput };
+export * from './graph';
 
 /** Public body types. */
 export type PlanetType = 'terrestrial' | 'gas' | 'star';
@@ -32,6 +34,8 @@ export interface PlanetOptions extends PlanetParams {
   preset?: PresetName;
   /** A parameter object (e.g. from the studio). Flat keys on the options override it. */
   params?: PlanetParams;
+  /** Terrestrial height generation source. Retained when displaying Gas or Star. */
+  terrain?: TerrainConfiguration;
   /**
    * Light direction: an Object3D (a Planet star, a DirectionalLight, any object: the
    * light comes from its world position), a world-space Vector3 pointing toward the
@@ -45,9 +49,33 @@ export interface PlanetOptions extends PlanetParams {
 
 export interface SerializedPlanet {
   app: 'procedural-planets';
+  version: 2;
+  mode: PlanetMode;
+  params: ResolvedPlanetParams;
+  terrain: TerrainConfiguration;
+  /** Custom star surface shader, if present. */
+  starShader?: string;
+}
+
+export interface LegacySerializedPlanet {
+  app: 'procedural-planets';
   version: 1;
   mode: PlanetMode;
   params: ResolvedPlanetParams;
+  starShader?: string;
+}
+
+/** Editable Studio document. Editor data has no effect on the runtime. */
+export interface PlanetProjectDocument {
+  schemaVersion: 2;
+  id: string;
+  metadata: { name: string; [key: string]: unknown };
+  params: PlanetParams;
+  terrain: TerrainConfiguration;
+  editor?: { draftGraph?: HeightGraph | null; nodePositions?: Record<string, { x: number; y: number }>;
+    nodeLabels?: Record<string, string>; groups?: unknown[]; viewport?: { x: number; y: number; zoom: number } | null;
+    [key: string]: unknown };
+  [key: string]: unknown;
 }
 
 export interface ShaderResult { ok: boolean; error?: string }
@@ -65,6 +93,8 @@ export class Planet extends Object3D {
   readonly planetType: PlanetType;
   /** Current parameters (treat as read-only; use set()). */
   readonly params: ResolvedPlanetParams;
+  /** A detached copy of the applied terrain configuration. */
+  readonly terrain: TerrainConfiguration;
   /** Light direction source, see PlanetOptions.lightSource. */
   lightSource: LightSource;
   /** Shader clock in seconds (waves, star surface, gas flow). */
@@ -90,6 +120,11 @@ export class Planet extends Object3D {
   randomizeSeed(): number;
   /** Replace the star surface shader (compile-checked when a renderer is known). */
   setStarShader(glslBody: string, renderer?: WebGLRenderer | null): ShaderResult;
+  /** Validate and atomically apply a graph. Failed candidates retain the previous terrain. */
+  setTerrainGraph(graph: HeightGraph, options?: { renderer?: WebGLRenderer | null }): Promise<TerrainResult>;
+  setTerrain(terrain: TerrainConfiguration, options?: { renderer?: WebGLRenderer | null }): Promise<TerrainResult>;
+  /** Ignore any pending shader compilation candidate. */
+  cancelTerrainCompilation(): void;
 
   /** Terrain radius (local units) along a LOCAL direction (CPU height mirror). */
   getSurfaceRadius(direction: Vector3): number;
@@ -103,7 +138,7 @@ export class Planet extends Object3D {
   /** Plain JSON, same shape as the studio's planet_preset.json. */
   serialize(): SerializedPlanet;
   /** From a studio export / project / parameter object (older studio params are migrated). */
-  static fromJSON(json: string | SerializedPlanet | { params: PlanetParams } | PlanetParams, options?: PlanetOptions): Planet;
+  static fromJSON(json: string | SerializedPlanet | LegacySerializedPlanet | PlanetProjectDocument | { params: PlanetParams; terrain?: TerrainConfiguration } | PlanetParams, options?: PlanetOptions): Planet;
   /** Free the planet's GPU resources. */
   dispose(): void;
 }
@@ -238,7 +273,7 @@ export class PlanetViewer {
    * Resolves once that final-quality frame is on the canvas.
    */
   prepare(options?: PrepareOptions): Promise<this>;
-  /** PNG data URL of a w x h frame. */
+  /** PNG data URL of a native-resolution w x h frame, independent of viewport renderResolution. */
   screenshot(width?: number, height?: number): string;
   /** A small image (data URL) copied from the next frame that draws the planet: no extra render. */
   captureThumbnail(width?: number, height?: number, type?: string, quality?: number): Promise<string | null>;
@@ -266,7 +301,7 @@ export interface BakeOptions extends PlanetOptions {
 }
 
 export interface BakedPlanet extends Group {
-  userData: { params: ResolvedPlanetParams; [key: string]: unknown };
+  userData: { params: ResolvedPlanetParams; terrain: TerrainConfiguration; [key: string]: unknown };
   /** Dispose every geometry, material and texture of the group. */
   dispose(): void;
 }

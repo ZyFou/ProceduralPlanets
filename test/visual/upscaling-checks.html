@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Viewer upscaling checks</title>
+  <style>
+    body { margin: 0; background: #10131b; color: white; font: 14px sans-serif; }
+    canvas { display: block; width: 640px; height: 360px; }
+    label { display: inline-block; margin: 12px; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <label>Body <select id="body"><option>terran</option><option>ringed</option><option>sun</option></select></label>
+  <label>Resolution <select id="resolution"><option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option><option value="0.25">25%</option></select></label>
+  <label>Upscaler <select id="upscaler"><option value="bilinear">Bilinear</option><option value="spatial">Spatial</option></select></label>
+  <script type="module">
+    // npm run dev:web, then /test/visual/upscaling-checks.html.
+    // Frozen time/camera for comparisons, including rings and star bloom.
+    import { PlanetViewer } from 'procedural-planets';
+    const viewer = new PlanetViewer({
+      canvas: document.getElementById('view'),
+      autoStart: false,
+      controls: false,
+      planet: { preset: 'terran', seed: 42 },
+    });
+    async function draw() {
+      await viewer.prepare();
+      viewer.renderOnce();
+    }
+    document.getElementById('body').onchange = async (e) => {
+      viewer.planet.applyPreset(e.target.value);
+      viewer.frame();
+      await draw();
+    };
+    document.getElementById('resolution').onchange = async (e) => {
+      viewer.planet.set('renderResolution', Number(e.target.value));
+      await draw();
+    };
+    document.getElementById('upscaler').onchange = async (e) => {
+      viewer.planet.set('upscaler', e.target.value);
+      await draw();
+    };
+    window.__example = { viewer, frame: () => viewer.renderOnce(), draw };
+    await draw();
+    window.ready = true;
+  </script>
+</body>
+</html>

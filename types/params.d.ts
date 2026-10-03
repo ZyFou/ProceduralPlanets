@@ -253,6 +253,10 @@ export interface PlanetParams {
   atmoHeight?: number;
   /** Aerosols / dust (Mie) Range 0..1. Default: 0.3. */
   atmoHaze?: number;
+  /** PlanetViewer render scale per axis (0.25–1); 1 = native resolution Default: 1. */
+  renderResolution?: number;
+  /** PlanetViewer reconstruction: 'bilinear' or 'spatial' (clamped bicubic) Default: 'bilinear'. */
+  upscaler?: 'bilinear' | 'spatial';
   /** Grid quads per chunk side (rebuild) Range 8..64. Default: 32. */
   chunkRes?: number;
   /** Quadtree depth (rebuild) — Quadtree subdivision limit (rebuild) Range 2..7. Default: 5. */
@@ -389,6 +393,8 @@ export interface ResolvedPlanetParams {
   atmoStrength: number;
   atmoHeight: number;
   atmoHaze: number;
+  renderResolution: number;
+  upscaler: string;
   chunkRes: number;
   maxDepth: number;
   splitFactor: number;

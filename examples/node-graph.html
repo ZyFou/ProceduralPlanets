@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Height node graphs — procedural-planets</title>
+  <link rel="stylesheet" href="./example.css">
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="info">
+    <h1>Height node graphs</h1>
+    <p>Two continuous 3D noise fields blended on a sphere. This example uses only the public library.</p>
+    <button id="switch">Switch to procedural terrain</button>
+    <span id="status">Preparing…</span>
+  </div>
+  <script type="module">
+    import { Planet, PlanetViewer, createRecipe } from 'procedural-planets';
+
+    const planet = new Planet({ preset: 'terran', seed: 3141592,
+      terrain: { mode: 'nodes', graph: createRecipe('two-noises') } });
+    // A Studio .ppplanet file loads through this same path, including its terrain.
+    const restored = Planet.fromJSON(planet.serialize());
+    planet.dispose();
+    const viewer = new PlanetViewer({ canvas: document.getElementById('c'), planet: restored });
+    const status = document.getElementById('status');
+    await viewer.prepare();
+    status.textContent = '';
+    document.getElementById('switch').addEventListener('click', async event => {
+      const terrain = restored.terrain;
+      const mode = terrain.mode === 'nodes' ? 'procedural' : 'nodes';
+      status.textContent = 'Compiling…';
+      const result = await restored.setTerrain({ ...terrain, mode }, { renderer: viewer.renderer });
+      status.textContent = result.ok ? '' : result.error ?? 'Terrain could not be applied.';
+      if (result.ok) event.target.textContent = mode === 'nodes' ? 'Switch to procedural terrain' : 'Switch to node terrain';
+    });
+  </script>
+</body>
+</html>

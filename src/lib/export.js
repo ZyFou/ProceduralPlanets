@@ -6,6 +6,7 @@
 import { PlanetExporter, toGLB, downloadBlob } from '../engine/PlanetExporter.js';
 import { bakePlanet } from '../engine/PlanetBaker.js';
 import { zipSync } from 'fflate';
+import { Planet } from '../engine/Planet.js';
 
 function exportOptions(planet, options) {
   return {
@@ -18,6 +19,8 @@ function exportOptions(planet, options) {
     exportWater: !!options.water,
     exportPreset: options.preset !== false,
     starShaderBody: planet.starShaderBody,
+    terrain: planet.terrain,
+    terrainProgram: planet._terrainProgram,
   };
 }
 
@@ -29,13 +32,21 @@ function exportOptions(planet, options) {
  *          JSON, default true), onProgress
  */
 export async function createPlanetArchive(renderer, planet, options = {}) {
-  planet._prepareFrame();
-  planet._bakeFrame(renderer);
-  const { files, filename } = await PlanetExporter.buildFiles(
-    renderer, planet.params, planet.uniforms, exportOptions(planet, options), options.onProgress
-  );
-  const blob = new Blob([zipSync(files)], { type: 'application/zip' });
-  return { blob, filename, files };
+  const source = planet;
+  planet = Planet.fromJSON(source.serialize(), { starShader: source.starShaderBody });
+  planet.time = source.time;
+  planet.cloudTime = source.cloudTime;
+  try {
+    planet._prepareFrame();
+    planet._bakeFrame(renderer);
+    const { files, filename } = await PlanetExporter.buildFiles(
+      renderer, planet.params, planet.uniforms, exportOptions(planet, options), options.onProgress
+    );
+    const blob = new Blob([zipSync(files)], { type: 'application/zip' });
+    return { blob, filename, files };
+  } finally {
+    planet.dispose();
+  }
 }
 
 /** createPlanetArchive + trigger a browser download. */
@@ -52,9 +63,8 @@ export async function downloadPlanetArchive(renderer, planet, options = {}) {
  */
 export async function exportPlanetGLB(renderer, planet, options = {}) {
   const group = await bakePlanet(renderer, { atmosphere: false, starMaterial: 'standard', ...options, planet });
-  const glb = await toGLB(group);
-  group.dispose();
-  return glb;
+  try { return await toGLB(group); }
+  finally { group.dispose(); }
 }
 
 export { toGLB, downloadBlob };

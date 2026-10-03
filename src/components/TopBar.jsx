@@ -119,6 +119,7 @@ export default function TopBar({
         shortcutActionsRef.current[actionId] && matchesShortcut(event, shortcut)
       ));
       if (!entry) return;
+      if (entry[0] === 'download' && event.target?.closest?.('[data-node-workspace]')) return;
       event.preventDefault();
       setOpenMenu(null);
       shortcutActionsRef.current[entry[0]]?.();

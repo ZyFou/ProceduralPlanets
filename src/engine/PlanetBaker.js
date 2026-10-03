@@ -5,6 +5,7 @@ import { PlanetHeightSampler } from './PlanetHeightSampler.js';
 import { STAR_OCTAVES, DEFAULT_STAR_BODY, buildStarBakeFragment } from './star.js';
 import { GAS_OCTAVES, buildGasBakeFragment, buildRingBakeFragment } from './gas.js';
 import { Planet } from './Planet.js';
+import { createTerrainUniforms } from './materials.js';
 
 // ============================================================================
 // PlanetBaker — turns a planet into plain three.js meshes with baked
@@ -133,7 +134,7 @@ export function renderTargetToCanvas(renderer, rt, w, h = w) {
   return canvas;
 }
 
-function cloneUniforms(uniforms, options) {
+export function cloneBakeUniforms(uniforms, options = {}) {
   const out = {
     uFaceOrigin: { value: new THREE.Vector3() },
     uFaceU: { value: new THREE.Vector3() },
@@ -181,6 +182,8 @@ const clampInt = (v, lo, hi, def) => Math.max(lo, Math.min(hi, parseInt(v, 10) |
  * Returns a THREE.Group (name 'Planet' | 'GasPlanet' | 'Star').
  */
 export async function bakeGroup(renderer, params, uniforms, options = {}, onProgress = () => {}) {
+  params = JSON.parse(JSON.stringify(params));
+  uniforms = cloneBakeUniforms(uniforms, options);
   if (params.mode === 'star') return bakeStar(renderer, params, uniforms, options, onProgress);
   if (params.mode === 'gas') return bakeGas(renderer, params, uniforms, options, onProgress);
   return bakeTerrain(renderer, params, uniforms, options, onProgress);
@@ -192,16 +195,18 @@ function bakeTerrain(renderer, params, uniforms, options, onProgress) {
   const includeMesh = options.includeMesh !== false;
   const bakeColor = options.bakeColor !== false;
 
-  const sampler = new PlanetHeightSampler(params, uniforms);
+  const sampler = new PlanetHeightSampler(params, uniforms, options.terrainProgram);
   const group = new THREE.Group();
   group.name = 'Planet';
 
-  const bakeUniforms = cloneUniforms(uniforms, options);
+  const bakeUniforms = cloneBakeUniforms(createTerrainUniforms(uniforms, options.terrainProgram), options);
   const bakeMaterial = new THREE.ShaderMaterial({
-    defines: { OCTAVES: Math.round(params.octaves) },
+    defines: { OCTAVES: Math.round(options.terrainProgram?.identityParams?.octaves ?? params.octaves) },
     uniforms: bakeUniforms,
     vertexShader: BAKE_VERTEX,
-    fragmentShader: BAKE_FRAGMENT,
+    fragmentShader: options.terrainProgram?.glsl
+      ? BAKE_FRAGMENT.replace(NOISE_FUNCTIONS_GLSL, options.terrainProgram.glsl)
+      : BAKE_FRAGMENT,
   });
 
   const tmp = new THREE.Vector3();
@@ -341,7 +346,7 @@ function bakeGas(renderer, params, uniforms, options, onProgress) {
     onProgress('Baking gas texture');
     const bakeMaterial = new THREE.ShaderMaterial({
       defines: { OCTAVES: GAS_OCTAVES },
-      uniforms: cloneUniforms(uniforms, options),
+      uniforms: cloneBakeUniforms(uniforms, options),
       vertexShader: BAKE_VERTEX,
       fragmentShader: buildGasBakeFragment(),
     });
@@ -371,7 +376,7 @@ function bakeGas(renderer, params, uniforms, options, onProgress) {
     const W = 1024;
     const ringMat = new THREE.ShaderMaterial({
       defines: { OCTAVES: GAS_OCTAVES },
-      uniforms: cloneUniforms(uniforms, options),
+      uniforms: cloneBakeUniforms(uniforms, options),
       vertexShader: BAKE_VERTEX,
       fragmentShader: buildRingBakeFragment(W),
     });
@@ -427,7 +432,7 @@ function bakeStar(renderer, params, uniforms, options, onProgress) {
     onProgress('Baking star texture');
     const bakeMaterial = new THREE.ShaderMaterial({
       defines: { OCTAVES: STAR_OCTAVES },
-      uniforms: cloneUniforms(uniforms, options),
+      uniforms: cloneBakeUniforms(uniforms, options),
       vertexShader: BAKE_VERTEX,
       fragmentShader: buildStarBakeFragment(starBody),
     });
@@ -499,34 +504,43 @@ const BAKE_OPTION_KEYS = new Set(['planet', 'meshResolution', 'textureSize', 'ba
  */
 export async function bakePlanet(renderer, options = {}) {
   let planet = options.planet;
-  let owned = false;
-  if (!planet?.isPlanet) {
+  if (planet?.isPlanet) {
+    const source = planet;
+    planet = Planet.fromJSON(source.serialize(), { starShader: source.starShaderBody });
+    planet.time = source.time;
+    planet.cloudTime = source.cloudTime;
+  } else {
     const planetOptions = {};
     for (const [k, v] of Object.entries(options)) if (!BAKE_OPTION_KEYS.has(k)) planetOptions[k] = v;
     planet = new Planet(planetOptions);
-    owned = true;
   }
-  // the gas bake reads the jet table
-  planet._prepareFrame();
-  planet._bakeFrame(renderer);
-  const group = await bakeGroup(renderer, planet.params, planet.uniforms, {
-    meshRes: options.meshResolution ?? 128,
-    texRes: options.textureSize ?? 1024,
-    bakeLighting: !!options.bakeLighting,
-    exportWater: options.water !== false,
-    atmosphere: options.atmosphere !== false,
-    rings: options.rings !== false,
-    starMaterial: options.starMaterial ?? 'basic',
-    starShaderBody: planet.starShaderBody,
-  }, options.onProgress ?? (() => {}));
-  if (planet.params.mode === 'gas') {
-    // same axial tilt as the live gas giant
-    group.rotation.set(0, 0, 0);
-    group.rotateY(THREE.MathUtils.degToRad(45));
-    group.rotateX(THREE.MathUtils.degToRad(planet.params.gasTilt));
+  try {
+    // the gas bake reads the jet table
+    planet._prepareFrame();
+    planet._bakeFrame(renderer);
+    const group = await bakeGroup(renderer, planet.params, planet.uniforms, {
+      meshRes: options.meshResolution ?? 128,
+      texRes: options.textureSize ?? 1024,
+      bakeLighting: !!options.bakeLighting,
+      exportWater: options.water !== false,
+      atmosphere: options.atmosphere !== false,
+      rings: options.rings !== false,
+      starMaterial: options.starMaterial ?? 'basic',
+      starShaderBody: planet.starShaderBody,
+      terrain: planet.terrain,
+      terrainProgram: planet._terrainProgram,
+    }, options.onProgress ?? (() => {}));
+    if (planet.params.mode === 'gas') {
+      // same axial tilt as the live gas giant
+      group.rotation.set(0, 0, 0);
+      group.rotateY(THREE.MathUtils.degToRad(45));
+      group.rotateX(THREE.MathUtils.degToRad(planet.params.gasTilt));
+    }
+    group.userData.params = JSON.parse(JSON.stringify(planet.params));
+    group.userData.terrain = JSON.parse(JSON.stringify(planet.terrain ?? { mode: 'procedural', graph: null }));
+    group.dispose = () => disposeBaked(group);
+    return group;
+  } finally {
+    planet.dispose();
   }
-  group.userData.params = JSON.parse(JSON.stringify(planet.params));
-  group.dispose = () => disposeBaked(group);
-  if (owned) planet.dispose();
-  return group;
 }
