@@ -200,7 +200,7 @@ for (const domain of ['planet', 'gas', 'star']) {
   }
 }
 
-const tsType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : e.type === 'color' ? 'ColorInput' : e.type);
+const tsType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : k === 'upscaler' ? "'bilinear' | 'spatial'" : e.type === 'color' ? 'ColorInput' : e.type);
 let dts = `${header}
 /** sRGB colour: [r, g, b] in 0..1, '#rrggbb', 0xrrggbb or a THREE.Color. */
 export type ColorInput = [number, number, number] | string | number | import('three').Color;

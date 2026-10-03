@@ -194,6 +194,13 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 | `atmoHeight` | number | `0.045` | 0.01 – 0.12 | Thickness, fraction of radius — Atmosphere thickness as a fraction of the radius |
 | `atmoHaze` | number | `0.3` | 0 – 1 | Aerosols / dust (Mie) |
 
+### Rendering
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `renderResolution` | number | `1` |  | PlanetViewer render scale per axis (0.25–1); 1 = native resolution |
+| `upscaler` | string | `'bilinear'` |  | PlanetViewer reconstruction: 'bilinear' or 'spatial' (clamped bicubic) |
+
 ### LOD
 
 | Key | Type | Default | Range | Description |

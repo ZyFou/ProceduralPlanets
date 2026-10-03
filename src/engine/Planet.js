@@ -121,6 +121,13 @@ export function normalizeParam(key, value) {
     const n = Number(value);
     return Number.isFinite(n) ? { ok: true, value: n >>> 0 } : { ok: false, reason: 'invalid' };
   }
+  if (key === 'renderResolution') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0.25 && value <= 1
+      ? { ok: true, value } : { ok: false, reason: 'invalid' };
+  }
+  if (key === 'upscaler') {
+    return ['bilinear', 'spatial'].includes(value) ? { ok: true, value } : { ok: false, reason: 'invalid' };
+  }
   if (Array.isArray(def)) {
     const c = toColorArray(value);
     return c ? { ok: true, value: c } : { ok: false, reason: 'invalid' };
@@ -546,10 +553,10 @@ export class Planet extends THREE.Object3D {
     if (!preset) return;
     const patch = { ...preset.patch };
     // reset every planet param a previous preset may have touched — but leave
-    // the star and gas domains and the mode alone
+    // the star and gas domains, mode and viewer performance settings alone
     const base = { ...DEFAULT_PARAMS, seed: this.params.seed };
     for (const [k, v] of Object.entries(base)) {
-      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode') continue;
+      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode' || k === 'renderResolution' || k === 'upscaler') continue;
       if (!(k in patch)) patch[k] = v;
     }
     let structural = false;

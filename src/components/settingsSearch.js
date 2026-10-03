@@ -164,6 +164,8 @@ const SETTINGS_INDEX = [
   { panelId: 'starMotion', sectionLabel: 'Motion', settingId: 'starMotion.starPulseSpeed', label: 'Pulse speed', keywords: 'star motion pulse speed' },
 
   // Performance
+  { panelId: 'perf', sectionLabel: 'Rendering', settingId: 'perf.renderResolution', label: 'Resolution', keywords: 'render resolution scale percentage performance pixels GPU' },
+  { panelId: 'perf', sectionLabel: 'Rendering', settingId: 'perf.upscaler', label: 'Upscaler', keywords: 'upscale upscaling bilinear spatial bicubic performance quality' },
   { panelId: 'perf', sectionLabel: 'LOD', settingId: 'perf.maxDepth', label: 'Max depth', keywords: 'lod quadtree subdivision performance' },
   { panelId: 'perf', sectionLabel: 'LOD', settingId: 'perf.splitFactor', label: 'Split factor', keywords: 'lod quadtree subdivision performance detail' },
   { panelId: 'perf', sectionLabel: 'LOD', settingId: 'perf.chunkRes', label: 'Chunk res', keywords: 'lod chunk resolution grid performance' },

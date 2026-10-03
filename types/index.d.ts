@@ -238,7 +238,7 @@ export class PlanetViewer {
    * Resolves once that final-quality frame is on the canvas.
    */
   prepare(options?: PrepareOptions): Promise<this>;
-  /** PNG data URL of a w x h frame. */
+  /** PNG data URL of a native-resolution w x h frame, independent of viewport renderResolution. */
   screenshot(width?: number, height?: number): string;
   /** A small image (data URL) copied from the next frame that draws the planet: no extra render. */
   captureThumbnail(width?: number, height?: number, type?: string, quality?: number): Promise<string | null>;

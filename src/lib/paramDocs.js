@@ -1359,6 +1359,22 @@ export const PARAM_DOCS = {
     "max": 1,
     "step": 0.05
   },
+  "renderResolution": {
+    "domain": "planet",
+    "group": "Rendering",
+    "label": "Resolution",
+    "type": "number",
+    "default": 1,
+    "description": "PlanetViewer render scale per axis (0.25–1); 1 = native resolution"
+  },
+  "upscaler": {
+    "domain": "planet",
+    "group": "Rendering",
+    "label": "Upscaler",
+    "type": "string",
+    "default": "bilinear",
+    "description": "PlanetViewer reconstruction: 'bilinear' or 'spatial' (clamped bicubic)"
+  },
   "chunkRes": {
     "domain": "planet",
     "group": "LOD",

@@ -9,7 +9,7 @@ import { DEFAULT_PARAMS, GAS_KEYS, STAR_KEYS } from '../engine/presets.js';
 // keys every body type reads besides its own domain
 const COMMON_KEYS = ['seed', 'radius', 'sunAzimuth', 'sunElevation', 'sunIntensity', 'ambient',
   'exposure', 'toonEnabled', 'toonBands', 'toonSoftness'];
-const SKIP = new Set(['mode', 'renderVersion', 'wireframe']);
+const SKIP = new Set(['mode', 'renderVersion', 'wireframe', 'renderResolution', 'upscaler']);
 const TYPE = { planet: 'terrestrial', gas: 'gas', star: 'star' };
 
 const round = (v) => Math.round(v * 1e4) / 1e4;
