@@ -41,7 +41,7 @@ export default defineConfig({
   },
   test: {
     // the API has its own node:test suite (npm run test:api)
-    exclude: ['node_modules/**', 'dist/**', 'api/**'],
+    exclude: ['node_modules/**', 'dist/**', 'api/**', 'test/browser/**'],
   },
   build: {
     outDir: 'dist/studio',

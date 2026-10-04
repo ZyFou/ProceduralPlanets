@@ -1,3 +1,4 @@
+import { PlanetPaintModeManager } from '../paint/PlanetPaintModeManager.js';
 import { PlanetViewer } from './PlanetViewer.js';
 import { PlanetExporter } from './PlanetExporter.js';
 
@@ -11,7 +12,11 @@ import { PlanetExporter } from './PlanetExporter.js';
 export class Engine extends PlanetViewer {
   constructor({ canvas, callbacks = {} }) {
     super({ canvas, callbacks });
+    this.paintMode = new PlanetPaintModeManager({ planet: this.planet, camera: this.camera, domElement: canvas, controls: this.controls, renderer: this.renderer });
   }
+
+  _renderFrame(delta, options) { this.paintMode?.update(); return super._renderFrame(delta, options); }
+  dispose() { this.paintMode?.dispose(); super.dispose(); }
 
   get params() { return this.planet.params; }
   get uniforms() { return this.planet.uniforms; }
@@ -81,7 +86,7 @@ export class Engine extends PlanetViewer {
       this.renderOnce();
       await PlanetExporter.export(
         this.renderer, this.params, this.uniforms,
-        { ...options, terrain: this.planet.terrain, terrainProgram: this.planet._terrainProgram, starShaderBody: this.starShaderBody },
+        { ...options, terrain: this.planet.terrain, paint: this.planet.paint, terrainProgram: this.planet._terrainProgram, starShaderBody: this.starShaderBody },
         onProgress
       );
     } finally {

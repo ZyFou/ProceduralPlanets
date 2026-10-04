@@ -27,6 +27,17 @@ export type PresetName = TerrestrialPresetName | GasPresetName | StarPresetName;
 /** Where a planet's sunlight comes from. */
 export type LightSource = Object3D | Vector3 | null;
 
+/** Lossless sparse spherical runtime layers, independent from Studio editor state. */
+export interface SerializedPlanetPaint {
+  version: 1;
+  mapping: 'cube-vertices';
+  /** Quads per face (16..512); Studio defaults to 256. */
+  resolution: number;
+  encoding: 'sparse-zlib-f32le';
+  /** Base64 zlib payload: sparse tiles of signed height and five material weights. */
+  data: string;
+}
+
 export interface PlanetOptions extends PlanetParams {
   /** Body type (default: the preset's type, else 'terrestrial'). */
   type?: PlanetType;
@@ -36,6 +47,7 @@ export interface PlanetOptions extends PlanetParams {
   params?: PlanetParams;
   /** Terrestrial height generation source. Retained when displaying Gas or Star. */
   terrain?: TerrainConfiguration;
+  paint?: SerializedPlanetPaint | null;
   /**
    * Light direction: an Object3D (a Planet star, a DirectionalLight, any object: the
    * light comes from its world position), a world-space Vector3 pointing toward the
@@ -53,6 +65,7 @@ export interface SerializedPlanet {
   mode: PlanetMode;
   params: ResolvedPlanetParams;
   terrain: TerrainConfiguration;
+  paint?: SerializedPlanetPaint;
   /** Custom star surface shader, if present. */
   starShader?: string;
 }
@@ -72,6 +85,7 @@ export interface PlanetProjectDocument {
   metadata: { name: string; [key: string]: unknown };
   params: PlanetParams;
   terrain: TerrainConfiguration;
+  paint?: SerializedPlanetPaint | null;
   editor?: { draftGraph?: HeightGraph | null; nodePositions?: Record<string, { x: number; y: number }>;
     nodeLabels?: Record<string, string>; groups?: unknown[]; viewport?: { x: number; y: number; zoom: number } | null;
     [key: string]: unknown };
@@ -95,6 +109,10 @@ export class Planet extends Object3D {
   readonly params: ResolvedPlanetParams;
   /** A detached copy of the applied terrain configuration. */
   readonly terrain: TerrainConfiguration;
+  /** Detached runtime paint snapshot. Paint remains active after leaving the editor. */
+  readonly paint: SerializedPlanetPaint;
+  /** Restore paint only; null clears paint. Invalid data throws without changing layers. */
+  setPaint(paint: SerializedPlanetPaint | null): this;
   /** Light direction source, see PlanetOptions.lightSource. */
   lightSource: LightSource;
   /** Shader clock in seconds (waves, star surface, gas flow). */
@@ -128,6 +146,8 @@ export class Planet extends Object3D {
 
   /** Terrain radius (local units) along a LOCAL direction (CPU height mirror). */
   getSurfaceRadius(direction: Vector3): number;
+  /** Procedural/node elevation before paint, in planet-local units. */
+  getBaseElevation(direction: Vector3): number;
   /** World-space point on the surface (terrain or sea) along a LOCAL direction. */
   getSurfacePoint(direction: Vector3, target?: Vector3): Vector3;
   raycast(raycaster: Raycaster, intersects: Intersection[]): void;
@@ -138,7 +158,7 @@ export class Planet extends Object3D {
   /** Plain JSON, same shape as the studio's planet_preset.json. */
   serialize(): SerializedPlanet;
   /** From a studio export / project / parameter object (older studio params are migrated). */
-  static fromJSON(json: string | SerializedPlanet | LegacySerializedPlanet | PlanetProjectDocument | { params: PlanetParams; terrain?: TerrainConfiguration } | PlanetParams, options?: PlanetOptions): Planet;
+  static fromJSON(json: string | SerializedPlanet | LegacySerializedPlanet | PlanetProjectDocument | { params: PlanetParams; terrain?: TerrainConfiguration; paint?: SerializedPlanetPaint | null } | PlanetParams, options?: PlanetOptions): Planet;
   /** Free the planet's GPU resources. */
   dispose(): void;
 }

@@ -318,7 +318,7 @@ export class PlanetWorld {
   update(cameraPos, camera = null) {
     this._updateBands();
     const R = this.radius;
-    const H = this.heightScale;
+    const H = this.heightScale + (this.shared.uPaintExtent?.value ?? 0);
     const cam = this._camPos.copy(cameraPos);
     const camDist = cam.length();
     this._camDist = camDist;
@@ -326,7 +326,8 @@ export class PlanetWorld {
     // horizon: a cap is hidden once its nearest direction is farther than
     // acos(R / camDist) (the tangent) + acos(R / (R + H)) (peaks rising above
     // it) from the camera direction
-    this._thetaMax = camDist > R ? Math.acos(R / camDist) + Math.acos(R / (R + H)) : Math.PI;
+    const innerR = Math.max(R * 0.01, R - (this.shared.uPaintExtent?.value ?? 0));
+    this._thetaMax = camDist > innerR ? Math.acos(innerR / camDist) + Math.acos(innerR / (R + H)) : Math.PI;
 
     const leaves = this._leaves;
     leaves.length = 0;

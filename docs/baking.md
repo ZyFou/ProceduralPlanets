@@ -60,3 +60,17 @@ const glb = await exportPlanetGLB(renderer, planet, { meshResolution: 256 });   
 
 The `planet_preset.json` in the archive holds the full parameters, and loads
 back with `Planet.fromJSON()` (see [studio-interop.md](studio-interop.md)).
+
+## Painted terrain
+
+All terrestrial baking/export paths evaluate **procedural/node base + painted
+height offset**. `bakePlanet()`, `exportPlanetGLB()` and `createPlanetArchive()`
+preserve paint when they freeze a runtime snapshot. GLB vertices contain the
+final displaced geometry; their baked color textures use the same material
+weights, planet palette and paint gradients as the live terrestrial shader.
+The ZIP's `planet_preset.json` also contains the versioned runtime `paint` field.
+
+Paint Mode interactions/cursor/UI are not exported. Export mesh resolution still
+controls how much fine sculpted detail is represented, so raise
+`meshResolution` for narrow features. Ocean and atmosphere retain their existing
+export options. Paint never changes their configuration.

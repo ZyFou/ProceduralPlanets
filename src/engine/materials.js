@@ -1,3 +1,4 @@
+import { PLANET_PAINT_GLSL, PLANET_PAINT_ALBEDO_GLSL, createPaintUniforms } from '../paint/planetPaintGLSL.js';
 import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import {
@@ -17,6 +18,7 @@ export function createSharedUniforms(p) {
   const v3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
   const off = seedToOffset(p.seed);
   return {
+    ...createPaintUniforms(),
     uTime:          { value: 0 },
     uLoopBias:      { value: 0 },   // always 0: opaque loop bounds (see noiseGLSL)
     uSeedOffset:    { value: new THREE.Vector3(off[0], off[1], off[2]) },
@@ -215,6 +217,7 @@ const TERRAIN_VERTEX = /* glsl */ `
 ${NOISE_UNIFORMS_GLSL}
 ${NOISE_FUNCTIONS_GLSL}
 ${CLIMATE_NOISE_GLSL}
+${PLANET_PAINT_GLSL}
 
 uniform float uGridRes;   // quads per chunk side
 
@@ -291,7 +294,7 @@ void main() {
 #else
   float h = terrainHeight(dir);
 #endif
-  vec3 wp = dir * (uRadius + h - aSkirt * iMorph.z);
+  vec3 wp = dir * (uRadius + h + paintHeight(dir) - aSkirt * iMorph.z);
   vDir = dir;
   vWorldPos = wp;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
@@ -307,6 +310,8 @@ ${TOON_GLSL}
 ${ATMOSPHERE_GLSL}
 ${CLOUD_FIELD_GLSL}
 ${SURFACE_GLSL}
+${PLANET_PAINT_GLSL}
+${PLANET_PAINT_ALBEDO_GLSL}
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
@@ -356,9 +361,11 @@ void main() {
 #else
   float h = heightField(dir, grad, cLow, mtn);
 #endif
-  float r = uRadius + h * uHeightScale;
-  vec3 gt = grad - dir * dot(grad, dir);
-  vec3 n = normalize(dir - gt * (uHeightScale / r));
+  float r = uRadius + h * uHeightScale + paintHeight(dir);
+  vec3 finalGrad = grad * uHeightScale + paintGradient(dir);
+  h += paintHeight(dir) / max(uHeightScale, 1e-6);
+  vec3 gt = finalGrad - dir * dot(finalGrad, dir);
+  vec3 n = normalize(dir - gt / r);
   float slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
 
   // to-scale procedural detail: octaves fade with the pixel footprint
@@ -375,6 +382,8 @@ void main() {
 #else
   vec3 albedo = surfaceAlbedo(dir, h, slope, cLow, mtn, det, rock, snow);
 #endif
+
+  albedo = paintedAlbedo(dir, albedo, rock, snow);
 
   // detail bump: rough rock, softer vegetation, smooth snow
   float bump = h < uSeaLevel ? 0.12 : mix(0.22, 0.55, rock) * (1.0 - snow * 0.65);

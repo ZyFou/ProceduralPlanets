@@ -1,3 +1,6 @@
+import PaintToolbar from './components/paint/PaintToolbar.jsx';
+import PaintPanel from './components/paint/PaintPanel.jsx';
+import { DEFAULT_PAINT_STATE } from './paint/PlanetPaintModeManager.js';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
@@ -12,6 +15,7 @@ import {
   Leaf,
   Orbit,
   Palette,
+  Paintbrush,
   Sparkles,
   Sun,
   Waves,
@@ -106,13 +110,16 @@ export default function App({
   const loadedProjectIdRef = useRef(null);
   const loadedParamsRef = useRef(null);
   const historyLoadingRef = useRef(null);
-  const { showPopup } = usePopup();
+  const { showPopup, showConfirm } = usePopup();
 
   const [params, setParams] = useState({ ...DEFAULT_PARAMS });
   const [design, setDesign] = useState({ terrain: { mode: 'procedural', graph: null }, editor: {} });
   const designRef = useRef(design);
   designRef.current = design;
   const [nodesOpen, setNodesOpen] = useState(false);
+  const [paintState, setPaintState] = useState({ ...DEFAULT_PAINT_STATE });
+  const [paintTool, setPaintTool] = useState('sculpt');
+  const [uiHidden, setUiHidden] = useState(false);
   const [graphStatus, setGraphStatus] = useState({ state: 'ready', diagnostics: [] });
   const [invalidImportedTerrain, setInvalidImportedTerrain] = useState(false);
   const [nodeLayout, setNodeLayout] = useState({ graphEdge: 'bottom', graphRatio: .38, paletteDetached: true, paletteCollapsed: false, paletteSide: 'left', paletteWidth: 208, inspectorSide: 'right', inspectorWidth: 372 });
@@ -210,11 +217,13 @@ export default function App({
     historyLoadingRef.current = next;
     skipPersistRef.current = true;
     skipHistoryRef.current = true;
+    engine.paintMode.disable();
     resetHistory();
     engine.planet.cancelTerrainCompilation();
-    const nextDesign = JSON.parse(JSON.stringify({ terrain: project.terrain ?? { mode: 'procedural', graph: null }, editor: project.editor ?? {} }));
+    const nextDesign = JSON.parse(JSON.stringify({ terrain: project.terrain ?? { mode: 'procedural', graph: null }, editor: project.editor ?? {}, paint: project.paint ?? null }));
     setDesign(nextDesign);
     designRef.current = nextDesign;
+    engine.planet.setPaint(nextDesign.paint);
     setNodesOpen(nextDesign.terrain.mode === 'nodes');
     setInvalidImportedTerrain(false);
     Object.entries(next).forEach(([key, value]) => engine.setParam(key, value));
@@ -292,7 +301,7 @@ export default function App({
     clearTimeout(history.timer);
     history.timer = setTimeout(endHistoryGroup, HISTORY_GROUP_MS);
     syncHistoryState();
-  }, [params, design.editor, design.terrain.mode, endHistoryGroup, syncHistoryState]);
+  }, [params, design.editor, design.terrain.mode, design.paint, endHistoryGroup, syncHistoryState]);
 
   const applyParams = useCallback((next) => {
     const engine = engineRef.current;
@@ -310,11 +319,14 @@ export default function App({
   const applyDocument = useCallback((snapshot) => {
     engineRef.current?.planet.cancelTerrainCompilation();
     applyParams(snapshot.params);
+    engineRef.current?.planet.setPaint(snapshot.design.paint ?? null);
+    engineRef.current.paintMode.cursorDirty = true;
     setDesign(snapshot.design);
     designRef.current = snapshot.design;
   }, [applyParams]);
 
   const undo = useCallback(() => {
+    engineRef.current?.paintMode.finish();
     const history = historyRef.current;
     if (history.grouping) endHistoryGroup();
     const previous = history.past.pop();
@@ -325,6 +337,7 @@ export default function App({
   }, [applyDocument, endHistoryGroup, syncHistoryState]);
 
   const redo = useCallback(() => {
+    engineRef.current?.paintMode.finish();
     const history = historyRef.current;
     if (history.grouping) endHistoryGroup();
     const next = history.future.pop();
@@ -333,6 +346,58 @@ export default function App({
     applyDocument(next);
     syncHistoryState();
   }, [applyDocument, endHistoryGroup, syncHistoryState]);
+
+  useEffect(() => {
+    const mode = engineRef.current?.paintMode;
+    if (!mode || !booted) return;
+    mode.onChange = setPaintState;
+    mode.onStrokeStart = endHistoryGroup;
+    mode.onStrokeEnd = (paint) => {
+      const history = historyRef.current;
+      history.past.push({ params: paramsRef.current, design: designRef.current });
+      if (history.past.length > HISTORY_LIMIT) history.past.shift();
+      history.future = [];
+      const next = { ...designRef.current, paint };
+      skipHistoryRef.current = true;
+      designRef.current = next;
+      committedRef.current = { params: paramsRef.current, design: next };
+      setDesign(next);
+      syncHistoryState();
+    };
+    return () => { mode.onChange = null; mode.onStrokeStart = null; mode.onStrokeEnd = null; };
+  }, [booted, endHistoryGroup, syncHistoryState]);
+
+  const togglePaint = useCallback(() => {
+    const mode = engineRef.current?.paintMode;
+    if (!booted || landingMode || project?.preview || paramsRef.current.mode !== 'planet' || invalidImportedTerrain) return;
+    if (mode.state.enabled) mode.disable();
+    else { setNodesOpen(false); setActivePanel(null); mode.enable(); }
+  }, [booted, landingMode, project?.preview, invalidImportedTerrain]);
+
+  useEffect(() => {
+    if (landingMode) return;
+    const handle = (event) => {
+      if (isTextEditingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key.toLowerCase() === 'p' && !event.repeat) { event.preventDefault(); togglePaint(); }
+      if (event.key === 'Escape' && engineRef.current?.paintMode.state.enabled) {
+        event.preventDefault(); engineRef.current.paintMode.disable();
+      }
+    };
+    window.addEventListener('keydown', handle);
+    return () => window.removeEventListener('keydown', handle);
+  }, [landingMode, togglePaint]);
+
+  useEffect(() => {
+    if (params.mode !== 'planet' || uiHidden || landingMode) engineRef.current?.paintMode.disable();
+  }, [params.mode, uiHidden, landingMode]);
+
+  const selectPaintTool = (id) => {
+    setPaintTool(id);
+    if (id !== 'brush') engineRef.current?.paintMode.setState({ tool: id === 'sculpt' ? (paintState.tool === 'lower' ? 'lower' : 'raise') : id, pickHeight: false });
+  };
+  const clearPaint = async () => {
+    if (await showConfirm({ title: 'Clear Painted Layers?', message: 'Remove painted height and material influences? Your procedural settings and node graph will be preserved.', confirmLabel: 'Clear paint', danger: true })) engineRef.current?.paintMode.clear();
+  };
 
   const draftGraph = design.editor.draftGraph ?? design.terrain.graph;
   const editableWorkspace = canEditGraph(draftGraph) && canEditWorkspaceEditor(design.editor, draftGraph);
@@ -425,7 +490,6 @@ export default function App({
   }, [notificationsIgnored, showPopup]);
 
   // ---- view -----------------------------------------------------------------
-  const [uiHidden, setUiHidden] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
   const [autoRotate, setAutoRotate] = useState(false);
@@ -447,7 +511,7 @@ export default function App({
   const onCopyCode = useCallback(async () => {
     try {
       if (invalidImportedTerrain) throw new Error('No valid terrain is available.');
-      await copyText(planetCodeSnippet(paramsRef.current, engineRef.current?.planet.terrain));
+      await copyText(planetCodeSnippet(paramsRef.current, engineRef.current?.planet.terrain, engineRef.current?.planet.paint));
       notify(graphStatus.state === 'ready' ? 'Code snippet copied to the clipboard.' : 'Code snippet of the last valid terrain copied.', 'success');
     } catch {
       notify('Could not copy the code snippet.', 'error');
@@ -468,7 +532,7 @@ export default function App({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [booted, params, design.terrain, project?.id, onThumbnail]);
+  }, [booted, params, design.terrain, design.paint, project?.id, onThumbnail]);
 
   const onParam = useCallback((key, value) => {
     engineRef.current?.setParam(key, value);
@@ -650,7 +714,7 @@ export default function App({
 
   const displayedPanel = activePanel ?? retainedPanel;
   const Panel = visiblePanels.find((panel) => panel.id === displayedPanel)?.component;
-  const showNodes = nodesOpen && params.mode === 'planet' && !landingMode && !uiHidden;
+  const showNodes = !paintState.enabled && nodesOpen && params.mode === 'planet' && !landingMode && !uiHidden;
   const paletteWidth = nodeLayout.paletteDetached && !nodeLayout.paletteCollapsed ? nodeLayout.paletteWidth : 0;
   const leftOffset = 64 + (nodeLayout.paletteSide === 'left' ? paletteWidth : 0) + (nodeLayout.inspectorSide === 'left' ? nodeLayout.inspectorWidth : 0);
   const rightOffset = (nodeLayout.paletteSide === 'right' ? paletteWidth : 0) + (nodeLayout.inspectorSide === 'right' ? nodeLayout.inspectorWidth : 0);
@@ -663,7 +727,7 @@ export default function App({
   } : {};
 
   return (
-    <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel && !showNodes ? ' side-drawer-open' : ''}${showNodes ? ' nodes-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
+    <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel && !showNodes ? ' side-drawer-open' : ''}${showNodes ? ' nodes-open' : ''}${paintState.enabled ? ' paint-workspace side-drawer-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
       <TopBar
         projectName={project?.metadata?.name ?? 'Untitled planet'}
         documentState={documentState}
@@ -708,7 +772,7 @@ export default function App({
       )}
 
       <div id="main" className={`main app-shell${panelResizing ? ' panel-resizing' : ''}`} style={{ '--panel-weight': `${panelShare / (1 - panelShare)}fr` }}>
-        <nav className="left-toolbar" aria-label="Planet tools">
+        {!paintState.enabled && <nav className="left-toolbar" aria-label="Planet tools">
           {visiblePanels.map((panel) => {
             const Icon = ICONS[panel.id] ?? Orbit;
             return (
@@ -718,7 +782,12 @@ export default function App({
               </button>
             );
           })}
-        </nav>
+          {!landingMode && !project?.preview && params.mode === 'planet' && <button type="button" className="toolbar-btn" onClick={togglePaint} disabled={!booted || invalidImportedTerrain} title="Paint Mode (P)" aria-label="Paint Mode"><Paintbrush aria-hidden /><span className="toolbar-btn-label">Paint</span></button>}
+        </nav>}
+        {paintState.enabled && <>
+          <PaintToolbar activeTool={paintTool} onSelect={selectPaintTool} />
+          <PaintPanel activeTool={paintTool} state={paintState} radius={params.radius} resolution={engineRef.current?.planet.paintLayers.resolution ?? 256} onSetting={(patch) => engineRef.current?.paintMode.setState(patch)} onExit={() => engineRef.current?.paintMode.disable()} onClear={clearPaint} />
+        </>}
 
         <div className="viewport-wrap viewport-area" style={viewportStyle}>
           <canvas id="viewport" ref={canvasRef} />
@@ -738,7 +807,7 @@ export default function App({
         {showNodes && editableWorkspace && <Suspense fallback={<div className="nodes-editor-loading">Loading node editor…</div>}><NodeWorkspace graph={draftGraph} editor={design.editor} params={params} status={graphStatus} onChange={onGraphChange} onLayoutChange={setNodeLayout} onClose={() => { setNodesOpen(false); setActivePanel('terrain'); }} onUndo={undo} onRedo={redo} /></Suspense>}
         {showNodes && !editableWorkspace && <div className="nodes-recovery-notice" role="alert">The imported graph or editor layout is malformed. Its data is preserved in the project file.<br />{graphStatus.diagnostics[0]?.message}<br /><button type="button" onClick={() => { setNodesOpen(false); setActivePanel('terrain'); }}>Return to viewer</button></div>}
 
-        {Panel && !showNodes && (
+        {Panel && !showNodes && !paintState.enabled && (
           <aside className={`side-drawer${activePanel ? ' open' : ''}`} inert={activePanel ? undefined : ''} aria-hidden={!activePanel}>
             <div className="side-panel">
               <div className="side-panel-header">
@@ -753,6 +822,7 @@ export default function App({
                 <Panel
                   params={params}
                   terrain={displayedPanel === 'export' ? (engineRef.current?.planet.terrain ?? design.terrain) : design.terrain}
+                  paint={engineRef.current?.planet.paint}
                   onTerrainMode={onTerrainMode}
                   onOpenNodes={() => { setNodesOpen(true); setActivePanel(null); }}
                   onParam={onParam}

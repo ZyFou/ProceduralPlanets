@@ -95,3 +95,43 @@ projects retain both applied graphs and drafts within the existing 1 MB limit.
 
 The [standalone example](../examples/node-graph.html) demonstrates construction,
 serialization and switching between procedural and node terrain through the public API.
+
+## Paint authoring
+
+The terrestrial authoring stack is **Procedural / Node Terrain → Paint Layer →
+Final Planet Surface**. Nodes never contain paint edits, and changing the base
+retains the separate signed height field and material influences.
+
+Press **P**, or choose **Paint** in the Studio tool rail. The viewport stays live:
+left drag paints, right drag orbits, the wheel zooms, and Shift + wheel changes
+the brush radius. Esc/P closes Paint Mode while keeping all layers active.
+Ctrl/Cmd + Z undoes one complete stroke; Ctrl/Cmd + Shift + Z redoes it.
+Brush settings are transient and do not create document history entries.
+
+Sculpt raises/lowers radial elevation. Smooth averages surrounding **final**
+elevations and writes only a compensating paint offset. Flatten targets
+`planet radius + elevation`; **Pick current height** samples the next clicked
+surface. Material paint blends existing Coast/seabed, Sand/desert,
+Grass/vegetation, Rock and Snow/ice colors. Painting a seabed material does not
+remove the planet's ocean shell. Erase progressively removes both painted height
+and material influences. **Clear Painted Layers** confirms before clearing just
+paint and is undoable.
+
+Round, Ellipse, Organic, Scatter and Ribbon brushes share size, strength, falloff,
+spacing, and (for Ellipse/Ribbon) rotation. Size is a geodesic radius in planet-local
+units, with a minimum based on the field resolution. All brushes use normalized
+sphere directions and a local tangent frame, including pole/cube-edge crossings.
+The outline follows actual displaced terrain.
+
+Editable documents and runtime presets now preserve `paint` separately from
+`editor`. Autosave, project switching, browser reload, `.ppplanet` import/export,
+cloud project JSON, `Planet.fromJSON()`, and clones retain the exact Float32 field.
+Sparse compressed tiles avoid giant pixel JSON arrays and redundant pointer
+samples. The cloud API's existing **1 MB project limit** still applies: heavily
+painted complex fields can reach it; editable local files have no such API limit.
+Undo keeps compressed snapshots only at stable action boundaries.
+
+Studio uses 256 quads per cube face. Detail is limited by that sampling resolution
+and by viewport/export mesh LOD. GPU uploads affect dirty faces only, at most
+once per frame. Terrain displacement already evaluates the field in each LOD
+chunk, so painting does not regenerate atmosphere, clouds, ocean or shaders.

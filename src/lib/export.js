@@ -20,6 +20,7 @@ function exportOptions(planet, options) {
     exportPreset: options.preset !== false,
     starShaderBody: planet.starShaderBody,
     terrain: planet.terrain,
+    paint: planet.paint,
     terrainProgram: planet._terrainProgram,
   };
 }

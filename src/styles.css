@@ -2261,3 +2261,23 @@ input {
   #app.nodes-open .viewport-mode-bar { z-index:24; bottom:auto; top:8px; left:calc(50% + 32px); }
 }
 @media(max-width:1100px) and (min-width:821px) { #app.nodes-open .pp-nodes .node-graph-dock { min-width:0; } }
+
+/* Paint workspace — matches the Studio and ProceduralTerrains icon rail. */
+.paint-mode-label { color: var(--accent); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.paint-toolbar { z-index: 22; }
+.paint-panel { z-index: 21; }
+.paint-section { padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
+.paint-action { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; margin-top: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-control); color: var(--text-main); cursor: pointer; }
+.paint-action:hover, .paint-action.active { border-color: var(--accent); background: var(--accent-bg); }
+.paint-action.danger { color: var(--danger); }
+.paint-note { color: var(--text-muted); font-size: 11px; line-height: 1.65; }
+.paint-help { padding: 16px 2px; display: grid; gap: 9px; color: var(--text-dim); font-size: 11px; }
+.paint-help span { display: flex; justify-content: space-between; gap: 12px; }
+.paint-help b { font-weight: 400; color: var(--text-muted); }
+.paint-workspace .viewport-mode-bar { display: none; }
+.paint-workspace #viewport { cursor: crosshair; }
+@media (max-width: 680px) {
+  .paint-panel { width: 100%; }
+  .paint-panel .side-panel-header { padding: 12px; }
+  .paint-panel .side-panel-content { padding: 8px 12px; }
+}
