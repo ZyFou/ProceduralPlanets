@@ -89,6 +89,8 @@ const ICONS = {
 export default function App({
   project,
   landingMode = false,
+  suspended = false,
+  onExplore,
   documentState = 'local',
   onHome,
   onNew,
@@ -196,6 +198,14 @@ export default function App({
       if (import.meta.env.DEV && window.planetStudio === engine) window.planetStudio = null;
     };
   }, []);
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !booted) return;
+    engine.controls.enabled = !suspended;
+    if (suspended) engine.stop();
+    else engine.start();
+  }, [suspended, booted]);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -670,6 +680,7 @@ export default function App({
         shortcutsEnabled={!landingMode && !searchOpen}
         onProjectNameChange={onRename}
         onHome={onHome}
+        onExplore={onExplore}
         onNew={onNew}
         onSave={onSave}
         onSaveAs={onSaveAs}

@@ -119,6 +119,7 @@ renderer**; it owns the GPU buffers the planets share.
 | `prepare(planets, camera?, options?)` | `Promise`: get planets ready without stalling the page. Shaders compile in parallel (`KHR_parallel_shader_compile`), the one-time GPU bakes run a slice per frame, and it resolves when the next `render()` draws them at full quality: the place to hide a loading screen. Options: `modes` (also compile the other body types, default `false`), `bake` (default `true`), `target`, `onProgress({ stage, progress, stageEnd, done, total })` |
 | `compile(planets, camera?)` | `Promise`: `prepare()` without the bakes |
 | `setOptions(options)` | Change options at runtime |
+| `release(planet)` | Immediately release the cached impostor of a removed body; the caller still owns the Planet |
 | `dispose()` | Free the shared buffers (planets are disposed separately) |
 | `info` | `{ planets, culled, pending, impostors, captures }` for the last `render()` |
 | `pending` | Planets the last `render()` skipped because their shaders are still compiling |
@@ -129,6 +130,13 @@ freezing the page; call `prepare()` first to show it from its first frame.
 
 The renderer restores the host renderer's state that it touches: render
 target, clear colour and alpha, `autoClear`, scissor.
+
+### Streaming cleanup
+
+When removing a live body, call `planetRenderer.release(planet)` to return its
+cached impostor slot immediately, then remove and dispose the caller-owned
+`Planet`. `planetRenderer.dispose()` releases the shared pipeline and atlas
+when the entire view closes.
 
 ---
 

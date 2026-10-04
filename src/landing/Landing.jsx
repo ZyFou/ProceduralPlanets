@@ -74,6 +74,7 @@ export default function Landing({
   exiting,
   initialCreateOpen = false,
   onOpen,
+  onExplore,
   onCreate,
   onPreview,
   onImportFile,
@@ -322,6 +323,7 @@ export default function Landing({
           <Logo size={24} /><strong>{APP_NAME}</strong>
         </button>
         <nav className="lp-nav-links" aria-label="Main navigation">
+          <button type="button" onClick={onExplore}>Explore</button>
           <button type="button" className={view === 'projects' ? 'active' : ''} onClick={() => showView('projects')}>Projects</button>
           <button type="button" className={view === 'templates' ? 'active' : ''} onClick={() => openTemplates('Planet')}>Templates</button>
           <button type="button" className={view === 'community' ? 'active' : ''} onClick={() => showView('community')}>Community</button>

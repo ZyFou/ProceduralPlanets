@@ -138,6 +138,12 @@ export class PlanetRenderer {
     return this;
   }
 
+  /** Release a removed body's cached impostor immediately. The caller owns the Planet. */
+  release(planet) {
+    this._impostors?.release(planet);
+    this._list = this._list.filter(p => p !== planet);
+  }
+
   _collect(input, list = this._list) {
     list.length = 0;
     if (!input) return list;
@@ -212,7 +218,7 @@ export class PlanetRenderer {
     drawn.sort((a, b) => b.d - a.d);
     this.info.planets = drawn.length;
     this.info.culled = culled;
-    if (!drawn.length) return;
+    if (!drawn.length) { this._impostors?.sweep(this._frame - 120); return; }
 
     // host state
     const prevTarget = r.getRenderTarget();
