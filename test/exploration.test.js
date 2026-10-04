@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PerspectiveCamera } from 'three';
 import { Planet, PlanetRenderer } from '../src/lib/index.js';
-import { AU, LIGHT_YEAR, SECTOR_SIZE, MAX_BODIES, MAX_SYSTEMS, MIN_SPEED, MAX_SPEED, generateSystem, nearbySystems, desiredBodies, position, translate, relative, length, clearanceRadius, formatDistance } from '../src/exploration/world.js';
-import { Flight, movement, wheelSpeed, safeTravel, bindFlightInput } from '../src/exploration/flight.js';
+import { AU, LIGHT_YEAR, SECTOR_SIZE, MAX_BODIES, MAX_SYSTEMS, MIN_SPEED, generateSystem, nearbySystems, desiredBodies, position, translate, relative, length, clearanceRadius, formatDistance } from '../src/exploration/world.js';
+import { Flight, clampSpeed, coordinateTravelBudget, movement, wheelSpeed, safeTravel, bindFlightInput } from '../src/exploration/flight.js';
 import { SystemStream } from '../src/exploration/streaming.js';
 
 const zero = () => position();
@@ -80,10 +80,10 @@ describe('free flight and controlled approach', () => {
     expect(movement(new Set(['Space'])).y).toBe(1);
     expect(movement(new Set(['ControlRight'])).y).toBe(-1);
   });
-  it('adjusts speed exponentially and clamps its extremes', () => {
+  it('adjusts speed exponentially with no policy ceiling and finite saturation', () => {
     expect(wheelSpeed(100, -120)).toBe(200);
     expect(wheelSpeed(100, 120)).toBe(50);
-    expect(wheelSpeed(MAX_SPEED, -5000)).toBe(MAX_SPEED);
+    expect(wheelSpeed(Number.MAX_VALUE, -5000)).toBe(Number.MAX_VALUE);
     expect(wheelSpeed(MIN_SPEED, 5000)).toBe(MIN_SPEED);
   });
   it('prevents tunnelling and permits tangent travel and retreat', () => {
@@ -98,7 +98,7 @@ describe('free flight and controlled approach', () => {
   it('brakes near surfaces even with boost and bounds resumed frame time', () => {
     const body = rock(position(undefined, { x: 0, y: 0, z: -200 }));
     const flight = new Flight(zero(), new PerspectiveCamera());
-    flight.speed = MAX_SPEED;
+    flight.speed = LIGHT_YEAR * 100;
     flight.keys = new Set(['KeyW', 'ShiftLeft']);
     flight.step(100, [body]);
     expect(flight.limited).toBe(true);
@@ -230,5 +230,29 @@ describe('capture ownership and event cleanup', () => {
     expect(flight.keys.size).toBe(0);
     canvas.dispatchEvent(new Event('click'));
     expect(canvas.requestPointerLock).not.toHaveBeenCalled();
+  });
+});
+
+describe('unrestricted speed within representable coordinates', () => {
+  it('accepts speeds far above the former 0.25 ly/s ceiling and rejects NaN', () => {
+    expect(clampSpeed(LIGHT_YEAR * 5000)).toBe(LIGHT_YEAR * 5000);
+    expect(wheelSpeed(LIGHT_YEAR, -120)).toBe(LIGHT_YEAR * 2);
+    expect(clampSpeed(NaN)).toBe(MIN_SPEED);
+    expect(clampSpeed(Infinity)).toBe(Number.MAX_VALUE);
+  });
+  it('bounds displacement, not the speed setting, at the integer-sector boundary', () => {
+    const flight = new Flight(zero(), new PerspectiveCamera());
+    flight.speed = Number.MAX_VALUE; flight.keys.add('KeyD');
+    flight.step(.05, []);
+    expect(flight.coordinateLimited).toBe(true);
+    expect(Number.isSafeInteger(flight.position.sector.x)).toBe(true);
+    expect(Number.isFinite(flight.actualSpeed)).toBe(true);
+    expect(flight.position.sector.x).toBeGreaterThan(1e12);
+    expect(Math.abs(flight.position.offset.x)).toBeLessThanOrEqual(SECTOR_SIZE / 2);
+    expect(coordinateTravelBudget(flight.position, { x: -1, y: 0, z: 0 })).toBeGreaterThan(0);
+    flight.keys = new Set(['KeyA']); flight.speed = 1;
+    const before = flight.position; flight.step(.05, []);
+    expect(relative(flight.position, before).x).toBeCloseTo(-.05, 10);
+    expect(() => translate(zero(), {x:Infinity,y:0,z:0})).toThrow(/finite/);
   });
 });

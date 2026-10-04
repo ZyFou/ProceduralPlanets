@@ -237,6 +237,7 @@ export class Planet extends THREE.Object3D {
       maxDepth: this.params.maxDepth,
       splitFactor: this.params.splitFactor,
       octaves: this.params.octaves,
+      analyticTerrainDepth: this.params.analyticTerrainDepth,
     });
     if (this.params.wireframe) this.world.setWireframe(true);
     this._terrainRevision = 0;
@@ -276,7 +277,7 @@ export class Planet extends THREE.Object3D {
     const octaves = program?.identityParams?.octaves ?? this.params.octaves;
     const shaderProgram = program?.identityParams ? null : program;
     return [false, true].map((low) => {
-      const material = createTerrainMaterial(shared, octaves, low, this.params.chunkRes, shaderProgram);
+      const material = createTerrainMaterial(shared, octaves, low, this.params.chunkRes, shaderProgram, this.params.analyticTerrainDepth);
       material.wireframe = this.params.wireframe;
       return material;
     });
@@ -640,7 +641,7 @@ export class Planet extends THREE.Object3D {
   _rebuildStructural() {
     this._version++;
     const p = this.params;
-    this.world.rebuild({ chunkRes: p.chunkRes, maxDepth: p.maxDepth, octaves: p.octaves });
+    this.world.rebuild({ chunkRes: p.chunkRes, maxDepth: p.maxDepth, octaves: p.octaves, analyticTerrainDepth: p.analyticTerrainDepth });
   }
 
   /**

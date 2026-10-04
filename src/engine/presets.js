@@ -174,11 +174,12 @@ export const DEFAULT_PARAMS = {
   chunkRes: 32,            // grid quads per chunk side (rebuild)
   maxDepth: 5,             // quadtree depth (rebuild)
   splitFactor: 2.4,        // LOD split distance, in node sizes
+  analyticTerrainDepth: false, // correct triangulated depth for shallow physical relief; requires fragment depth support
   wireframe: false,
 };
 
 // Structural keys that need a world/material rebuild rather than a uniform set.
-export const REBUILD_KEYS = new Set(['octaves', 'chunkRes', 'maxDepth']);
+export const REBUILD_KEYS = new Set(['octaves', 'chunkRes', 'maxDepth', 'analyticTerrainDepth']);
 
 // Planet style presets — param patches over DEFAULT_PARAMS.
 export const PLANET_PRESETS = {

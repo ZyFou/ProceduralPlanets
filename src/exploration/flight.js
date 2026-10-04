@@ -1,8 +1,24 @@
 import { Vector3, Euler } from 'three';
-import { AXES, MIN_SPEED, MAX_SPEED, clearanceRadius, length, relative, translate } from './world.js';
+import { AXES, MIN_SPEED, SECTOR_SIZE, clearanceRadius, length, relative, translate } from './world.js';
 
-export const clampSpeed = speed => Math.min(MAX_SPEED, Math.max(MIN_SPEED, speed));
+// No travel-speed policy ceiling. Saturate only at IEEE-754 finite range;
+// spatial steps have a separate safe-integer coordinate boundary below.
+export const clampSpeed = speed => Number.isNaN(Number(speed)) ? MIN_SPEED : Math.min(Number.MAX_VALUE, Math.max(MIN_SPEED, Number(speed)));
 export const wheelSpeed = (speed, delta) => clampSpeed(speed * Math.pow(2, -Math.max(-4, Math.min(4, delta / 120))));
+export function coordinateTravelBudget(player, direction) {
+  let budget = Infinity;
+  // Keep neighbouring-sector discovery representable as well. The margin
+  // also protects the normalisation arithmetic at the last integer cell.
+  const limit = Number.MAX_SAFE_INTEGER - 16;
+  for (const axis of AXES) {
+    const d = direction[axis];
+    if (!d) continue;
+    const sectors = d > 0 ? limit - player.sector[axis] : limit + player.sector[axis];
+    const available = Math.max(0, sectors * SECTOR_SIZE - Math.sign(d) * player.offset[axis]);
+    budget = Math.min(budget, available / Math.abs(d));
+  }
+  return budget * (1 - Number.EPSILON * 8);
+}
 export function movement(keys, layout = 'wasd') {
   return new Vector3(
     Number(keys.has('KeyD')) - Number(keys.has(layout === 'azerty' ? 'KeyQ' : 'KeyA')),
@@ -45,6 +61,7 @@ export class Flight {
     this.approaching = null;
     this.limited = false;
     this.blocked = false;
+    this.coordinateLimited = false;
   }
   aim(body) {
     const v = relative(body.position, this.position);
@@ -63,6 +80,7 @@ export class Flight {
     this.actualSpeed = 0;
     this.limited = false;
     this.blocked = false;
+    this.coordinateLimited = false;
     if (!dt) return;
     const manual = movement(this.keys, this.layout);
     if (manual.lengthSq()) this.approaching = null;
@@ -75,15 +93,19 @@ export class Flight {
       const remaining = Math.max(0, distance - stop);
       if (remaining < Math.max(0.001, stop * 0.001)) { this.approaching = null; return; }
       this.aim(body);
-      const travel = Math.min(MAX_SPEED * dt, remaining * (1 - Math.exp(-dt * 1.5)));
+      const travel = remaining * (1 - Math.exp(-dt * 1.5));
       delta = new Vector3(vector.x, vector.y, vector.z).multiplyScalar(travel / distance);
     } else {
       if (!manual.lengthSq()) return;
       const requested = clampSpeed(this.speed * (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 20 : 1));
-      const altitude = Math.min(...bodies.map(body => Math.max(0, length(relative(body.position, this.position)) - clearanceRadius(body))));
+      const altitude = Math.min(...bodies.filter(body => length(relative(body.position, this.position)) < body.radius * 100)
+        .map(body => Math.max(0, length(relative(body.position, this.position)) - clearanceRadius(body))));
       const speed = Math.min(requested, Math.max(MIN_SPEED, altitude * 0.5));
       this.limited = speed < requested;
-      delta = manual.applyQuaternion(this.camera.quaternion).multiplyScalar(speed * dt);
+      const direction = manual.applyQuaternion(this.camera.quaternion);
+      const travel = Math.min(speed * dt, coordinateTravelBudget(this.position, direction));
+      this.coordinateLimited = travel < speed * dt;
+      delta = direction.multiplyScalar(travel);
     }
     const next = safeTravel(this.position, delta, bodies);
     const travelled = length(relative(next, this.position));

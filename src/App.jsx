@@ -402,7 +402,7 @@ export default function App({
   }, [endHistoryGroup]);
 
   useEffect(() => {
-    if (landingMode) return undefined;
+    if (landingMode || suspended) return undefined;
     const onKeyDown = (event) => {
       if (event.defaultPrevented || isTextEditingTarget(event.target)) return;
       if (matchesShortcut(event, EDITOR_SHORTCUTS.undo)) {
@@ -415,7 +415,7 @@ export default function App({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [landingMode, undo, redo]);
+  }, [landingMode, suspended, undo, redo]);
 
   const onResetTemplate = useCallback(() => {
     const templateId = project?.metadata?.templateId;
@@ -446,13 +446,13 @@ export default function App({
   const onResetView = useCallback(() => engineRef.current?.frame(), []);
 
   useEffect(() => {
-    if (!uiHidden) return undefined;
+    if (!uiHidden || suspended) return undefined;
     const onKeyDown = (event) => {
       if (event.key === 'Escape') setUiHidden(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [uiHidden]);
+  }, [uiHidden, suspended]);
 
   const onCopyCode = useCallback(async () => {
     try {
@@ -640,7 +640,7 @@ export default function App({
   }, [searchResults.length]);
 
   useEffect(() => {
-    if (landingMode) return undefined;
+    if (landingMode || suspended) return undefined;
     const onKeyDown = (event) => {
       if (matchesShortcut(event, SEARCH_SETTINGS_SHORTCUT)) {
         event.preventDefault();
@@ -656,7 +656,7 @@ export default function App({
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [landingMode, searchOpen, openSearch, closeSearch]);
+  }, [landingMode, suspended, searchOpen, openSearch, closeSearch]);
 
   const displayedPanel = activePanel ?? retainedPanel;
   const Panel = visiblePanels.find((panel) => panel.id === displayedPanel)?.component;
@@ -677,7 +677,7 @@ export default function App({
       <TopBar
         projectName={project?.metadata?.name ?? 'Untitled planet'}
         documentState={documentState}
-        shortcutsEnabled={!landingMode && !searchOpen}
+        shortcutsEnabled={!landingMode && !searchOpen && !suspended}
         onProjectNameChange={onRename}
         onHome={onHome}
         onExplore={onExplore}

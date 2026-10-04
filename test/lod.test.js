@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { PlanetWorld, morphBands, rangeScaleFor, faceDir, MIN_LEVEL } from '../src/engine/PlanetWorld.js';
+import { PlanetWorld, morphBands, rangeScaleFor, faceDir, MIN_LEVEL, CAP_CACHE_LIMIT } from '../src/engine/PlanetWorld.js';
 import { BuddyAllocator } from '../src/engine/Impostors.js';
 import { createSharedUniforms } from '../src/engine/materials.js';
 import { DEFAULT_PARAMS } from '../src/engine/presets.js';
@@ -47,6 +47,23 @@ describe('LOD morph bands', () => {
 });
 
 describe('PlanetWorld', () => {
+  it('bounds the cap cache across a surface tour, recreates the same chunks and clears CPU caches on disposal', () => {
+    const w = makeWorld({ maxDepth: 9, splitFactor: 12 });
+    const start = new THREE.Vector3(0, 0, R + 15);
+    w.update(start);
+    const original = [...w.chunks];
+    const initialCaps = [...w._caps.keys()];
+    for (let i = 0; i < 120; i++) {
+      const latitude = Math.asin(-1 + 2 * (i + .5) / 120), longitude = i * 2.399963229728653;
+      w.update(new THREE.Vector3(Math.cos(latitude) * Math.cos(longitude), Math.sin(latitude), Math.cos(latitude) * Math.sin(longitude)).multiplyScalar(R + 15));
+      expect(w._caps.size).toBeLessThanOrEqual(CAP_CACHE_LIMIT);
+    }
+    expect(initialCaps.some(key => !w._caps.has(key))).toBe(true);
+    w.update(start);
+    expect([...w.chunks]).toEqual(original);
+    w.dispose();
+    expect(w._caps.size).toBe(0); expect(w.chunks.size).toBe(0); expect(w._leaves).toHaveLength(0);
+  });
   it('draws the whole planet in two instanced draws, coarsest level >= MIN_LEVEL', () => {
     const w = makeWorld();
     w.update(new THREE.Vector3(R * 2.4, R * 1.4, R * 2.4));

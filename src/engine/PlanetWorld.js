@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { createTerrainMaterial } from './materials.js';
 
+// Static unit-sphere caps can be recomputed cheaply; a long close-range tour
+// must not retain every node it has ever visited. Batch FIFO eviction avoids
+// repeatedly scanning Map tombstones on each insertion.
+export const CAP_CACHE_LIMIT = 16_384;
+
 // ============================================================================
 // Cube-sphere quadtree LOD world, geomorphed and instanced.
 //
@@ -219,7 +224,7 @@ export class PlanetWorld {
   // one material per variant (0: per-pixel low octaves, 1: LOW_VARYING)
   _createMaterials() {
     return [0, 1].map((low) => {
-      const m = createTerrainMaterial(this.terrainUniforms ?? this.shared, this.terrainOctaves ?? this.opts.octaves, low === 1, this.opts.chunkRes, this.terrainProgram);
+      const m = createTerrainMaterial(this.terrainUniforms ?? this.shared, this.terrainOctaves ?? this.opts.octaves, low === 1, this.opts.chunkRes, this.terrainProgram, this.opts.analyticTerrainDepth);
       m.wireframe = this.wireframe;
       return m;
     });
@@ -283,7 +288,7 @@ export class PlanetWorld {
     Object.assign(this.opts, opts);
     // new materials BEFORE the old ones go: an unchanged shader keeps its
     // programs (no recompile), a changed one gets compiled ahead
-    if (this.opts.octaves !== prev.octaves) {
+    if (this.opts.octaves !== prev.octaves || this.opts.analyticTerrainDepth !== prev.analyticTerrainDepth) {
       const old = this.templateMaterials;
       this.templateMaterials = this._createMaterials();
       for (const m of old) m.dispose();
@@ -300,6 +305,10 @@ export class PlanetWorld {
     const key = ((f * 16 + level) * 65536 + gy) * 65536 + gx;
     let cap = this._caps.get(key);
     if (!cap) {
+      if (this._caps.size >= CAP_CACHE_LIMIT) {
+        const oldest = this._caps.keys();
+        for (let i = 0; i < CAP_CACHE_LIMIT / 2; i++) this._caps.delete(oldest.next().value);
+      }
       const s = 1 / (1 << level);
       cap = nodeCap(f, gx * s, gy * s, s);
       this._caps.set(key, cap);
@@ -445,5 +454,9 @@ export class PlanetWorld {
     this._disposeMeshes();
     for (const m of this.templateMaterials) m.dispose();
     this.scene.remove(this.group);
+    this._caps.clear();
+    this.chunks.clear();
+    this._leaves.length = 0;
+    this.chunkCount = 0;
   }
 }

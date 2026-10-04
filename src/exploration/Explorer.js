@@ -2,20 +2,25 @@ import * as THREE from 'three';
 import { Planet, PlanetRenderer } from 'procedural-planets';
 import { Flight, bindFlightInput } from './flight.js';
 import { SystemStream } from './streaming.js';
-import { generateSystem, length, relative, translate } from './world.js';
+import { length, relative, translate } from './world.js';
+import { generateSolarSystem } from './solarSystem.js';
+import { DEFAULT_SETTINGS, normalizeSettings, bodySettings } from './settings.js';
 
 export class Explorer {
-  constructor(canvas, seed, callbacks = {}) {
+  constructor(canvas, seed, callbacks = {}, settings = DEFAULT_SETTINGS) {
     this.callbacks = callbacks;
     this.canvas = canvas;
+    this.settings = normalizeSettings(settings);
+    this.photo = false;
+    this.capturing = false;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, logarithmicDepthBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setClearColor('#02040a');
     this.planets = new PlanetRenderer(this.renderer, { impostorUpdates: 1, impostorAtlasSize: 1024, impostorRefresh: 2 });
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(65, 1, 0.0001, 1e15);
-    const home = generateSystem(seed, { x: 0, y: 0, z: 0 });
-    const first = home.bodies[1];
+    this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.0001, 1e15);
+    const home = generateSolarSystem();
+    const first = home.bodies.find(body => body.name === 'Earth');
     const sunward = relative(home.star.position, first.position);
     const offset = new THREE.Vector3(sunward.x, sunward.y, sunward.z).normalize().multiplyScalar(first.radius * 2.8);
     offset.y += first.radius * 0.4;
@@ -23,7 +28,7 @@ export class Explorer {
     this.flight.aim(first);
     this.target = first;
     this.stream = new SystemStream(seed, {
-      create: (body, system, entries) => {
+      create: (body, system) => {
         // Keep shader dimensions in the package's comfortable local range;
         // uniform Object3D scale supplies the physical radius in kilometres.
         const planet = new Planet({
@@ -35,9 +40,13 @@ export class Explorer {
           // At physical relief (a few km rather than a stylised 4% of radius),
           // keep ocean clarity shallow and ripples below kilometre scales.
           waterClarity: 0.005, waveSize: 0.01,
+          analyticTerrainDepth: true,
           ...body.params,
-          lightSource: entries.get(system.star.id)?.resource ?? null,
+          // A static world-space direction works even when the star isn't resident.
+          lightSource: new THREE.Vector3(...Object.values(relative(system.star.position, body.position))).normalize(),
         });
+        planet.userData.explorationIntrinsic = Object.fromEntries(['cloudsEnabled', 'atmoEnabled', 'gasAtmoStrength', 'starBloom'].map(key => [key, planet.params[key]]));
+        planet.set(bodySettings(this.settings, planet.userData.explorationIntrinsic));
         planet.scale.setScalar(body.radius / 2000);
         this.scene.add(planet);
         return planet;
@@ -63,7 +72,7 @@ export class Explorer {
     canvas.addEventListener('webglcontextlost', this.contextLost);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
-    this.resize();
+    this.setSettings(this.settings);
     this.renderer.setAnimationLoop(() => {
       try { this.frame(); } catch (error) { this.pause(); callbacks.onError?.(error.message); }
     });
@@ -71,9 +80,56 @@ export class Explorer {
   resize() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (!w || !h) return;
+    const requested = this.capturePixelRatio ?? Math.min(2, window.devicePixelRatio || 1) * this.settings.renderScale;
+    const textureLimit = this.renderer.capabilities.maxTextureSize;
+    this.renderer.setPixelRatio(Math.min(requested, textureLimit / w, textureLimit / h, Math.sqrt(16_777_216 / (w * h))));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+  setSettings(settings) {
+    this.settings = normalizeSettings(settings);
+    this.flight.layout = this.settings.layout;
+    this.camera.fov = this.settings.fov;
+    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1) * this.settings.renderScale);
+    for (const { resource } of this.stream.entries.values()) {
+      const patch = bodySettings(this.settings, resource.userData.explorationIntrinsic);
+      const changes = Object.fromEntries(Object.entries(patch).filter(([key, value]) => resource.params[key] !== value));
+      if (Object.keys(changes).length) {
+        this.planets.release(resource);
+        resource.set(changes);
+      }
+    }
+    this.resize();
+  }
+  setPhoto(enabled) {
+    this.photo = enabled;
+    this.flight.clear();
+    if (this.canvas.ownerDocument.pointerLockElement === this.canvas) this.canvas.ownerDocument.exitPointerLock();
+  }
+  async takePhoto(scale = 1) {
+    if (this.capturing || this.disposed) return null;
+    this.capturing = true;
+    const previous = this.renderer.getPixelRatio();
+    try {
+      const ratio = Math.min(previous * scale, 4096 / this.canvas.clientWidth, 2160 / this.canvas.clientHeight);
+      this.capturePixelRatio = ratio; this.resize(); this.frame(0);
+      const blob = await new Promise((resolve, reject) => this.canvas.toBlob(value => value ? resolve(value) : reject(new Error('Image capture failed')), 'image/png'));
+      const image = { blob, width: this.canvas.width, height: this.canvas.height };
+      return image;
+    } finally {
+      this.capturing = false; this.capturePixelRatio = null;
+      if (!this.disposed) { this.renderer.setPixelRatio(previous); this.resize(); }
+    }
+  }
+  visitSolarSystem() {
+    const home = generateSolarSystem();
+    const earth = home.bodies.find(body => body.name === 'Earth');
+    const direction = relative(home.star.position, earth.position);
+    const offset = new THREE.Vector3(direction.x, direction.y, direction.z).normalize().multiplyScalar(earth.radius * 2.8);
+    offset.y += earth.radius * .4;
+    this.flight.clear(); this.flight.position = translate(earth.position, offset);
+    this.select(earth); this.stream.discover(this.flight.position, earth.id);
   }
   select(body) { this.target = body; this.flight.approaching = null; this.flight.aim(body); this.nextDiscovery = 0; }
   approach() { if (this.target) this.flight.approaching = this.target; }
@@ -90,12 +146,12 @@ export class Explorer {
     }
     if (best) { this.target = best; this.nextDiscovery = 0; }
   }
-  frame() {
+  frame(forcedDelta) {
     if (!this.running || this.disposed) return;
     const now = performance.now();
-    const dt = this.clock.getDelta();
+    const dt = forcedDelta ?? this.clock.getDelta();
     const bodies = this.stream.systems.flatMap(system => system.bodies);
-    if (!document.hidden) this.flight.step(dt, bodies);
+    if (!document.hidden && !this.capturing) this.flight.step(dt, bodies);
     if (now >= this.nextDiscovery) {
       this.stream.discover(this.flight.position, this.target?.id);
       this.nextDiscovery = now + 500;
@@ -109,7 +165,7 @@ export class Explorer {
       resource.visible = body.radius / Math.max(1, length(v)) > 0.00002;
     }
     this.renderer.render(this.scene, this.camera);
-    this.planets.render(this.scene, this.camera, { delta: Math.min(dt, 0.05) });
+    this.planets.render(this.scene, this.camera, { delta: this.photo || this.capturing ? 0 : Math.min(dt, 0.05) });
     if (now >= this.nextHud) {
       const targetVector = this.target && relative(this.target.position, this.flight.position);
       let marker = null;
@@ -122,7 +178,7 @@ export class Explorer {
         }
       }
       this.callbacks.onHud?.({
-        speed: this.flight.actualSpeed, limited: this.flight.limited, blocked: this.flight.blocked, position: this.flight.position,
+        coordinateLimited: this.flight.coordinateLimited, speed: this.flight.actualSpeed, limited: this.flight.limited, blocked: this.flight.blocked, position: this.flight.position,
         systems: this.stream.systems, loaded: this.stream.entries.size, queued: this.stream.queue.length,
         pending: this.planets.pending, target: this.target,
         distance: targetVector ? Math.max(0, length(targetVector) - this.target.radius) : 0,

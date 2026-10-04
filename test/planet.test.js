@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as THREE from 'three';
 import {
   Planet, PlanetRenderer, resolvePlanetParams, normalizeParam, validateParams,
-  listPresets, findPreset, DEFAULT_PARAMS, PLANET_PRESETS, GAS_PRESETS, STAR_PRESETS, PARAM_DOCS,
+  listPresets, findPreset, DEFAULT_PARAMS, PLANET_PRESETS, GAS_PRESETS, STAR_PRESETS, PARAM_DOCS, createInitialGraph,
 } from '../src/lib/index.js';
 
 afterEach(() => vi.restoreAllMocks());
@@ -104,6 +104,32 @@ describe('Planet', () => {
     expect(planet.world.templateMaterials).not.toBe(templates);
     expect(planet.world.templateMaterials[0].defines.OCTAVES).toBe(5);
     planet.dispose();
+  });
+
+  it('opts into shallow-relief depth without changing default terrain, and releases replaced materials', () => {
+    const planet = new Planet();
+    expect(planet.get('analyticTerrainDepth')).toBe(false);
+    const originals = planet.world.templateMaterials;
+    const disposed = originals.map(material => vi.spyOn(material, 'dispose'));
+    planet.set('analyticTerrainDepth', true);
+    expect(disposed.every(spy => spy.mock.calls.length === 1)).toBe(true);
+    expect(planet.world.templateMaterials.every(material => material.defines.ANALYTIC_TERRAIN_DEPTH === 1 && material.extensions.fragDepth)).toBe(true);
+    const enabled = planet.world.templateMaterials;
+    planet.set('analyticTerrainDepth', true);
+    expect(planet.world.templateMaterials).toBe(enabled);
+    planet.set('analyticTerrainDepth', false);
+    expect(planet.world.templateMaterials.every(material => !material.defines.ANALYTIC_TERRAIN_DEPTH)).toBe(true);
+    planet.dispose();
+  });
+
+  it('retains analytic depth through serialization and node material installation', async () => {
+    const planet = new Planet({ analyticTerrainDepth: true });
+    const restored = Planet.fromJSON(planet.serialize());
+    expect(restored.get('analyticTerrainDepth')).toBe(true);
+    await planet.setTerrainGraph(createInitialGraph(planet.params));
+    expect(planet.terrain.mode).toBe('nodes');
+    expect(planet.world.templateMaterials.every(material => material.defines.ANALYTIC_TERRAIN_DEPTH === 1)).toBe(true);
+    restored.dispose(); planet.dispose();
   });
 
   it('applyPreset switches the body type unless told otherwise', () => {

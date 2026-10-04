@@ -1,13 +1,13 @@
 // Physical distances are kilometres. Sector + local offset keeps sub-metre
 // navigation independent of the number of light years already travelled.
 // A compensated remainder preserves fine movement even within a light-year sector.
+import { generateSolarSystem } from './solarSystem.js';
 export const AU = 149_597_870.7;
 export const LIGHT_YEAR = 9_460_730_472_580.8;
 export const SECTOR_SIZE = 4 * LIGHT_YEAR;
 export const MAX_SYSTEMS = 4;
 export const MAX_BODIES = 16;
 export const MIN_SPEED = 0.001;
-export const MAX_SPEED = LIGHT_YEAR * 0.25; // intentional travel acceleration, not a physics simulation
 export const AXES = ['x', 'y', 'z'];
 
 export function hashSeed(value) {
@@ -35,6 +35,7 @@ function twoSum(a, b) {
 export function translate(p, delta) {
   const next = position(p.sector, p.offset);
   for (const axis of AXES) {
+    if (!Number.isFinite(delta[axis])) throw new RangeError('Travel displacement must be finite');
     const [offset, error] = twoSum(p.offset[axis], delta[axis] + (p.remainder?.[axis] ?? 0));
     next.offset[axis] = offset;
     next.remainder[axis] = error;
@@ -106,16 +107,21 @@ export function nearbySystems(seed, player) {
   const candidates = [];
   for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
     const sector = { x: player.sector.x + x, y: player.sector.y + y, z: player.sector.z + z };
-    const system = generateSystem(seed, sector);
+    const system = systemKey(sector) === '0:0:0' ? generateSolarSystem() : generateSystem(seed, sector);
     candidates.push({ system, distance: length(relative(system.star.position, player)) });
   }
   return candidates.sort((a, b) => a.distance - b.distance || a.system.key.localeCompare(b.system.key))
     .slice(0, MAX_SYSTEMS).map(c => c.system);
 }
 export function desiredBodies(systems, player, target = null) {
+  const parent = systems.flatMap(s => s.bodies).find(b => b.id === target)?.parentId;
   return systems.flatMap(system => system.bodies.map(body => ({ body, system, distance: length(relative(body.position, player)) })))
     .filter(({ body, distance }) => body.type === 'star' || distance < LIGHT_YEAR * 0.015 || body.id === target)
-    .sort((a, b) => Number(b.body.id === target) - Number(a.body.id === target) || a.distance - b.distance)
+    .sort((a, b) => Number(b.body.id === target) - Number(a.body.id === target)
+      || Number(b.body.id === parent) - Number(a.body.id === parent)
+      || Number(b.body.type === 'star') - Number(a.body.type === 'star')
+      || b.body.radius / Math.max(1, b.distance) - a.body.radius / Math.max(1, a.distance)
+      || a.body.id.localeCompare(b.body.id))
     .slice(0, MAX_BODIES);
 }
 export function clearanceRadius(body) {

@@ -209,6 +209,12 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 | `maxDepth` | number (structural) | `5` | 2 – 7 | Quadtree depth (rebuild) — Quadtree subdivision limit (rebuild) |
 | `splitFactor` | number | `2.4` | 1.2 – 4 | LOD split distance, in node sizes — Higher = subdivide sooner (more detail, more chunks) |
 
+### Performance / render
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `analyticTerrainDepth` | boolean (structural) | `false` |  | Correct triangulated depth for shallow physical relief; requires fragment depth support |
+
 ### Debug
 
 | Key | Type | Default | Range | Description |

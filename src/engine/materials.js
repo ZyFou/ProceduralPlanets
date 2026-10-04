@@ -236,6 +236,9 @@ vec3 faceDir(int f, vec2 uv) {
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
+#ifdef ANALYTIC_TERRAIN_DEPTH
+varying float vSkirt;
+#endif
 #ifdef WARP_VARYING
 varying vec3 vWarp;               // warp displacement pw - p
 varying vec3 vJw0, vJw1, vJw2;    // its Jacobian (JwT columns)
@@ -294,6 +297,9 @@ void main() {
   vec3 wp = dir * (uRadius + h - aSkirt * iMorph.z);
   vDir = dir;
   vWorldPos = wp;
+#ifdef ANALYTIC_TERRAIN_DEPTH
+  vSkirt = aSkirt * iMorph.z;
+#endif
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }
 `;
@@ -310,6 +316,10 @@ ${SURFACE_GLSL}
 
 varying vec3 vDir;
 varying vec3 vWorldPos;
+#ifdef ANALYTIC_TERRAIN_DEPTH
+uniform mat4 projectionMatrix;
+varying float vSkirt;
+#endif
 #ifdef WARP_VARYING
 varying vec3 vWarp;               // warp displacement pw - p
 varying vec3 vJw0, vJw1, vJw2;    // its Jacobian (JwT columns)
@@ -357,6 +367,28 @@ void main() {
   float h = heightField(dir, grad, cLow, mtn);
 #endif
   float r = uRadius + h * uHeightScale;
+#ifdef ANALYTIC_TERRAIN_DEPTH
+  // The ocean is an analytic sphere while a triangle lies below its vertex
+  // radii. At shallow physical relief, this chord error exposes triangular
+  // ocean patches through land. Reuse the height already evaluated here to
+  // fit depth along this pixel's ray; retain skirts and raster coverage.
+  // Stable near root: avoid subtracting nearly equal distance and radius.
+  gl_FragDepthEXT = gl_FragCoord.z;
+  vec3 depthRay = normalize(vWorldPos - cameraPosition);
+  float depthRadius = max(r - vSkirt, 1e-3);
+  float depthB = dot(cameraPosition, depthRay);
+  vec3 perpendicular = cameraPosition - depthB * depthRay;
+  float discriminant = depthRadius * depthRadius - dot(perpendicular, perpendicular);
+  float eyeRadius = length(cameraPosition);
+  float rootDenominator = -depthB + sqrt(max(discriminant, 0.0));
+  if (discriminant > 0.0 && rootDenominator > 1e-5) {
+    float depthT = (eyeRadius - depthRadius) * (eyeRadius + depthRadius) / rootDenominator;
+    if (depthT > 0.0) {
+      vec4 depthClip = projectionMatrix * viewMatrix * vec4(cameraPosition + depthRay * depthT, 1.0);
+      gl_FragDepthEXT = clamp(0.5 * depthClip.z / depthClip.w + 0.5, 0.0, 1.0);
+    }
+  }
+#endif
   vec3 gt = grad - dir * dot(grad, dir);
   vec3 n = normalize(dir - gt * (uHeightScale / r));
   float slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
@@ -408,14 +440,16 @@ export function createTerrainUniforms(shared, program) {
   return result;
 }
 
-export function createTerrainMaterial(shared, octaves, lowVarying = false, gridRes = 32, graphProgram = null) {
+export function createTerrainMaterial(shared, octaves, lowVarying = false, gridRes = 32, graphProgram = null, analyticTerrainDepth = false) {
   const defines = { OCTAVES: octaves };
+  if (analyticTerrainDepth) defines.ANALYTIC_TERRAIN_DEPTH = 1;
   if (!graphProgram) defines.WARP_VARYING = 1;
   if (lowVarying && !graphProgram) defines.LOW_VARYING = 1;
   return new THREE.ShaderMaterial({
     name: lowVarying ? 'pp.terrain.lowVarying' : 'pp.terrain',
     uniforms: { ...shared, ...graphProgram?.uniforms, uGridRes: { value: gridRes } },
     defines,
+    extensions: { fragDepth: analyticTerrainDepth },
     vertexShader: graphProgram ? TERRAIN_VERTEX.replace(NOISE_FUNCTIONS_GLSL, graphProgram.glsl) : TERRAIN_VERTEX,
     fragmentShader: graphProgram ? TERRAIN_FRAGMENT.replace(NOISE_FUNCTIONS_GLSL, graphProgram.glsl) : TERRAIN_FRAGMENT,
     side: THREE.FrontSide,
