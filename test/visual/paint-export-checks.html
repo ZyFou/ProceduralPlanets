@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><title>Paint WebGL and export checks</title></head>
+<body style="background:#101010;color:#eee;font:14px system-ui"><h1>Paint WebGL and export checks</h1><pre id="result">Running…</pre><canvas id="canvas"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Planet, bakePlanet, createNode, GRAPH_FORMAT, GRAPH_VERSION } from 'procedural-planets';
+import { createPlanetArchive, toGLB } from 'procedural-planets/export';
+import { PLANET_PAINT_GLSL } from '../../src/paint/planetPaintGLSL.js';
+import { faceToDirection } from '../../src/paint/sphericalPaintMapping.js';
+import { createTerrainMaterial, createTerrainUniforms } from '../../src/engine/materials.js';
+const report = window.__paintExportChecks = { state: 'running', shaderErrors: [], checks: [], maxGPUError: 0, maxGLBError: 0 };
+const glError = (r) => r.getContext().getError();
+const assert = (condition, message) => { if (!condition) throw new Error(message); report.checks.push(message); };
+const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('canvas') }); renderer.setSize(128,128,false);
+renderer.debug.onShaderError = (gl, program, vertex, fragment) => report.shaderErrors.push([gl.getProgramInfoLog(program),gl.getShaderInfoLog(vertex),gl.getShaderInfoLog(fragment)].join('\n'));
+const planet = new Planet({ radius:100,heightScale:20,octaves:3,chunkRes:16,maxDepth:3,waterEnabled:false,cloudsEnabled:false,atmoEnabled:false,colSnow:[1,0.05,0.2] });
+const stamp = (direction, patch={}) => planet.paintLayers.stamp({direction, radius:35, planetRadius:100, strength:1, falloff:0.6, amount:12,...patch});
+let group;
+try {
+  for (const direction of [new THREE.Vector3(0,0,1),new THREE.Vector3(1,0,1).normalize(),new THREE.Vector3(0,1,0)]) { stamp(direction); stamp(direction,{tool:'material',material:'snow'}); }
+  planet._prepareFrame();
+  planet.paintLayers.flushUploads(renderer);
+  const scene = new THREE.Scene(), camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  const material = new THREE.ShaderMaterial({ uniforms:{...planet.uniforms,uDirection:{value:new THREE.Vector3()}},
+    vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',
+    fragmentShader:`precision highp float; ${PLANET_PAINT_GLSL} uniform vec3 uDirection; void main(){gl_FragColor=vec4(paintHeight(uDirection),paintSample(uDirection,0.).g,paintSample(uDirection,1.).rg);}` });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2,2),material); scene.add(quad);
+  const target = new THREE.WebGLRenderTarget(1,1,{ type:THREE.FloatType });
+  const pixels = new Float32Array(4);
+  for (const d of [new THREE.Vector3(0,0,1),new THREE.Vector3(1-1e-6,0,1).normalize(),new THREE.Vector3(1+1e-6,0,1).normalize(),new THREE.Vector3(0,1,0),faceToDirection(4,.64,.55),new THREE.Vector3(.22,.16,1).normalize()]) {
+    material.uniforms.uDirection.value.copy(d);renderer.setRenderTarget(target);renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,1,1,pixels);
+    const weights=planet.paintLayers.sampleMaterials(d);
+    report.maxGPUError = Math.max(report.maxGPUError,Math.abs(pixels[0]-planet.paintLayers.sampleHeightOffset(d)),Math.abs(pixels[1]-weights[0]),Math.abs(pixels[2]-weights[3]),Math.abs(pixels[3]-weights[4]));
+  }
+  const beforeUpdate = planet.paintLayers.sampleHeightOffset(new THREE.Vector3(0,0,1));
+  stamp(new THREE.Vector3(0,0,1), { amount: 3 });
+  const linksBefore = renderer.info.programs.length;
+  planet.paintLayers.flushUploads(renderer);
+  material.uniforms.uDirection.value.set(0,0,1);
+  renderer.setRenderTarget(target);renderer.render(scene,camera);renderer.readRenderTargetPixels(target,0,0,1,1,pixels);
+  report.incremental = { before: beforeUpdate, after: pixels[0], glError: glError(renderer) };
+  assert(Math.abs(pixels[0]-beforeUpdate-3)<0.0001 && report.incremental.glError===0,'Dirty rectangle upload updates GPU height without GL errors');
+  assert(renderer.info.programs.length===linksBefore,'Painting does not compile another shader');
+  // A second renderer must receive the latest field even after the first consumed dirtiness.
+  const second = new THREE.WebGLRenderer(); second.setSize(4,4,false);
+  planet.paintLayers.flushUploads(second);
+  second.setRenderTarget(target);second.render(scene,camera);second.readRenderTargetPixels(target,0,0,1,1,pixels);
+  assert(Math.abs(pixels[0]-planet.paintLayers.sampleHeightOffset(new THREE.Vector3(0,0,1)))<0.0001,'A second renderer sees the same current paint');
+  second.setRenderTarget(null);second.dispose();
+  renderer.setRenderTarget(null); assert(report.maxGPUError<0.0001,'GPU Float32 height sampling matches CPU at seam and pole');
+  quad.geometry.dispose();material.dispose();target.dispose();
+  // Compile both material paths with real paint uniforms. Use an actual instanced
+  // terrain world so height displacement, analytic normals and albedo are linked.
+  const terrainScene = planet._scene, view = new THREE.PerspectiveCamera(55,1,.1,1000); view.position.set(250,150,250); view.lookAt(0,0,0);view.updateMatrixWorld();
+  planet.world.update(view.position,view);
+  renderer.render(terrainScene,view);
+  const graph={format:GRAPH_FORMAT,version:GRAPH_VERSION,nodes:[createNode('constant','source',{value:.5}),createNode('heightOutput','output')],edges:[{id:'e',source:'source',sourcePort:'height',target:'output',targetPort:'height'}],outputId:'output'};
+  const change = await planet.setTerrainGraph(graph,{renderer});assert(change.ok,'Node terrain compiles with retained paint');planet.world.update(view.position,view);renderer.render(terrainScene,view);
+  // Also compile the low-varying procedural material (used by fine LOD chunks).
+  const low = createTerrainMaterial(createTerrainUniforms(planet.uniforms,null),3,true,16), lowGeometry = new THREE.PlaneGeometry(1,1);renderer.compile(new THREE.Scene().add(new THREE.Mesh(lowGeometry,low)),view);low.dispose();lowGeometry.dispose();
+  group = await bakePlanet(renderer,{planet,meshResolution:8,textureSize:64,water:false,atmosphere:false});
+  const centerMap = group.children[0].material.map.image;
+  const context=centerMap.getContext('2d');const pixel=context.getImageData(32,32,1,1).data;
+  assert(pixel[0]>245 && pixel[1]<30 && pixel[2]>40 && pixel[2]<65,'Baked albedo includes the painted snow color');
+  const bytes=await toGLB(group);assert(bytes?.byteLength>1000,'Painted GLB produced');
+  const gltf=await new Promise((resolve,reject)=>new GLTFLoader().parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'',resolve,reject));
+  let meshes=0,paintedVertices=0;
+  gltf.scene.traverse((mesh)=>{if(!mesh.isMesh)return;meshes++;const position=mesh.geometry.attributes.position;for(let i=0;i<position.count;i++){const v=new THREE.Vector3().fromBufferAttribute(position,i),d=v.clone().normalize();report.maxGLBError=Math.max(report.maxGLBError,Math.abs(v.length()-planet.getSurfaceRadius(d)));if(planet.paintLayers.sampleHeightOffset(d)>1)paintedVertices++;}});
+  assert(meshes===6 && paintedVertices>0 && report.maxGLBError<0.0001,'Reimported GLB vertices match painted CPU radius');
+  const archive=await createPlanetArchive(renderer,planet,{meshResolution:8,textureSize:64});
+  const preset=JSON.parse(new TextDecoder().decode(archive.files['planet_preset.json']));
+  assert(JSON.stringify(preset.paint)===JSON.stringify(planet.paint),'ZIP preset retains exact paint tiles');
+  const loaded=Planet.fromJSON(preset);assert(loaded.getSurfaceRadius(new THREE.Vector3(0,0,1))===planet.getSurfaceRadius(new THREE.Vector3(0,0,1)),'ZIP runtime round trip retains painted surface');loaded.dispose();
+  assert(report.shaderErrors.length===0,'No WebGL shader errors');report.state='passed';
+} catch(error){report.state='failed';report.error=error.stack;} finally{group?.dispose();planet.dispose();renderer.dispose();document.querySelector('#result').textContent=JSON.stringify(report,null,2);}
+</script></body></html>

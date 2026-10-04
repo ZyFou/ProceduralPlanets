@@ -252,3 +252,41 @@ Archive options:
 | `bakeColor` | `true` | |
 | `preset` | `true` | Include the parameter JSON |
 | `onProgress` | — | |
+
+## Runtime paint layers
+
+`Planet.serialize()` includes an explicit `paint` section, independent from
+`params`, `terrain` and editor data. `Planet.fromJSON()` and `clone()` restore it.
+Old JSON without paint remains unpainted. Terrestrial surface queries and GPU
+terrain displacement both use:
+
+```js
+finalRadius = radius + baseElevation(direction) + paintHeightOffset(direction);
+```
+
+`getBaseElevation(localDirection)` returns the procedural/node elevation before
+paint, in local units. `getSurfaceRadius(localDirection)` includes painted height.
+`getSurfacePoint()` additionally respects the existing ocean level. Painted terrestrial
+raycasting refines against the displaced terrain; unpainted planets retain legacy
+approximate sphere raycasting. Gas/star radius queries ignore
+retained terrestrial paint.
+
+```js
+const snapshot = planet.serialize();
+const restored = Planet.fromJSON(snapshot);
+restored.setPaint(snapshot.paint); // restore just the runtime layers
+restored.setPaint(null);           // clear just paint
+```
+
+`planet.paint` is a detached `SerializedPlanetPaint` snapshot. Version 1 uses
+`mapping: 'cube-vertices'`, a `resolution` of 16–512 quads per face (Studio: 256),
+`encoding: 'sparse-zlib-f32le'`, and base64 `data`. Only nonempty 16×16 tiles are
+stored, with six Float32 channels per vertex: signed height delta, coast/seabed,
+sand, vegetation, rock and snow. The payload stores tile coordinates and
+little-endian floats with lossless zlib compression. Consumers should preserve
+this versioned section rather than hand-editing binary samples.
+
+Malformed/unsupported paint documents throw before changing the live layers.
+Paint textures allocate lazily, so unpainted planets retain the previous runtime
+memory profile. React and the Studio paint controller are not part of the public
+library. The runtime accepts saved paint; editor-specific brush APIs remain internal.

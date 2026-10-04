@@ -87,7 +87,7 @@ export class PlanetExporter {
       }
 
       if (exportPreset) {
-        const preset = { app: 'procedural-planets', mode, version: 2, params, terrain: options.terrain };
+        const preset = { app: 'procedural-planets', mode, version: 2, params, terrain: options.terrain, ...(options.paint ? { paint: options.paint } : {}) };
         if (mode === 'star') preset.starShader = options.starShaderBody || DEFAULT_STAR_BODY;
         files[names.preset] = new TextEncoder().encode(JSON.stringify(preset, null, 2));
       }

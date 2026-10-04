@@ -1,3 +1,5 @@
+import { PlanetPaintLayerManager } from '../paint/PlanetPaintLayerManager.js';
+import { PLANET_PAINT_GLSL, PLANET_PAINT_ALBEDO_GLSL } from '../paint/planetPaintGLSL.js';
 import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import { TOON_GLSL, ATMOSPHERE_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
@@ -47,6 +49,8 @@ ${NOISE_FUNCTIONS_GLSL}
 ${TOON_GLSL}
 ${ATMOSPHERE_GLSL}
 ${SURFACE_GLSL}
+${PLANET_PAINT_GLSL}
+${PLANET_PAINT_ALBEDO_GLSL}
 
 uniform vec3 uFaceOrigin;
 uniform vec3 uFaceU;
@@ -62,8 +66,10 @@ void main() {
   vec3 grad;
   float cLow, mtn;
   float h = heightField(dir, grad, cLow, mtn);
-  float r = uRadius + h * uHeightScale;
-  vec3 n = normalize(dir - (grad - dir * dot(grad, dir)) * (uHeightScale / r));
+  float r = uRadius + h * uHeightScale + paintHeight(dir);
+  vec3 finalGrad = grad * uHeightScale + paintGradient(dir);
+  h += paintHeight(dir) / max(uHeightScale, 1e-6);
+  vec3 n = normalize(dir - (finalGrad - dir * dot(finalGrad, dir)) / r);
   float slope = 1.0 - clamp(dot(n, dir), 0.0, 1.0);
   // texel footprint in world units: detail finer than a texel filters out
   vec3 wp = dir * r;
@@ -72,6 +78,7 @@ void main() {
   float det = surfaceDetail(wp, fp, dSlope);
   float rock, snow;
   vec3 col = surfaceAlbedo(dir, h, slope, cLow, mtn, det, rock, snow);
+  col = paintedAlbedo(dir, col, rock, snow);
 
   if (uBakeLighting) {
     float diff = toonShade(max(dot(n, uSunDir), 0.0));
@@ -195,6 +202,9 @@ function bakeTerrain(renderer, params, uniforms, options, onProgress) {
   const includeMesh = options.includeMesh !== false;
   const bakeColor = options.bakeColor !== false;
 
+  const paint = new PlanetPaintLayerManager({ uniforms });
+  if (options.paint) paint.load(options.paint);
+  paint.flushUploads();
   const sampler = new PlanetHeightSampler(params, uniforms, options.terrainProgram);
   const group = new THREE.Group();
   group.name = 'Planet';
@@ -230,7 +240,7 @@ function bakeTerrain(renderer, params, uniforms, options, onProgress) {
           const fu = x / meshRes;
           const fv = y / meshRes;
           tmp.copy(origin).addScaledVector(u, fu).addScaledVector(v, fv).normalize();
-          const r = params.radius + sampler.heightAtDirection(tmp);
+          const r = params.radius + sampler.heightAtDirection(tmp) + paint.sampleHeightOffset(tmp);
           positions[p++] = tmp.x * r;
           positions[p++] = tmp.y * r;
           positions[p++] = tmp.z * r;
@@ -278,6 +288,7 @@ function bakeTerrain(renderer, params, uniforms, options, onProgress) {
     }
   }
   bakeMaterial.dispose();
+  paint.dispose();
 
   if (options.exportWater && params.waterEnabled && params.seaLevel > 0) {
     onProgress('Adding ocean shell');
@@ -528,6 +539,7 @@ export async function bakePlanet(renderer, options = {}) {
       starMaterial: options.starMaterial ?? 'basic',
       starShaderBody: planet.starShaderBody,
       terrain: planet.terrain,
+      paint: planet.paint,
       terrainProgram: planet._terrainProgram,
     }, options.onProgress ?? (() => {}));
     if (planet.params.mode === 'gas') {
@@ -537,6 +549,7 @@ export async function bakePlanet(renderer, options = {}) {
       group.rotateX(THREE.MathUtils.degToRad(planet.params.gasTilt));
     }
     group.userData.params = JSON.parse(JSON.stringify(planet.params));
+    group.userData.paint = planet.paint;
     group.userData.terrain = JSON.parse(JSON.stringify(planet.terrain ?? { mode: 'procedural', graph: null }));
     group.dispose = () => disposeBaked(group);
     return group;

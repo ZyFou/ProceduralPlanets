@@ -187,6 +187,37 @@ examples/     runnable examples
 bench/        the benchmark harness (headless Chrome on the real GPU)
 ```
 
+## Paint Mode (Studio)
+
+Press **P** on a terrestrial planet to open the Paint workspace. Sculpt with
+Raise/Lower, smooth final terrain, flatten toward a radial elevation, blend
+Coast/seabed, Sand, Vegetation, Rock or Snow materials, or erase back to the base.
+Round, Ellipse, Organic, Scatter and Ribbon brushes share size, strength, falloff,
+spacing and rotation settings. **Left drag** paints, **right drag** orbits,
+**wheel** zooms, **Shift + wheel** changes brush size, and **Esc** exits.
+**Ctrl/Cmd + Z** and **Ctrl/Cmd + Shift + Z** undo/redo complete strokes.
+
+```
+Procedural / Node Terrain
+          ↓
+      Paint Layer
+          ↓
+ Final Planet Surface
+```
+
+Paint is non-destructive and remains visible after leaving the editor. Changing
+procedural settings or nodes retains the separate height offsets and material
+influences. Gas giants and stars do not expose Paint Mode. Paint survives local
+and cloud projects, `.ppplanet` files, runtime serialization, and baked GLB/ZIP
+exports. Brushes operate on normalized directions with geodesic distances, using
+six cube-face fields instead of equirectangular UVs. See [Studio interop](docs/studio-interop.md)
+for persistence and resolution details.
+
+Run `npm run test:browser` for the Chromium/WebGL Paint scenarios. The suite uses
+`/usr/bin/chromium` when available, otherwise install Playwright Chromium with
+`npx playwright install chromium`. Set `PLAYWRIGHT_CHROMIUM_PATH` to select another
+Chromium executable.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

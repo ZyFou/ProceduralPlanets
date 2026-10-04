@@ -40,9 +40,9 @@ export function snippetParams(params) {
 const fmt = (v) => (Array.isArray(v) ? `[${v.join(', ')}]` : typeof v === 'string' ? `'${v}'` : String(v));
 
 /** JavaScript that recreates the planet with the procedural-planets package. */
-export function planetCodeSnippet(params, terrain) {
-  if (terrain?.graph) {
-    const snapshot = { app: 'procedural-planets', version: 2, mode: params.mode ?? 'planet', params, terrain };
+export function planetCodeSnippet(params, terrain, paint) {
+  if (terrain?.graph || paint) {
+    const snapshot = { app: 'procedural-planets', version: 2, mode: params.mode ?? 'planet', params, terrain, ...(paint ? { paint } : {}) };
     return [
       "import { Planet, PlanetRenderer } from 'procedural-planets';", '',
       `const planet = Planet.fromJSON(${JSON.stringify(snapshot, null, 2)});`,

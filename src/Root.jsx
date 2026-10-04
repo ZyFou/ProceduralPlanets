@@ -137,6 +137,7 @@ export default function Root() {
         ...project,
         params: cloneProjectData(params),
         ...(design.terrain !== undefined ? { terrain: cloneProjectData(design.terrain) } : {}),
+        ...(design.paint !== undefined ? { paint: cloneProjectData(design.paint) } : {}),
         ...(design.editor !== undefined ? { editor: cloneProjectData(design.editor) } : {}),
       };
       scheduleSave(updated);

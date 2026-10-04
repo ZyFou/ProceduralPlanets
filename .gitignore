@@ -8,3 +8,6 @@ bench/results/
 api/.env
 api/node_modules
 .npm-cache/
+
+playwright-report/
+test-results/

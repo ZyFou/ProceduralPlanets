@@ -1,3 +1,5 @@
+import { pickPlanetRay } from '../paint/PlanetPaintPicker.js';
+import { PlanetPaintLayerManager } from '../paint/PlanetPaintLayerManager.js';
 import * as THREE from 'three';
 import {
   DEFAULT_PARAMS, REBUILD_KEYS, PLANET_PRESETS,
@@ -167,7 +169,7 @@ function acceptParams(patch, where) {
   return params;
 }
 
-const OPTION_KEYS = new Set(['type', 'preset', 'params', 'lightSource', 'starShader', 'name', 'terrain']);
+const OPTION_KEYS = new Set(['type', 'preset', 'params', 'lightSource', 'starShader', 'name', 'terrain', 'paint']);
 
 /**
  * Resolve Planet constructor options into a full parameter object:
@@ -232,6 +234,11 @@ export class Planet extends THREE.Object3D {
     this._weatherDirty = true;
     this._version = 0;
 
+    this.paintLayers = new PlanetPaintLayerManager({ uniforms: this.uniforms, onChange: () => {
+      this._version++;
+      this.uniforms.uPaintExtent.value = this.paintLayers?.maxHeight ?? 0;
+    } });
+    if (options.paint) this.paintLayers.load(options.paint);
     this.world = new PlanetWorld(this._scene, this.uniforms, {
       chunkRes: this.params.chunkRes,
       maxDepth: this.params.maxDepth,
@@ -709,7 +716,7 @@ export class Planet extends THREE.Object3D {
       return Math.max(disc, R * (p.starCoronaEnabled ? 2 + 2 * p.starCoronaSize : 1.3));
     }
     const u = this.uniforms;
-    return Math.max(R + p.heightScale, u.uCloudTop.value, u.uAtmoTop.value) * 1.001;
+    return Math.max(R + p.heightScale + this.paintLayers.maxHeight, u.uCloudTop.value, u.uAtmoTop.value) * 1.001;
   }
 
   /** Radius (local units) of the solid / liquid surface used for picking. */
@@ -728,8 +735,18 @@ export class Planet extends THREE.Object3D {
     if (p.mode !== 'planet') return p.radius;
     this._sampler ??= this._createHeightSampler();
     const d = _v1.copy(direction).normalize();
-    return p.radius + this._sampler.heightAtDirection(d);
+    return p.radius + this._sampler.heightAtDirection(d) + this.paintLayers.sampleHeightOffset(d);
   }
+
+  /** Base elevation in local units, before the separate paint layer. */
+  getBaseElevation(direction) {
+    this._sampler ??= this._createHeightSampler();
+    return this._sampler.heightAtDirection(_v1.copy(direction).normalize());
+  }
+
+  /** Restore runtime layers without changing generation settings or editor state. */
+  setPaint(data) { this.paintLayers.load(data); return this; }
+  get paint() { return this.paintLayers.serialize(); }
 
   /**
    * World-space point on the surface (terrain or sea, whichever is higher)
@@ -745,6 +762,14 @@ export class Planet extends THREE.Object3D {
 
   /** Ray-sphere picking against surfaceRadius (THREE.Raycaster support). */
   raycast(raycaster, intersects) {
+    if (this.params.mode === 'planet' && !this.paintLayers.isEmpty()) {
+      const hit = pickPlanetRay(this, raycaster.ray);
+      if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far) {
+        intersects.push({ distance: hit.distance, point: hit.worldPosition,
+          normal: hit.normal.clone().transformDirection(this.matrixWorld), object: this });
+      }
+      return;
+    }
     _inv.copy(this.matrixWorld).invert();
     _ray.copy(raycaster.ray).applyMatrix4(_inv);
     _sphere.set(_v1.set(0, 0, 0), this.surfaceRadius);
@@ -806,8 +831,9 @@ export class Planet extends THREE.Object3D {
     const p = this.params;
     const R = p.radius;
     if (p.mode === 'planet') {
-      const alt = dist - (R + p.heightScale);
-      return [Math.max(0.05, alt * 0.8), dist + R + p.heightScale + 10];
+      const relief = p.heightScale + this.paintLayers.maxHeight;
+      const alt = dist - (R + relief);
+      return [Math.max(0.05, alt * 0.8), dist + R + relief + 10];
     }
     const shell = p.mode === 'star'
       ? R * (1.02 + p.starPulseAmount * 3)
@@ -867,6 +893,7 @@ export class Planet extends THREE.Object3D {
 
   /** @internal per-frame GPU bakes (the gas giant's jet table), once its programs are ready. */
   _bakeFrame(renderer) {
+    this.paintLayers.flushUploads(renderer);
     if (this.params.mode === 'gas') this.gasJets.update(renderer);
   }
 
@@ -879,6 +906,7 @@ export class Planet extends THREE.Object3D {
       mode: this.params.mode,
       params: JSON.parse(JSON.stringify(this.params)),
       terrain: this.terrain,
+      paint: this.paint,
       ...(this.starShaderBody !== DEFAULT_STAR_BODY ? { starShader: this.starShaderBody } : {}),
     };
   }
@@ -898,7 +926,7 @@ export class Planet extends THREE.Object3D {
     const known = {};
     for (const [k, v] of Object.entries(migrated)) if (k in DEFAULT_PARAMS) known[k] = v;
     const starShader = options.starShader ?? (typeof data.starShader === 'string' ? data.starShader : undefined);
-    return new Planet({ ...options, terrain: options.terrain ?? data.terrain, starShader, params: { ...known, mode, ...(options.params ?? {}) } });
+    return new Planet({ ...options, terrain: options.terrain ?? data.terrain, paint: Object.hasOwn(options, 'paint') ? options.paint : data.paint, starShader, params: { ...known, mode, ...(options.params ?? {}) } });
   }
 
   copy(source, recursive) {
@@ -909,6 +937,7 @@ export class Planet extends THREE.Object3D {
       const terrain = source.terrain;
       const program = this._compileTerrain(terrain);
       this._installTerrain(terrain, program, this._terrainMaterials(program));
+      this.setPaint(source.paint);
       this.lightSource = source.lightSource;
       if (source.starShaderBody !== this.starShaderBody) this.setStarShader(source.starShaderBody, null);
     }
@@ -920,6 +949,7 @@ export class Planet extends THREE.Object3D {
     this._disposed = true;
     this.cancelTerrainCompilation();
     this.world.dispose();
+    this.paintLayers.dispose();
     this.ringMesh.geometry.dispose();
     this.gasMesh.geometry.dispose();
     this.starMesh.geometry.dispose();

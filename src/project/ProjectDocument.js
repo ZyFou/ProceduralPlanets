@@ -24,8 +24,8 @@ export function readEditableProjectDocument(input, { fallbackName } = {}) {
   }
   if (input.params && typeof input.params === 'object') return normalizeProject(input);
   if (typeof input.mode === 'string' || typeof input.seed === 'number') {
-    const { terrain, editor, ...params } = input;
-    return normalizeProject({ metadata: { name: fallbackName }, params, terrain, editor });
+    const { terrain, editor, paint, ...params } = input;
+    return normalizeProject({ metadata: { name: fallbackName }, params, terrain, editor, paint });
   }
   throw new Error('This file is not an editable Procedural Planets project.');
 }

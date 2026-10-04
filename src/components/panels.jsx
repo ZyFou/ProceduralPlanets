@@ -438,7 +438,7 @@ const TEX_OPTIONS = [
   { value: '4096', label: '4096 x 4096 (UHD)' },
 ];
 
-export function ExportPanel({ params: p, terrain, onExport, onScreenshot }) {
+export function ExportPanel({ params: p, terrain, paint, onExport, onScreenshot }) {
   const isStar = p.mode === 'star';
   const isGas = p.mode === 'gas';
   const [busy, setBusy] = useState(false);
@@ -510,16 +510,16 @@ export function ExportPanel({ params: p, terrain, onExport, onScreenshot }) {
         <Toggle param="exportPreset" label="Export Preset (JSON)" value={opt.exportPreset} onChange={(v) => set('exportPreset', v)} />
       </Section>
 
-      <UseInCodeSection params={p} terrain={terrain} />
+      <UseInCodeSection params={p} terrain={terrain} paint={paint} />
     </>
   );
 }
 
 // The current body as a procedural-planets constructor call, for pasting
 // into another three.js project.
-function UseInCodeSection({ params, terrain }) {
+function UseInCodeSection({ params, terrain, paint }) {
   const [copied, setCopied] = useState('');
-  const code = planetCodeSnippet(params, terrain);
+  const code = planetCodeSnippet(params, terrain, paint);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);

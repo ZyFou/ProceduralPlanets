@@ -33,6 +33,10 @@ export const SHORTCUT_GROUPS = [
       { label: 'Pan', keys: 'Right drag' },
       { label: 'Zoom', keys: 'Wheel / pinch' },
       { label: 'Close menu, search or hidden UI', keys: 'Esc' },
+      { label: 'Enter / leave Paint Mode (terrestrial)', keys: 'P' },
+      { label: 'Paint / orbit in Paint Mode', keys: 'Left / right drag' },
+      { label: 'Brush size in Paint Mode', keys: 'Shift + wheel' },
+      { label: 'Leave Paint Mode', keys: 'Esc' },
     ],
   },
 ];
