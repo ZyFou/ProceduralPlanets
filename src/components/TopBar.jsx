@@ -46,6 +46,7 @@ export default function TopBar({
   shortcutsEnabled = true,
   onProjectNameChange,
   onHome,
+  onExplore,
   onNew,
   onSave,
   onSaveAs,
@@ -256,6 +257,7 @@ export default function TopBar({
         <div className="tb-dropdown" ref={viewMenuRef}>
           {menuButton('view', 'View')}
           <div className={`tb-menu${openMenu === 'view' ? ' open' : ''}`} role="menu" aria-label="View">
+            <button type="button" role="menuitem" onClick={run(onExplore)}><Orbit size={14} strokeWidth={1.75} aria-hidden /> Explore infinite worlds</button>
             <button type="button" role="menuitem" onClick={run(onResetView)}>
               <RotateCcw size={14} strokeWidth={1.75} aria-hidden /> Reset camera
             </button>

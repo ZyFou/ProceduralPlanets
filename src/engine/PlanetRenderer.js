@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PlanetPipeline, setEmbedBlending, EMBED_GLSL, TONEMAP_GLSL } from './PlanetPipeline.js';
 import { ProgramWarmer } from './ProgramWarmer.js';
 import { ImpostorAtlas, impostorFragment } from './Impostors.js';
+import { fitPlanetCamera } from './planetCamera.js';
 
 // ============================================================================
 // PlanetRenderer — draws Planet objects with an existing THREE.WebGLRenderer.
@@ -138,6 +139,12 @@ export class PlanetRenderer {
     return this;
   }
 
+  /** Release a removed body's cached impostor immediately. The caller owns the Planet. */
+  release(planet) {
+    this._impostors?.release(planet);
+    this._list = this._list.filter(p => p !== planet);
+  }
+
   _collect(input, list = this._list) {
     list.length = 0;
     if (!input) return list;
@@ -212,7 +219,7 @@ export class PlanetRenderer {
     drawn.sort((a, b) => b.d - a.d);
     this.info.planets = drawn.length;
     this.info.culled = culled;
-    if (!drawn.length) return;
+    if (!drawn.length) { this._impostors?.sweep(this._frame - 120); return; }
 
     // host state
     const prevTarget = r.getRenderTarget();
@@ -320,28 +327,14 @@ export class PlanetRenderer {
 
     // ---- proxy camera in the planet's local frame
     const px = this._proxy;
-    px.fov = camera.fov;
-    px.aspect = camera.aspect;
-    px.zoom = camera.zoom;
-    px.filmGauge = camera.filmGauge;
-    px.filmOffset = camera.filmOffset;
-    px.view = camera.view;
-    _inv.copy(planet.matrixWorld).invert();
-    px.matrixWorld.multiplyMatrices(_inv, camera.matrixWorld);
-    px.matrixWorldInverse.copy(px.matrixWorld).invert();
+    const camDist = fitPlanetCamera(planet, camera, px);
     const camLocal = _v.setFromMatrixPosition(px.matrixWorld);
-    const camDist = camLocal.length();
-    const scale = planet.matrixWorld.getMaxScaleOnAxis();
-    const [near, far] = planet._clipPlanes(camDist);
-    px.near = near * scale;
-    px.far = far * scale;
-    px.updateProjectionMatrix();
 
     if (planet.world.group.visible) planet.world.update(camLocal, px);
 
     // ---- embed uniforms
     const e = pipe.embed;
-    e.uViewMat.value.copy(px.matrixWorldInverse);
+    e.uViewMat.value.multiplyMatrices(camera.matrixWorldInverse, planet.matrixWorld);
     e.uHostProj.value.copy(camera.projectionMatrix);
     e.uLogDepthFC.value = r.capabilities.logarithmicDepthBuffer ? 2 / (Math.log(camera.far + 1) / Math.LN2) : 0;
     e.uBoundRadius.value = planet.boundingRadius;
@@ -356,7 +349,7 @@ export class PlanetRenderer {
     // ---- screen rectangle of the bounding sphere
     let rect = null;
     if (embed && opt.scissor) {
-      rect = pipe.screenRect(px, planet.boundingRadius * scale, this._rect);
+      rect = pipe.screenRect(px, planet.boundingRadius, this._rect);
       if (rect === false) return;   // off screen
     }
 
@@ -368,7 +361,6 @@ export class PlanetRenderer {
       depthWrite: embed && opt.depthWrite,
       output: embed ? this._outputMode(target) : 0,
       rect,
-      radiusScale: scale,
       setHostScissor: (rc) => this._setHostScissor(target, rc),
     }, target);
   }

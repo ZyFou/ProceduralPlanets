@@ -1410,6 +1410,15 @@ export const PARAM_DOCS = {
     "max": 4,
     "step": 0.1
   },
+  "analyticTerrainDepth": {
+    "domain": "planet",
+    "group": "Performance / render",
+    "label": "analyticTerrainDepth",
+    "type": "boolean",
+    "default": false,
+    "description": "Correct triangulated depth for shallow physical relief; requires fragment depth support",
+    "structural": true
+  },
   "wireframe": {
     "domain": "planet",
     "group": "Debug",

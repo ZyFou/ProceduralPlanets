@@ -263,6 +263,8 @@ export interface PlanetParams {
   maxDepth?: number;
   /** LOD split distance, in node sizes — Higher = subdivide sooner (more detail, more chunks) Range 1.2..4. Default: 2.4. */
   splitFactor?: number;
+  /** Correct triangulated depth for shallow physical relief; requires fragment depth support Default: false. */
+  analyticTerrainDepth?: boolean;
   /** Draw the terrain LOD chunks as wireframe (debug). Default: false. */
   wireframe?: boolean;
 }
@@ -398,5 +400,6 @@ export interface ResolvedPlanetParams {
   chunkRes: number;
   maxDepth: number;
   splitFactor: number;
+  analyticTerrainDepth: boolean;
   wireframe: boolean;
 }

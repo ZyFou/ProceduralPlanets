@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import App from './App.jsx';
 import Landing from './landing/Landing.jsx';
 import { PROJECT_TEMPLATES, createTemplateParams, getProjectTemplate } from './project/ProjectTemplates.js';
@@ -10,12 +10,15 @@ import { useAuth } from './auth/AuthContext.jsx';
 import { usePopup } from './components/ui/PopupProvider.jsx';
 import './landing/landing.css';
 
+const Exploration = lazy(() => import('./exploration/Exploration.jsx'));
+
 const EXIT_MS = 520;
 const AUTOSAVE_MS = 450;
 
 export default function Root() {
   const { user } = useAuth();
   const { showPopup, showPrompt } = usePopup();
+  const [exploring, setExploring] = useState(false);
   const [landingVisible, setLandingVisible] = useState(true);
   const [landingExiting, setLandingExiting] = useState(false);
   const [landingCreateOpen, setLandingCreateOpen] = useState(false);
@@ -286,21 +289,26 @@ export default function Root() {
 
   return (
     <>
-      <App
-        project={currentProject}
-        landingMode={landingVisible}
-        documentState={documentState}
-        onHome={showLanding}
-        onNew={() => showLanding({ create: true })}
-        onProjectChange={updateProjectParams}
-        onRename={renameCurrent}
-        onSave={saveNow}
-        onSaveAs={saveAs}
-        onLoadFile={importFile}
-        onDownload={downloadCurrent}
-        onThumbnail={captureThumbnail}
-      />
-      {landingVisible && <Landing {...landingProps} />}
+      <div style={{ height: '100%', display: exploring ? 'none' : undefined }}>
+        <App
+          project={currentProject}
+          landingMode={landingVisible || exploring}
+          suspended={exploring}
+          onExplore={() => setExploring(true)}
+          documentState={documentState}
+          onHome={showLanding}
+          onNew={() => showLanding({ create: true })}
+          onProjectChange={updateProjectParams}
+          onRename={renameCurrent}
+          onSave={saveNow}
+          onSaveAs={saveAs}
+          onLoadFile={importFile}
+          onDownload={downloadCurrent}
+          onThumbnail={captureThumbnail}
+        />
+        {landingVisible && <Landing {...landingProps} onExplore={() => setExploring(true)} />}
+      </div>
+      {exploring && <Suspense fallback={<div role="status">Opening exploration…</div>}><Exploration onExit={() => setExploring(false)} /></Suspense>}
     </>
   );
 }

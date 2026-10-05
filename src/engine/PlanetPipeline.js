@@ -717,9 +717,10 @@ ${EMBED_GLSL}
 // premultiplied output over the host frame: alpha = 1 - background transmittance
 void embedOut(vec3 col, float alpha, float surfT, vec3 ro, vec3 rd) {
   gl_FragDepth = embedDepth(ro, rd, surfT);
+  if (uHDROut > 0.5) { gl_FragColor = vec4(col, alpha); return; }
   if (alpha < 0.002 && max(col.r, max(col.g, col.b)) < 1e-4) discard;
-  if (uHDROut > 0.5 || (uLinearOut > 0.5 && uLinearOut < 1.5)) {
-    gl_FragColor = vec4(uHDROut > 0.5 ? col : col * uExposure * 0.85, alpha);
+  if (uLinearOut > 0.5 && uLinearOut < 1.5) {
+    gl_FragColor = vec4(col * uExposure * 0.85, alpha);
     return;
   }
   vec3 c = aces(col * uExposure * 0.85);
@@ -1600,6 +1601,11 @@ export class PlanetPipeline {
       // the HDR frame is overwritten, not blended onto; it lives in the
       // (idle in star mode) cloud target
       composite.depthTest = false;
+      // The HDR intermediate owns every pixel, including transparent space.
+      // Blending an alpha-zero star background onto clear alpha=1 made the
+      // final bloom pass overwrite the entire host sky when a star appeared.
+      composite.transparent = false;
+      composite.blending = THREE.NoBlending;
       this._ensureBloomTargets();
       this._ensureCloudTarget(this.width, this.height);
       this.cloudRT.viewport.set(0, 0, this.width, this.height);

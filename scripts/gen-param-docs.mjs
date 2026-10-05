@@ -155,7 +155,7 @@ for (const [key, def] of Object.entries(DEFAULT_PARAMS)) {
   if (u?.min !== undefined) entry.min = u.min;
   if (u?.max !== undefined) entry.max = u.max;
   if (u?.step !== undefined) entry.step = u.step;
-  if (['octaves', 'chunkRes', 'maxDepth'].includes(key)) entry.structural = true;
+  if (['octaves', 'chunkRes', 'maxDepth', 'analyticTerrainDepth'].includes(key)) entry.structural = true;
   docs[key] = entry;
 }
 

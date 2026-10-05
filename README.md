@@ -142,6 +142,18 @@ npm run dev                    # studio on http://localhost:7071 + API on :7070
 `npm run dev:web` or `npm run dev:api` to run only one. If the API cannot start
 (no database), the studio keeps running in local-only mode.
 
+## Infinite exploration
+
+Open **Explore** on the studio home page, or **View → Explore infinite worlds**
+while editing, to visit the real-scale Solar System (eight planets, Pluto and
+24 selected moons) and deterministic procedural systems beyond it.
+Use WASD or ZQSD and the mouse, the wheel or speed slider, and targeted approach
+for astronomical travel. Saved render settings and photo mode provide quality
+controls and PNG capture. Returning resumes your unchanged editor. The mode
+uses the package's `Planet` and `PlanetRenderer`, with bounded streaming,
+floating coordinates and existing terrain/impostor LOD. See the
+[exploration guide](docs/exploration.md) for controls, architecture and checks.
+
 ## Documentation
 
 | | |

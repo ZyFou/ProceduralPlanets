@@ -237,6 +237,8 @@ export class PlanetRenderer {
   /** Planets the last render() skipped because their shaders are still compiling. */
   readonly pending: number;
   setOptions(options: PlanetRendererOptions): this;
+  /** Release cached impostors for a removed body; the caller still owns and disposes the Planet. */
+  release(planet: Planet): void;
   /**
    * Draw every visible Planet in `planets` (an object tree to traverse, a Planet or an
    * array). Call after rendering your opaque scene into the same target.
