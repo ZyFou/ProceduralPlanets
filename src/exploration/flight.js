@@ -97,10 +97,15 @@ export class Flight {
       delta = new Vector3(vector.x, vector.y, vector.z).multiplyScalar(travel / distance);
     } else {
       if (!manual.lengthSq()) return;
-      const requested = clampSpeed(this.speed * (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 20 : 1));
-      const altitude = Math.min(...bodies.filter(body => length(relative(body.position, this.position)) < body.radius * 100)
-        .map(body => Math.max(0, length(relative(body.position, this.position)) - clearanceRadius(body))));
-      const speed = Math.min(requested, Math.max(MIN_SPEED, altitude * 0.5));
+      const boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+      const requested = clampSpeed(this.speed * (boost ? 20 : 1));
+      let speed = requested;
+      if (!boost) for (const body of bodies) {
+        const distance = length(relative(body.position, this.position));
+        if (distance < body.radius * 100) {
+          speed = Math.min(speed, Math.max(MIN_SPEED, (distance - clearanceRadius(body)) * 0.5));
+        }
+      }
       this.limited = speed < requested;
       const direction = manual.applyQuaternion(this.camera.quaternion);
       const travel = Math.min(speed * dt, coordinateTravelBudget(this.position, direction));
@@ -118,7 +123,7 @@ export class Flight {
 
 // All input belongs to the captured canvas. Unlocking, blurring or hiding the
 // tab cancels movement/approach so a missed keyup cannot leave the ship flying.
-export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = () => {}, onPick = () => {}, onError = () => {} } = {}) {
+export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = () => {}, onPick = () => {}, onTeleport = () => {}, onError = () => {} } = {}) {
   const doc = canvas.ownerDocument;
   const win = doc.defaultView;
   const locked = () => doc.pointerLockElement === canvas;
@@ -150,14 +155,23 @@ export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = (
   const blur = () => { flight.clear(); if (locked()) doc.exitPointerLock(); };
   const visibility = () => { if (doc.hidden) blur(); };
   const error = () => onError('Mouse capture unavailable. Try clicking the flight view again.');
-  const click = () => {
+  let clickedBody;
+  const click = event => {
+    // Retain the first click's body: acquiring pointer lock recentres the
+    // cursor before the second click of an unlocked double-click.
+    if (event.detail !== 2) clickedBody = onPick(locked() ? undefined : event);
     if (!locked()) {
       try { canvas.requestPointerLock()?.catch(error); } catch { error(); }
     }
   };
+  const doubleClick = event => {
+    const body = clickedBody === undefined ? onPick(locked() ? undefined : event) : clickedBody;
+    if (body) onTeleport(body);
+    clickedBody = undefined;
+  };
   const listeners = [[doc, 'keydown', key], [doc, 'keyup', key], [doc, 'mousemove', mouse],
     [doc, 'pointerlockchange', lock], [doc, 'pointerlockerror', error], [doc, 'visibilitychange', visibility],
-    [win, 'blur', blur], [canvas, 'wheel', wheel, { passive: false }], [canvas, 'click', click]];
+    [win, 'blur', blur], [canvas, 'wheel', wheel, { passive: false }], [canvas, 'click', click], [canvas, 'dblclick', doubleClick]];
   for (const [node, type, callback, options] of listeners) node.addEventListener(type, callback, options);
   return () => {
     for (const [node, type, callback, options] of listeners) node.removeEventListener(type, callback, options);

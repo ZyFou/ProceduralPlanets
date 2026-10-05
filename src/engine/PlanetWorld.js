@@ -55,6 +55,7 @@ const MIN_BAND = 1.15;    // morph band >= 0.13 node diameters wide
 export const MIN_LEVEL = 1;
 const NO_MORPH = 1e20;
 const INSTANCE_STRIDE = { iNode: 4, iMorph: 3 };
+const UNIT_DIAMETERS = [];
 
 // Shared grid geometry: res×res quads in [0,1]² plus a skirt ring flagged by
 // aSkirt=1 (the vertex shader sinks those radially to hide LOD cracks).
@@ -142,6 +143,10 @@ function nodeCap(f, u0, v0, s) {
 export function morphBands(R, maxDepth, rangeScale) {
   const diam = [];
   for (let L = 0; L <= maxDepth; L++) {
+    if (UNIT_DIAMETERS[L] !== undefined) {
+      diam.push(R * UNIT_DIAMETERS[L]);
+      continue;
+    }
     // nodes are symmetric across faces and quadrants: one quadrant of a face
     const n = 1 << L;
     const half = Math.max(1, n >> 1);
@@ -149,7 +154,8 @@ export function morphBands(R, maxDepth, rangeScale) {
     for (let gy = 0; gy < half; gy++) {
       for (let gx = 0; gx < half; gx++) maxA = Math.max(maxA, nodeCap(0, gx / n, gy / n, 1 / n).alpha);
     }
-    diam.push(2 * R * Math.sin(Math.min(maxA, Math.PI / 2)));
+    UNIT_DIAMETERS[L] = 2 * Math.sin(Math.min(maxA, Math.PI / 2));
+    diam.push(R * UNIT_DIAMETERS[L]);
   }
   // natural ranges, then bottom-up: a level must merge far enough out that
   // its children fit a real morph band (untouched until range + diameter,
@@ -215,6 +221,9 @@ export class PlanetWorld {
     this._thetaMax = Math.PI;
     this._frustum = new THREE.Frustum();
     this._projView = new THREE.Matrix4();
+    this._lastProjView = new THREE.Matrix4();
+    this._lastUpdateKey = null;
+    this._planes = null;
     this._sphere = new THREE.Sphere();
   }
 
@@ -235,9 +244,11 @@ export class PlanetWorld {
     this._grid = grid;
     this.meshes = [0, 1].map((low) => {
       const geo = new THREE.InstancedBufferGeometry();
-      geo.setAttribute('position', grid.position);
-      geo.setAttribute('aSkirt', grid.aSkirt);
-      geo.setIndex(grid.index);
+      // Each variant owns its GPU buffers so growing/disposal of one cannot
+      // invalidate the other variant's cached vertex bindings.
+      geo.setAttribute('position', grid.position.clone());
+      geo.setAttribute('aSkirt', grid.aSkirt.clone());
+      geo.setIndex(grid.index.clone());
       geo.instanceCount = 0;
       this._allocInstances(geo, 256);
       const mesh = new THREE.Mesh(geo, this.templateMaterials[low]);
@@ -250,6 +261,13 @@ export class PlanetWorld {
   }
 
   _allocInstances(geo, capacity) {
+    if (geo.userData.capacity !== undefined) {
+      // Release the old GPU attributes and VAOs before replacing them.
+      geo.dispose();
+    }
+    // Three caches this on the first draw. Growing attributes alone leaves
+    // the draw clamped to the original capacity, cutting holes in the planet.
+    delete geo._maxInstanceCount;
     for (const [name, size] of Object.entries(INSTANCE_STRIDE)) {
       const attr = new THREE.InstancedBufferAttribute(new Float32Array(capacity * size), size);
       attr.setUsage(THREE.DynamicDrawUsage);
@@ -297,6 +315,7 @@ export class PlanetWorld {
     this._disposeMeshes();
     this._buildMeshes();
     this._bandsKey = '';
+    this._lastUpdateKey = null;
     this.chunks.clear();
     this.chunkCount = 0;
   }
@@ -328,6 +347,17 @@ export class PlanetWorld {
     this._updateBands();
     const R = this.radius;
     const H = this.heightScale;
+    const lowLevel = this.useLowVarying ? this.lowVaryingLevel : Infinity;
+    if (camera) {
+      camera.updateMatrixWorld();
+      this._projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    }
+    const updateKey = `${this._bandsKey}|${H}|${this.opts.chunkRes}|${lowLevel}|${!!camera}`;
+    // Lighting and geomorph uniforms still update every frame; the selected
+    // chunks and GPU attributes only need work when the view/LOD changes.
+    if (updateKey === this._lastUpdateKey && this._camPos.equals(cameraPos)
+      && (!camera || this._lastProjView.equals(this._projView))) return;
+    this._planes = camera ? this._frustum.setFromProjectionMatrix(this._projView).planes : null;
     const cam = this._camPos.copy(cameraPos);
     const camDist = cam.length();
     this._camDist = camDist;
@@ -341,36 +371,9 @@ export class PlanetWorld {
     leaves.length = 0;
     for (let f = 0; f < 6; f++) this._visit(f, 0, 0, 0);
 
-    // frustum (side planes: near / far are refitted every frame)
-    let planes = null;
-    if (camera) {
-      camera.updateMatrixWorld();
-      this._projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      planes = this._frustum.setFromProjectionMatrix(this._projView).planes;
-    }
-    const s = this._sphere;
-    let n = 0;
-    for (const node of leaves) {
-      let vis = true;
-      if (planes) {
-        const { c, alpha } = node;
-        const r0 = R - node.skirt;
-        const r1 = R + H;
-        const rm = 0.5 * (r0 + r1);
-        const ca = Math.cos(alpha);
-        const d0 = r0 * r0 + rm * rm - 2 * r0 * rm * ca;
-        const d1 = r1 * r1 + rm * rm - 2 * r1 * rm * ca;
-        s.center.set(c[0] * rm, c[1] * rm, c[2] * rm);
-        s.radius = Math.sqrt(Math.max(d0, d1)) * 1.01 + 1;
-        for (let i = 0; i < 4 && vis; i++) vis = planes[i].distanceToPoint(s.center) >= -s.radius;
-      }
-      if (vis) leaves[n++] = node;
-    }
-    leaves.length = n;
     leaves.sort((a, b) => a.d - b.d);
 
     // upload, per variant, front to back
-    const lowLevel = this.useLowVarying ? this.lowVaryingLevel : Infinity;
     const counts = [0, 0];
     for (const node of leaves) counts[node.level >= lowLevel ? 1 : 0]++;
     for (let low = 0; low < 2; low++) {
@@ -413,6 +416,23 @@ export class PlanetWorld {
       }
     }
     this.chunkCount = leaves.length;
+    this._lastUpdateKey = updateKey;
+    this._lastProjView.copy(this._projView);
+  }
+
+  _inFrustum(c, alpha, skirt) {
+    if (!this._planes) return true;
+    const R = this.radius;
+    const r0 = R - skirt, r1 = R + this.heightScale;
+    const rm = 0.5 * (r0 + r1), ca = Math.cos(alpha);
+    const d0 = r0 * r0 + rm * rm - 2 * r0 * rm * ca;
+    const d1 = r1 * r1 + rm * rm - 2 * r1 * rm * ca;
+    const s = this._sphere;
+    s.center.set(c[0] * rm, c[1] * rm, c[2] * rm);
+    s.radius = Math.sqrt(Math.max(d0, d1)) * 1.01 + 1;
+    // Side planes only: the proxy's depth range is fitted separately.
+    for (let i = 0; i < 4; i++) if (this._planes[i].distanceToPoint(s.center) < -s.radius) return false;
+    return true;
   }
 
   // distance from the camera to the nearest point of a cap on the sphere of
@@ -433,6 +453,11 @@ export class PlanetWorld {
     const theta = Math.acos(Math.min(1, Math.max(-1, c[0] * n[0] + c[1] * n[1] + c[2] * n[2])));
     if (theta - alpha > this._thetaMax + 1e-3) return;   // behind the horizon
 
+    const size = 1 / (1 << level);
+    const skirt = Math.max(this.heightScale * 0.6, size * this.radius * 0.05);
+    // Reject entire branches before generating their finer descendants.
+    if (!this._inFrustum(c, alpha, skirt)) return;
+
     const d = this._capDistance(c, alpha);
     if (level < this.opts.maxDepth && (level < MIN_LEVEL || d < this._bands.range[level])) {
       this._visit(f, level + 1, gx * 2, gy * 2);
@@ -441,12 +466,11 @@ export class PlanetWorld {
       this._visit(f, level + 1, gx * 2 + 1, gy * 2 + 1);
       return;
     }
-    const size = 1 / (1 << level);
     this._leaves.push({
       key: `${f}:${level}:${gx}:${gy}`,
       f, level, u0: gx * size, v0: gy * size, size, c, alpha, d,
       // skirt depth scales with node size so coarse chunks hide bigger cracks
-      skirt: Math.max(this.heightScale * 0.6, size * this.radius * 0.05),
+      skirt,
     });
   }
 

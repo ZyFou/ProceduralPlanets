@@ -82,7 +82,7 @@ export default function Exploration({ onExit }) {
       </nav>
     </header>
     <div className="exploration-view">
-      <canvas key={seed} ref={canvasRef} aria-label="Free flight view. Click to capture the mouse." />
+      <canvas key={seed} ref={canvasRef} aria-label="Free flight view. Click to capture the mouse. Double-click a planet to teleport." />
       {!photo && <>
         <div className="exploration-reticle" aria-hidden>+</div>
         {hud?.marker && <div className="exploration-marker" style={{ left: `${hud.marker.x}%`, top: `${hud.marker.y}%` }}><Crosshair size={22} /><span>{hud.target.name}</span></div>}
@@ -117,20 +117,21 @@ export default function Exploration({ onExit }) {
             }
           }} />
           <div className="exploration-presets">{[[1, 'Precise'], [100, 'Orbit'], [AU, 'System'], [LIGHT_YEAR * .05, 'Interstellar']].map(([value, label]) => <button key={label} type="button" onClick={() => changeSpeed(value)}>{label}</button>)}</div>
-          <p className="exploration-help">Mouse to look · wheel changes speed · Shift ×20<br />Space / Ctrl rise / descend · F targets your view<br />Automatic braking within 100 radii of a body. Travel may exceed light speed; the numeric coordinate boundary is shown if reached.</p>
+          <p className="exploration-help">Mouse to look · wheel changes speed · Shift ×20 and bypasses braking<br />Space / Ctrl rise / descend · F targets your view<br />Double-click a planet to teleport to orbit.<br />Automatic braking within 100 radii of a body unless Shift is held. Travel may exceed light speed; the numeric coordinate boundary is shown if reached.</p>
           <label htmlFor="flight-layout">Keyboard layout</label><select id="flight-layout" value={settings.layout} onChange={e => update({ layout: e.target.value })}><option value="wasd">WASD · QWERTY</option><option value="azerty">ZQSD · AZERTY</option></select>
           <div className="exploration-target-actions"><button type="button" disabled={!hud?.target || !!error} onClick={() => explorerRef.current?.approach()}>Approach target</button><button type="button" disabled={!hud?.approaching} onClick={() => explorerRef.current?.flight.clear()}>Stop</button></div>
           <p className="exploration-help">Approach slows to an orbital viewing distance. Movement or mouse look cancels it; Esc pauses flight.</p>
         </>}
         {panel === 'destinations' && <>
+          <p className="exploration-help">Click a destination to aim at it. Double-click to teleport to orbit.</p>
           <button type="button" onClick={() => explorerRef.current?.visitSolarSystem()}><Orbit size={16} /> Return to Solar System</button>
           <p className="exploration-help">Sun, eight planets, Pluto and 24 selected moons. True radii and orbital scale; static approximations and procedural surfaces. <a href="https://github.com/ZyFou/ProceduralPlanets/blob/feat/infinite-exploration/docs/solar-system.md" target="_blank" rel="noreferrer">Sources & limits</a></p>
           <form onSubmit={event => { event.preventDefault(); const value = seedInput.trim(); if (value) { explorerRef.current?.flight.clear(); setSeed(value); } }}><label htmlFor="exploration-seed">Procedural universe seed</label><div className="exploration-row"><input id="exploration-seed" value={seedInput} maxLength={64} onChange={e => setSeedInput(e.target.value)} /><button type="submit">Generate</button></div></form>
           <label htmlFor="exploration-search">Find a nearby body</label><input id="exploration-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Earth, Titan, a distant sun…" />
           <div className="exploration-catalogue">{hud?.systems.map(system => <section key={system.id}>
-            <button type="button" className={hud.target?.id === system.star.id ? 'selected' : ''} onClick={() => select(system.star)}><span>☀ {system.star.name}</span><small>{formatDistance(length(relative(system.star.position, hud.position)))}</small></button>
+            <button type="button" className={hud.target?.id === system.star.id ? 'selected' : ''} onClick={() => select(system.star)} onDoubleClick={() => explorerRef.current?.teleport(system.star)}><span>☀ {system.star.name}</span><small>{formatDistance(length(relative(system.star.position, hud.position)))}</small></button>
             <small className="exploration-system-type">{system.id === 'sol' ? 'Solar System · mean orbital scale' : `${system.star.preset} · ${system.bodies.length - 1} planets`}</small>
-            {system.bodies.slice(1).filter(body => body.name.toLowerCase().includes(search.toLowerCase())).map(body => <button key={body.id} type="button" className={`${hud.target?.id === body.id ? 'selected' : ''}${body.parentId ? ' exploration-moon' : ''}`} onClick={() => select(body)}><span>{body.name}{body.parentId && <small> · moon</small>}</span><small>{formatDistance(length(relative(body.position, hud.position)))}</small></button>)}
+            {system.bodies.slice(1).filter(body => body.name.toLowerCase().includes(search.toLowerCase())).map(body => <button key={body.id} type="button" className={`${hud.target?.id === body.id ? 'selected' : ''}${body.parentId ? ' exploration-moon' : ''}`} onClick={() => select(body)} onDoubleClick={() => explorerRef.current?.teleport(body)}><span>{body.name}{body.parentId && <small> · moon</small>}</span><small>{formatDistance(length(relative(body.position, hud.position)))}</small></button>)}
           </section>)}</div>
         </>}
         {panel === 'settings' && <>

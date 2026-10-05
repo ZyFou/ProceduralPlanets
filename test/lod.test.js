@@ -47,6 +47,77 @@ describe('LOD morph bands', () => {
 });
 
 describe('PlanetWorld', () => {
+  it('draws every chunk after growing beyond the first GPU instance capacity', () => {
+    const w = makeWorld({ maxDepth: 9, splitFactor: 4 });
+    w.update(new THREE.Vector3(0, 0, R * 10));
+    const geometries = w.meshes.map(mesh => mesh.geometry);
+    const disposed = [0, 0];
+    geometries.forEach((geo, index) => {
+      // The renderer sets this on the first GPU draw, independently of later
+      // replacements of the instanced attributes.
+      geo._maxInstanceCount = geo.attributes.iNode.count;
+      geo.addEventListener('dispose', () => disposed[index]++);
+    });
+    w.update(new THREE.Vector3(0.3, 0.4, 0.87).normalize().multiplyScalar(R + 15));
+    expect(w.chunkCount).toBeGreaterThan(256);
+    let drawn = 0;
+    geometries.forEach((geo, index) => {
+      if (geo.instanceCount > 256) {
+        expect(disposed[index]).toBe(1);
+        expect(geo._maxInstanceCount).toBeUndefined();
+      }
+      drawn += Math.min(geo.instanceCount, geo._maxInstanceCount ?? geo.attributes.iNode.count);
+    });
+    expect(drawn).toBe(w.chunkCount);
+    expect(geometries[0].attributes.position).not.toBe(geometries[1].attributes.position);
+    w.dispose();
+  });
+
+  it('reuses stationary LOD buffers and refreshes them for view, variant and settings changes', () => {
+    const w = makeWorld();
+    const camera = new THREE.PerspectiveCamera(65, 1.5, 1, R * 10);
+    camera.position.set(0, 0, R + 60); camera.lookAt(0, 0, 0);
+    const version = () => w.meshes[1].geometry.attributes.iNode.version;
+    w.update(camera.position, camera);
+    const initial = version();
+    const initialCount = w.chunkCount;
+    w.update(camera.position, camera); expect(version()).toBe(initial);
+    camera.lookAt(0, 0, R * 3);
+    w.update(camera.position, camera); expect(version()).toBeGreaterThan(initial);
+    expect(w.chunkCount).toBeLessThan(initialCount);
+    camera.lookAt(0, 0, 0); w.update(camera.position, camera);
+    expect(w.chunkCount).toBeGreaterThan(0);
+    w.useLowVarying = false; w.update(camera.position, camera);
+    expect(w.meshes[0].geometry.instanceCount).toBe(w.chunkCount);
+    expect(w.meshes[1].geometry.instanceCount).toBe(0);
+    w.rebuild({ maxDepth: 4 }); w.update(camera.position, camera);
+    expect(w.chunkCount).toBeGreaterThan(0);
+    expect(Math.max(...[...w.chunks.values()].map(node => node.level))).toBe(4);
+    w.dispose();
+  });
+
+  it('preserves visible leaves when culling branches before subdivision', () => {
+    const w = makeWorld({ maxDepth: 7, splitFactor: 4 });
+    const camera = new THREE.PerspectiveCamera(65, 1.5, 1, R * 10);
+    const visit = w._visit;
+    for (const altitude of [15, 300, R, R * 3]) for (const look of [[0, 0, 0], [R * 0.6, 0, 0]]) {
+      camera.position.set(R * .2, 0, R + altitude); camera.lookAt(...look);
+      w._lastUpdateKey = null;
+      w.update(camera.position, camera);
+      const culled = [...w.chunks.keys()];
+      // Reference: traverse without frustum pruning, then cull only leaves.
+      w._visit = function (...args) {
+        const planes = this._planes; this._planes = null;
+        visit.apply(this, args); this._planes = planes;
+      };
+      w._lastUpdateKey = null; w.update(camera.position, camera);
+      const reference = [...w.chunks.values()].filter(node => w._inFrustum(node.c, node.alpha, node.skirt)).map(node => node.key);
+      expect(culled).toEqual(reference);
+      w._visit = visit;
+    }
+    w.dispose();
+  });
+
   it('bounds the cap cache across a surface tour, recreates the same chunks and clears CPU caches on disposal', () => {
     const w = makeWorld({ maxDepth: 9, splitFactor: 12 });
     const start = new THREE.Vector3(0, 0, R + 15);

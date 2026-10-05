@@ -33,7 +33,7 @@ export class Explorer {
         // uniform Object3D scale supplies the physical radius in kilometres.
         const planet = new Planet({
           type: body.type, preset: body.preset, name: body.name, seed: body.seed, radius: 2000,
-          chunkRes: 32, maxDepth: 9, splitFactor: 12, octaves: 5, cloudQuality: 24, cloudResolution: 0.5,
+          chunkRes: 32, maxDepth: 9, splitFactor: 4, octaves: 5, cloudQuality: 24, cloudResolution: 0.5,
           atmoHeight: Math.min(0.03, 100 / body.radius),
           cloudAltitude: 4 / body.radius, cloudThickness: 8 / body.radius,
           ambient: 0.04,
@@ -60,7 +60,7 @@ export class Explorer {
     this.stream.discover(this.flight.position, first.id);
     this.unbind = bindFlightInput(canvas, this.flight, {
       onLock: callbacks.onLock, onSpeed: callbacks.onSpeed, onError: callbacks.onError,
-      onPick: () => this.pick(),
+      onPick: event => this.pick(event), onTeleport: body => { if (!this.photo) this.teleport(body); },
     });
     this.clock = new THREE.Clock();
     this.nextDiscovery = 0;
@@ -133,18 +133,45 @@ export class Explorer {
   }
   select(body) { this.target = body; this.flight.approaching = null; this.flight.aim(body); this.nextDiscovery = 0; }
   approach() { if (this.target) this.flight.approaching = this.target; }
+  teleport(body) {
+    if (!body || this.disposed) return;
+    const v = relative(this.flight.position, body.position);
+    const offset = new THREE.Vector3(v.x, v.y, v.z);
+    if (!offset.lengthSq()) offset.set(0, 0, 1).applyQuaternion(this.camera.quaternion);
+    offset.normalize().multiplyScalar(body.radius * (body.type === 'star' ? 5 : 2.8));
+    this.flight.clear();
+    this.flight.position = translate(body.position, offset);
+    this.flight.limited = this.flight.blocked = this.flight.coordinateLimited = false;
+    this.select(body);
+    this.stream.discover(this.flight.position, body.id);
+    this.nextLoad = this.nextHud = 0;
+  }
   pause() { this.running = false; this.flight.clear(); this.renderer.setAnimationLoop(null); }
-  pick() {
+  pick(event) {
     const direction = new THREE.Vector3();
-    this.camera.getWorldDirection(direction);
-    let best = null, dot = 0.995;
+    if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+      const rect = this.canvas.getBoundingClientRect();
+      const pointer = new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1,
+        1 - (event.clientY - rect.top) / rect.height * 2);
+      this.camera.updateMatrixWorld();
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(pointer, this.camera);
+      direction.copy(raycaster.ray.direction);
+    } else this.camera.getWorldDirection(direction);
+    let best = null, nearest = Infinity;
+    const tolerance = 6 * 2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) / this.canvas.clientHeight;
     for (const system of this.stream.systems) for (const body of system.bodies) {
       const v = relative(body.position, this.flight.position);
-      const vector = new THREE.Vector3(v.x, v.y, v.z).normalize();
+      const vector = new THREE.Vector3(v.x, v.y, v.z);
+      const distance = vector.length();
+      vector.normalize();
       const alignment = vector.dot(direction);
-      if (alignment > dot) { dot = alignment; best = body; }
+      const angle = Math.max(Math.asin(Math.min(1, body.radius / distance)), tolerance);
+      const near = distance - body.radius;
+      if (alignment > Math.cos(angle) && near < nearest) { nearest = near; best = body; }
     }
     if (best) { this.target = best; this.nextDiscovery = 0; }
+    return best;
   }
   frame(forcedDelta) {
     if (!this.running || this.disposed) return;

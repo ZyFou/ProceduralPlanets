@@ -95,15 +95,33 @@ describe('free flight and controlled approach', () => {
     expect(safeTravel(start, { x: 0, y: 100, z: 0 }, [body]).offset.y).toBe(100);
     expect(safeTravel(end, { x: -20, y: 0, z: 0 }, [body]).offset.x).toBeLessThan(end.offset.x);
   });
-  it('brakes near surfaces even with boost and bounds resumed frame time', () => {
+  it('brakes near surfaces without Shift and bounds resumed frame time', () => {
     const body = rock(position(undefined, { x: 0, y: 0, z: -200 }));
     const flight = new Flight(zero(), new PerspectiveCamera());
     flight.speed = LIGHT_YEAR * 100;
-    flight.keys = new Set(['KeyW', 'ShiftLeft']);
+    flight.keys = new Set(['KeyW']);
     flight.step(100, [body]);
     expect(flight.limited).toBe(true);
     expect(flight.actualSpeed).toBeLessThan(50);
     expect(Math.abs(flight.position.offset.z)).toBeLessThan(3);
+  });
+  it.each(['ShiftLeft', 'ShiftRight'])('bypasses proximity braking at full boost with %s', shift => {
+    const body = rock(position(undefined, { x: 0, y: 0, z: -200 }));
+    const flight = new Flight(zero(), new PerspectiveCamera());
+    flight.speed = 100; flight.keys = new Set(['KeyD', shift]);
+    flight.step(.05, [body]);
+    expect(flight.limited).toBe(false); expect(flight.blocked).toBe(false);
+    expect(flight.actualSpeed).toBeCloseTo(2000);
+    flight.keys = new Set(['KeyD']); flight.step(.05, [body]);
+    expect(flight.limited).toBe(true);
+  });
+  it('retains swept collision protection at boosted speed', () => {
+    const body = rock(position(undefined, { x: 0, y: 0, z: -200 }));
+    const flight = new Flight(zero(), new PerspectiveCamera());
+    flight.speed = LIGHT_YEAR * 100; flight.keys = new Set(['KeyW', 'ShiftLeft']);
+    flight.step(100, [body]);
+    expect(flight.limited).toBe(false); expect(flight.blocked).toBe(true);
+    expect(length(relative(body.position, flight.position))).toBeGreaterThan(clearanceRadius(body));
   });
   it('cancels approach if another body obstructs the segment', () => {
     const target = rock(position(undefined, { x: 100000, y: 0, z: 0 }));
@@ -200,6 +218,25 @@ describe('bounded progressive streaming and cleanup', () => {
 });
 
 describe('capture ownership and event cleanup', () => {
+  it('double-clicks the pointed body across pointer capture and removes the handler on disposal', () => {
+    const doc = new EventTarget(); doc.defaultView = new EventTarget();
+    doc.exitPointerLock = vi.fn();
+    const canvas = new EventTarget(); canvas.ownerDocument = doc;
+    canvas.requestPointerLock = vi.fn(() => { doc.pointerLockElement = canvas; });
+    const body = rock(); const onPick = vi.fn(() => body), onTeleport = vi.fn();
+    const dispose = bindFlightInput(canvas, new Flight(zero(), new PerspectiveCamera()), { onPick, onTeleport });
+    const click = new Event('click'); Object.assign(click, { detail: 1, clientX: 50, clientY: 60 });
+    canvas.dispatchEvent(click);
+    expect(onPick).toHaveBeenCalledWith(click);
+    const second = new Event('click'); Object.assign(second, { detail: 2 });
+    canvas.dispatchEvent(second); canvas.dispatchEvent(new Event('dblclick'));
+    expect(onPick).toHaveBeenCalledOnce(); expect(onTeleport).toHaveBeenCalledWith(body);
+    onPick.mockReturnValue(null);
+    canvas.dispatchEvent(click); canvas.dispatchEvent(new Event('dblclick'));
+    expect(onTeleport).toHaveBeenCalledOnce();
+    dispose(); canvas.dispatchEvent(new Event('dblclick'));
+    expect(onTeleport).toHaveBeenCalledOnce();
+  });
   it('ignores uncaptured editor keys, clears stuck keys on unlock/blur, and removes listeners', () => {
     const win = new EventTarget();
     const doc = new EventTarget(); doc.defaultView = win;
