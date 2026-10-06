@@ -1,3 +1,4 @@
+import { translate } from '../i18n/locale.js';
 import { normalizeProject } from './ProjectStore.js';
 
 // Editable project file (.ppplanet): the studio document as JSON. The params
@@ -18,16 +19,16 @@ export function createEditableProjectDocument(project) {
  * a `new Planet({...})` options object saved as JSON) for convenience.
  */
 export function readEditableProjectDocument(input, { fallbackName } = {}) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Could not parse the project file.');
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(translate('Could not parse the project file.'));
   if (input.format && input.format !== EDITABLE_PROJECT_FORMAT) {
-    throw new Error('This file is not an editable Procedural Planets project.');
+    throw new Error(translate('This file is not an editable Procedural Planets project.'));
   }
   if (input.params && typeof input.params === 'object') return normalizeProject(input);
   if (typeof input.mode === 'string' || typeof input.seed === 'number') {
     const { terrain, editor, paint, ...params } = input;
     return normalizeProject({ metadata: { name: fallbackName }, params, terrain, editor, paint });
   }
-  throw new Error('This file is not an editable Procedural Planets project.');
+  throw new Error(translate('This file is not an editable Procedural Planets project.'));
 }
 
 export function suggestedProjectFilename(name) {
@@ -51,6 +52,6 @@ export async function readProjectFile(file) {
   const text = await file.text();
   let json;
   try { json = JSON.parse(text); }
-  catch { throw new Error('Could not parse the project file.'); }
+  catch { throw new Error(translate('Could not parse the project file.')); }
   return readEditableProjectDocument(json, { fallbackName: file.name.replace(/\.(ppplanet|json)$/i, '') });
 }

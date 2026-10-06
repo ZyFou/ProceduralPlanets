@@ -1,3 +1,5 @@
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Check, Code2, Compass, Copy, Eye, FolderDown, Globe2, Globe,
@@ -40,7 +42,7 @@ function shareLinkFor(code) {
 }
 
 function typeLabel(type) {
-  return COMMUNITY_TYPES.find((option) => option.id === type)?.single ?? 'Planet';
+  return COMMUNITY_TYPES.find((option) => option.id === type)?.single ?? translate('Planet');
 }
 
 function iconForProject(project) {
@@ -50,6 +52,7 @@ function iconForProject(project) {
 }
 
 export default function CommunityPage({ onBack, onOpen, ready = true }) {
+  useLocale();
   const { user } = useAuth();
   const { showPopup, showPrompt } = usePopup();
   const [projects, setProjects] = useState([]);
@@ -74,7 +77,7 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
       setPages(result.pages);
       setTotal(result.total);
     } catch (requestError) {
-      showPopup(requestError.message || 'Could not load community projects.', { type: 'error' });
+      showPopup(requestError.message || translate('Could not load community projects.'), { type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -97,7 +100,7 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
   const importByCode = useCallback(async (code) => {
     const normalized = normalizeCode(code);
     if (normalized.length !== 10) {
-      showPopup('Search with a complete 10-character sharing code.', { type: 'error', title: 'Incomplete sharing code' });
+      showPopup(translate('Search with a complete 10-character sharing code.'), { type: 'error', title: translate('Incomplete sharing code') });
       return;
     }
     setBusy(normalized);
@@ -116,7 +119,7 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
       if (ready) onOpen(imported);
       else pendingOpenRef.current = imported;
     } catch (requestError) {
-      showPopup(requestError.message || 'Could not open this shared planet.', { type: 'error' });
+      showPopup(requestError.message || translate('Could not open this shared planet.'), { type: 'error' });
     } finally {
       setBusy('');
     }
@@ -145,9 +148,9 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
     try {
       await copyText(shareLinkFor(normalized));
       flashCopied(`link:${normalized}`);
-      showPopup('Opening link copied to your clipboard.', { type: 'success' });
+      showPopup(translate('Opening link copied to your clipboard.'), { type: 'success' });
     } catch (copyError) {
-      showPopup(copyError.message || 'Could not copy the opening link.', { type: 'error' });
+      showPopup(copyError.message || translate('Could not copy the opening link.'), { type: 'error' });
     }
   };
 
@@ -159,9 +162,9 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
       const result = await projectApi.shared(project.shareCode);
       await copyText(planetCodeSnippet(result.project.data.params ?? {}, result.project.data.terrain));
       flashCopied(`code:${project.id}`);
-      showPopup(`Code for ${project.name} copied. Paste it into a three.js project using procedural-planets.`, { type: 'success' });
+      showPopup(translate("Code for {0} copied. Paste it into a three.js project using procedural-planets.", { 0: project.name }), { type: 'success' });
     } catch (requestError) {
-      showPopup(requestError.message || 'Could not copy the code for this planet.', { type: 'error' });
+      showPopup(requestError.message || translate('Could not copy the code for this planet.'), { type: 'error' });
     } finally {
       setBusy('');
     }
@@ -179,7 +182,7 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
       }
       showPopup(successMessage, { type: 'success' });
     } catch (requestError) {
-      showPopup(requestError.message || 'Could not update this planet.', { type: 'error' });
+      showPopup(requestError.message || translate('Could not update this planet.'), { type: 'error' });
     } finally {
       setBusy('');
     }
@@ -187,14 +190,14 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
 
   const rename = async (project) => {
     const name = (await showPrompt({
-      title: 'Rename community planet',
-      inputLabel: 'Planet name',
+      title: translate('Rename community planet'),
+      inputLabel: translate('Planet name'),
       initialValue: project.name,
-      confirmLabel: 'Rename',
+      confirmLabel: translate('Rename'),
       maxLength: 120,
     }))?.trim();
     if (!name || name === project.name) return;
-    await updateOwnerProject(project, { name }, `Renamed to ${name}.`);
+    await updateOwnerProject(project, { name }, translate("Renamed to {0}.", { 0: name }));
   };
 
   const ownerProjects = useMemo(() => new Set(
@@ -202,38 +205,38 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
   ), [projects, user?.id]);
 
   const resultsTitle = activeQuery
-    ? `Results for “${activeQuery}”`
-    : activeType ? COMMUNITY_TYPES.find((option) => option.id === activeType)?.label : 'Recently shared';
+    ? translate("Results for “{0}”", { 0: activeQuery })
+    : activeType ? COMMUNITY_TYPES.find((option) => option.id === activeType)?.label : translate('Recently shared');
 
   return (
     <section className="community-page" aria-labelledby="community-title">
-      <button type="button" className="auth-back" onClick={onBack}><ArrowLeft size={14} /> Back to projects</button>
+      <button type="button" className="auth-back" onClick={onBack}><ArrowLeft size={14} /> {translate("Back to projects")}</button>
       <header className="community-heading">
-        <span><Compass size={14} /> Explore</span>
-        <h1 id="community-title">Community worlds</h1>
-        <p>Discover public planets, gas giants and stars. Open one in the studio, or copy its code straight into your three.js project.</p>
+        <span><Compass size={14} /> {translate("Explore")}</span>
+        <h1 id="community-title">{translate("Community worlds")}</h1>
+        <p>{translate("Discover public planets, gas giants and stars. Open one in the studio, or copy its code straight into your three.js project.")}</p>
       </header>
 
       <form className="community-search" onSubmit={search}>
         <Search size={14} aria-hidden />
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search names, creators, or sharing codes" aria-label="Search community projects" />
-        <button type="submit" className="lp-secondary sm">Search</button>
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate("Search names, creators, or sharing codes")} aria-label={translate("Search community projects")} />
+        <button type="submit" className="lp-secondary sm">{translate("Search")}</button>
       </form>
 
-      <div className="community-filters" role="tablist" aria-label="Filter community worlds by body type">
-        <button type="button" role="tab" aria-selected={!activeType} className={!activeType ? 'active' : ''} onClick={() => selectType('')}>All worlds</button>
+      <div className="community-filters" role="tablist" aria-label={translate("Filter community worlds by body type")}>
+        <button type="button" role="tab" aria-selected={!activeType} className={!activeType ? 'active' : ''} onClick={() => selectType('')}>{translate("All worlds")}</button>
         {COMMUNITY_TYPES.map((option) => (
-          <button type="button" role="tab" key={option.id} aria-selected={activeType === option.id} className={activeType === option.id ? 'active' : ''} onClick={() => selectType(option.id)}>{option.label}</button>
+          <button type="button" role="tab" key={option.id} aria-selected={activeType === option.id} className={activeType === option.id ? 'active' : ''} onClick={() => selectType(option.id)}>{translate(option.label)}</button>
         ))}
       </div>
 
       <div className="community-results-head">
-        <div><h2>{resultsTitle}</h2><span>{total} public project{total === 1 ? '' : 's'}</span></div>
-        {activeQuery && <button type="button" className="community-clear-search" onClick={() => { setQuery(''); setActiveQuery(''); setPage(1); }}><X size={12} /> Clear search</button>}
+        <div><h2>{translate(resultsTitle)}</h2><span>{total} {translate("public project")}{total === 1 ? '' : 's'}</span></div>
+        {activeQuery && <button type="button" className="community-clear-search" onClick={() => { setQuery(''); setActiveQuery(''); setPage(1); }}><X size={12} /> {translate("Clear search")}</button>}
       </div>
 
-      {loading ? <div className="community-state"><Compass size={22} /><span>Loading community worlds…</span></div> : projects.length === 0 ? (
-        <div className="community-state"><Globe2 size={24} /><strong>No worlds match these filters</strong><span>Try another search or browse all public worlds.</span></div>
+      {loading ? <div className="community-state"><Compass size={22} /><span>{translate("Loading community worlds…")}</span></div> : projects.length === 0 ? (
+        <div className="community-state"><Globe2 size={24} /><strong>{translate("No worlds match these filters")}</strong><span>{translate("Try another search or browse all public worlds.")}</span></div>
       ) : (
         <div className="community-grid">
           {projects.map((project) => {
@@ -249,33 +252,32 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
                     ? <img className="community-card-thumb" src={thumbnail} alt="" loading="lazy" />
                     : <span className="community-card-icon"><Icon size={30} aria-hidden /></span>}
                   <span className="community-card-type">{typeLabel(project.bodyType)}</span>
-                  <button type="button" className="community-share-link" onClick={() => copyShareLink(project.shareCode)} title="Copy opening link" aria-label={`Copy opening link for ${project.name}`}>
+                  <button type="button" className="community-share-link" onClick={() => copyShareLink(project.shareCode)} title={translate("Copy opening link")} aria-label={translate("Copy opening link for {0}", { 0: project.name })}>
                     {copied === `link:${project.shareCode}` ? <Check size={11} aria-hidden /> : <Copy size={11} aria-hidden />}<code>{project.shareCode}</code>
                   </button>
                 </div>
                 <div className="community-card-body">
-                  <div className="community-card-title-row"><h3>{project.name}</h3>{isOwner && <span className="community-owner-badge">Yours</span>}</div>
-                  <p>{project.description || `A shared ${typeLabel(project.bodyType).toLowerCase()} made with Procedural Planets.`}</p>
+                  <div className="community-card-title-row"><h3>{project.name}</h3>{isOwner && <span className="community-owner-badge">{translate("Yours")}</span>}</div>
+                  <p>{project.description || translate("A shared {0} made with Procedural Planets.", { 0: translate(typeLabel(project.bodyType)).toLowerCase() })}</p>
                   <div className="community-author">
                     <span>{avatarUrl(project.author) ? <img src={avatarUrl(project.author)} alt="" /> : <UserRound size={13} />}</span>
                     <strong>{project.author.displayName || project.author.username}</strong>
                     <small>@{project.author.username}</small>
                   </div>
                   <div className="community-card-actions">
-                    <button type="button" className="lp-primary sm" onClick={() => importByCode(project.shareCode)} disabled={disabled || !ready}><FolderDown size={14} /> Open copy</button>
-                    <button type="button" className="lp-secondary sm" onClick={() => copyCode(project)} disabled={disabled} title="Copy a procedural-planets snippet that recreates this world">
-                      {copied === `code:${project.id}` ? <Check size={13} /> : <Code2 size={13} />} Copy code
-                    </button>
-                    {isOwner && <button type="button" className={`lp-secondary sm community-edit-button${editingId === project.id ? ' active' : ''}`} onClick={() => setEditingId((current) => current === project.id ? '' : project.id)} disabled={disabled} aria-label={`Edit ${project.name}`}><Settings2 size={13} /></button>}
+                    <button type="button" className="lp-primary sm" onClick={() => importByCode(project.shareCode)} disabled={disabled || !ready}><FolderDown size={14} /> {translate("Open copy")}</button>
+                    <button type="button" className="lp-secondary sm" onClick={() => copyCode(project)} disabled={disabled} title={translate("Copy a procedural-planets snippet that recreates this world")}>
+                      {copied === `code:${project.id}` ? <Check size={13} /> : <Code2 size={13} />}{translate("Copy code")}</button>
+                    {isOwner && <button type="button" className={`lp-secondary sm community-edit-button${editingId === project.id ? ' active' : ''}`} onClick={() => setEditingId((current) => current === project.id ? '' : project.id)} disabled={disabled} aria-label={translate("Edit {0}", { 0: project.name })}><Settings2 size={13} /></button>}
                   </div>
                   {isOwner && editingId === project.id && (
                     <div className="community-owner-panel">
-                      <div className="community-owner-panel-head"><strong>Manage planet</strong><button type="button" onClick={() => setEditingId('')} aria-label="Close planet settings"><X size={13} /></button></div>
+                      <div className="community-owner-panel-head"><strong>{translate("Manage planet")}</strong><button type="button" onClick={() => setEditingId('')} aria-label={translate("Close planet settings")}><X size={13} /></button></div>
                       <div className="community-owner-actions">
-                        <button type="button" className="lp-secondary sm" onClick={() => rename(project)} disabled={disabled}><Pencil size={13} /> Rename</button>
-                        <label className="community-visibility-select"><span>Visibility</span><span className="community-select-wrap">{project.visibility === 'public' ? <Globe2 size={12} /> : project.visibility === 'unlisted' ? <Eye size={12} /> : <Lock size={12} />}<select value={project.visibility} onChange={(event) => updateOwnerProject(project, { visibility: event.target.value }, `Visibility changed to ${event.target.value}.`)} disabled={disabled} aria-label={`Visibility for ${project.name}`}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></span></label>
+                        <button type="button" className="lp-secondary sm" onClick={() => rename(project)} disabled={disabled}><Pencil size={13} /> {translate("Rename")}</button>
+                        <label className="community-visibility-select"><span>{translate("Visibility")}</span><span className="community-select-wrap">{project.visibility === 'public' ? <Globe2 size={12} /> : project.visibility === 'unlisted' ? <Eye size={12} /> : <Lock size={12} />}<select value={project.visibility} onChange={(event) => updateOwnerProject(project, { visibility: event.target.value }, translate("Visibility changed to {0}.", { 0: translate(event.target.value) }))} disabled={disabled} aria-label={translate("Visibility for {0}", { 0: project.name })}><option value="private">{translate("Private")}</option><option value="unlisted">{translate("Unlisted")}</option><option value="public">{translate("Public")}</option></select></span></label>
                       </div>
-                      <div className="community-icon-picker"><span>Card icon</span><div>{COMMUNITY_ICONS.map((option) => { const OptionIcon = option.Icon; return <button type="button" key={option.id} className={selectedCommunityIcon === option.id ? 'active' : ''} onClick={() => updateOwnerProject(project, { communityIcon: option.id }, `${option.label} icon selected.`)} disabled={disabled} title={option.label} aria-label={`Use ${option.label} icon`}><OptionIcon size={14} /></button>; })}</div></div>
+                      <div className="community-icon-picker"><span>{translate("Card icon")}</span><div>{COMMUNITY_ICONS.map((option) => { const OptionIcon = option.Icon; return <button type="button" key={option.id} className={selectedCommunityIcon === option.id ? 'active' : ''} onClick={() => updateOwnerProject(project, { communityIcon: option.id }, translate("{0} icon selected.", { 0: translate(option.label) }))} disabled={disabled} title={translate(option.label)} aria-label={translate("Use {0} icon", { 0: translate(option.label) })}><OptionIcon size={14} /></button>; })}</div></div>
                     </div>
                   )}
                 </div>
@@ -285,10 +287,10 @@ export default function CommunityPage({ onBack, onOpen, ready = true }) {
         </div>
       )}
 
-      {pages > 1 && <nav className="community-pagination" aria-label="Community pages">
-        <button type="button" className="lp-secondary sm" onClick={() => setPage((value) => value - 1)} disabled={page <= 1 || loading}><ArrowLeft size={13} /> Previous</button>
-        <span>Page {page} of {pages}</span>
-        <button type="button" className="lp-secondary sm" onClick={() => setPage((value) => value + 1)} disabled={page >= pages || loading}>Next <ArrowRight size={13} /></button>
+      {pages > 1 && <nav className="community-pagination" aria-label={translate("Community pages")}>
+        <button type="button" className="lp-secondary sm" onClick={() => setPage((value) => value - 1)} disabled={page <= 1 || loading}><ArrowLeft size={13} /> {translate("Previous")}</button>
+        <span>{translate("Page")} {page} {translate("of")} {pages}</span>
+        <button type="button" className="lp-secondary sm" onClick={() => setPage((value) => value + 1)} disabled={page >= pages || loading}>{translate("Next")} <ArrowRight size={13} /></button>
       </nav>}
     </section>
   );

@@ -1,3 +1,6 @@
+import { translateExternalMessage } from './i18n/externalMessages.js';
+import { translate } from './i18n/locale.js';
+import { useLocale } from './i18n/useLocale.js';
 import PaintToolbar from './components/paint/PaintToolbar.jsx';
 import PaintPanel from './components/paint/PaintPanel.jsx';
 import { DEFAULT_PAINT_STATE } from './paint/PlanetPaintModeManager.js';
@@ -47,9 +50,9 @@ const toHex = (rgb) => `#${rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 1)
 function formatSearchValue(item, params) {
   const key = item.settingId.split('.').slice(1).join('.');
   const value = params[key];
-  if (key === 'preset') return 'Presets';
-  if (value === undefined || value === null) return item.panelId === 'export' ? 'Export' : '-';
-  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (key === 'preset') return translate('Presets');
+  if (value === undefined || value === null) return item.panelId === 'export' ? translate('Export') : '-';
+  if (typeof value === 'boolean') return value ? translate('On') : translate('Off');
   if (Array.isArray(value)) return value.length === 3 ? toHex(value).toUpperCase() : value.join(', ');
   if (typeof value === 'number') {
     if (Number.isInteger(value)) return String(value);
@@ -106,6 +109,7 @@ export default function App({
   onDownload,
   onThumbnail,
 }) {
+  const locale = useLocale();
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
   const skipPersistRef = useRef(false);
@@ -185,11 +189,11 @@ export default function App({
     let cancelled = false;
     (async () => {
       await engine.prepare({
-        onProgress: ({ stage, progress, stageEnd }) => loader?.progress(span(progress), LOADING_STAGES[stage], span(stageEnd)),
+        onProgress: ({ stage, progress, stageEnd }) => loader?.progress(span(progress), translate(LOADING_STAGES[stage]), span(stageEnd)),
       });
       if (cancelled) return;
       performance.mark('pp:first-frame');
-      loader?.progress(0.97, 'Rendering first frame', 1);
+      loader?.progress(0.97, translate('Rendering first frame'), 1);
       // one more frame: the first one must be presented before the reveal
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (cancelled) return;
@@ -406,7 +410,7 @@ export default function App({
     if (id !== 'brush') engineRef.current?.paintMode.setState({ tool: id === 'sculpt' ? (paintState.tool === 'lower' ? 'lower' : 'raise') : id, pickHeight: false });
   };
   const clearPaint = async () => {
-    if (await showConfirm({ title: 'Clear Painted Layers?', message: 'Remove painted height and material influences? Your procedural settings and node graph will be preserved.', confirmLabel: 'Clear paint', danger: true })) engineRef.current?.paintMode.clear();
+    if (await showConfirm({ title: translate('Clear Painted Layers?'), message: translate('Remove painted height and material influences? Your procedural settings and node graph will be preserved.'), confirmLabel: translate('Clear paint'), danger: true })) engineRef.current?.paintMode.clear();
   };
 
   const draftGraph = design.editor.draftGraph ?? design.terrain.graph;
@@ -520,11 +524,11 @@ export default function App({
 
   const onCopyCode = useCallback(async () => {
     try {
-      if (invalidImportedTerrain) throw new Error('No valid terrain is available.');
+      if (invalidImportedTerrain) throw new Error(translate('No valid terrain is available.'));
       await copyText(planetCodeSnippet(paramsRef.current, engineRef.current?.planet.terrain, engineRef.current?.planet.paint));
-      notify(graphStatus.state === 'ready' ? 'Code snippet copied to the clipboard.' : 'Code snippet of the last valid terrain copied.', 'success');
+      notify(graphStatus.state === 'ready' ? translate('Code snippet copied to the clipboard.') : translate('Code snippet of the last valid terrain copied.'), 'success');
     } catch {
-      notify('Could not copy the code snippet.', 'error');
+      notify(translate('Could not copy the code snippet.'), 'error');
     }
   }, [notify, graphStatus.state, invalidImportedTerrain]);
 
@@ -597,8 +601,8 @@ export default function App({
   }, [params.seed]);
 
   const onExport = useCallback(async (options, onProgress) => {
-    if (invalidImportedTerrain) throw new Error('No valid terrain is available for export.');
-    if (graphStatus.state !== 'ready') throw new Error('Apply a valid graph before exporting. The last valid terrain is still visible.');
+    if (invalidImportedTerrain) throw new Error(translate('No valid terrain is available for export.'));
+    if (graphStatus.state !== 'ready') throw new Error(translate('Apply a valid graph before exporting. The last valid terrain is still visible.'));
     await engineRef.current?.exportPlanet(options, onProgress);
   }, [graphStatus.state, invalidImportedTerrain]);
 
@@ -616,7 +620,7 @@ export default function App({
     searchOpen
       ? searchSettings(searchQuery, isPanelAvailable).map((item) => ({ ...item, valueText: formatSearchValue(item, params) }))
       : []
-  ), [searchOpen, searchQuery, isPanelAvailable, params]);
+  ), [searchOpen, searchQuery, isPanelAvailable, params, locale]);
 
   const groupedSearchResults = useMemo(() => {
     const map = new Map();
@@ -739,7 +743,7 @@ export default function App({
   return (
     <div id="app" className={`app${landingMode ? ' landing-mode' : ''}${activePanel && !showNodes ? ' side-drawer-open' : ''}${showNodes ? ' nodes-open' : ''}${paintState.enabled ? ' paint-workspace side-drawer-open' : ''}${uiHidden ? ' ui-hidden' : ''}`}>
       <TopBar
-        projectName={project?.metadata?.name ?? 'Untitled planet'}
+        projectName={project?.metadata?.name ?? translate('Untitled planet')}
         documentState={documentState}
         shortcutsEnabled={!landingMode && !searchOpen && !suspended}
         onProjectNameChange={onRename}
@@ -777,23 +781,22 @@ export default function App({
       />
       <ShortcutsHelp open={helpOpen && !landingMode} onClose={closeHelp} />
       {uiHidden && (
-        <button type="button" className="ui-hidden-restore" onClick={() => setUiHidden(false)} title="Show the interface (Esc)">
-          <Eye size={14} aria-hidden /> Show UI
-        </button>
+        <button type="button" className="ui-hidden-restore" onClick={() => setUiHidden(false)} title={translate("Show the interface (Esc)")}>
+          <Eye size={14} aria-hidden />{translate("Show UI")}</button>
       )}
 
       <div id="main" className={`main app-shell${panelResizing ? ' panel-resizing' : ''}`} style={{ '--panel-weight': `${panelShare / (1 - panelShare)}fr` }}>
-        {!paintState.enabled && <nav className="left-toolbar" aria-label="Planet tools">
+        {!paintState.enabled && <nav className="left-toolbar" aria-label={translate("Planet tools")}>
           {visiblePanels.map((panel) => {
             const Icon = ICONS[panel.id] ?? Orbit;
             return (
-              <button key={panel.id} type="button" className={`toolbar-btn${activePanel === panel.id ? ' active' : ''}`} onClick={() => { setNodesOpen(false); setActivePanel(activePanel === panel.id ? null : panel.id); }} title={panel.label}>
+              <button key={panel.id} type="button" className={`toolbar-btn${activePanel === panel.id ? ' active' : ''}`} onClick={() => { setNodesOpen(false); setActivePanel(activePanel === panel.id ? null : panel.id); }} title={translate(panel.label)}>
                 <Icon aria-hidden />
-                <span className="toolbar-btn-label">{panel.label}</span>
+                <span className="toolbar-btn-label">{translate(panel.label)}</span>
               </button>
             );
           })}
-          {!landingMode && !project?.preview && params.mode === 'planet' && <button type="button" className="toolbar-btn" onClick={togglePaint} disabled={!booted || invalidImportedTerrain} title="Paint Mode (P)" aria-label="Paint Mode"><Paintbrush aria-hidden /><span className="toolbar-btn-label">Paint</span></button>}
+          {!landingMode && !project?.preview && params.mode === 'planet' && <button type="button" className="toolbar-btn" onClick={togglePaint} disabled={!booted || invalidImportedTerrain} title={translate("Paint Mode (P)")} aria-label={translate("Paint Mode")}><Paintbrush aria-hidden /><span className="toolbar-btn-label">{translate("Paint")}</span></button>}
         </nav>}
         {paintState.enabled && <>
           <PaintToolbar activeTool={paintTool} onSelect={selectPaintTool} />
@@ -802,32 +805,32 @@ export default function App({
 
         <div className="viewport-wrap viewport-area" style={viewportStyle}>
           <canvas id="viewport" ref={canvasRef} />
-          {invalidImportedTerrain && <div className="terrain-render-error" role="alert">This project's terrain graph cannot be rendered.<br />{graphStatus.diagnostics[0]?.message}<br />The document is preserved for recovery.</div>}
+          {invalidImportedTerrain && <div className="terrain-render-error" role="alert">{translate("This project's terrain graph cannot be rendered.")}<br />{translateExternalMessage(graphStatus.diagnostics[0]?.message)}<br />{translate("The document is preserved for recovery.")}</div>}
         </div>
 
         {compiling && (
-          <div className="viewport-compiling" role="status"><span className="viewport-compiling-dot" aria-hidden />Compiling shaders</div>
+          <div className="viewport-compiling" role="status"><span className="viewport-compiling-dot" aria-hidden />{translate("Compiling shaders")}</div>
         )}
 
-        <div className="viewport-mode-bar" role="tablist" aria-label="Editor mode" onPointerEnter={precompileTypes} onFocus={precompileTypes}>
-          <button type="button" role="tab" aria-label="Planet" title="Planet" aria-selected={params.mode === 'planet'} className={params.mode === 'planet' ? 'active' : ''} onClick={() => onMode('planet')}><Orbit size={14} /><span>Planet</span></button>
-          <button type="button" role="tab" aria-label="Gas" title="Gas" aria-selected={params.mode === 'gas'} className={params.mode === 'gas' ? 'active' : ''} onClick={() => onMode('gas')}><Waves size={14} /><span>Gas</span></button>
-          <button type="button" role="tab" aria-label="Star" title="Star" aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /><span>Star</span></button>
+        <div className="viewport-mode-bar" role="tablist" aria-label={translate("Editor mode")} onPointerEnter={precompileTypes} onFocus={precompileTypes}>
+          <button type="button" role="tab" aria-label={translate("Planet")} title={translate("Planet")} aria-selected={params.mode === 'planet'} className={params.mode === 'planet' ? 'active' : ''} onClick={() => onMode('planet')}><Orbit size={14} /><span>{translate("Planet")}</span></button>
+          <button type="button" role="tab" aria-label={translate("Gas")} title={translate("Gas")} aria-selected={params.mode === 'gas'} className={params.mode === 'gas' ? 'active' : ''} onClick={() => onMode('gas')}><Waves size={14} /><span>{translate("Gas")}</span></button>
+          <button type="button" role="tab" aria-label={translate("Star")} title={translate("Star")} aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /><span>{translate("Star")}</span></button>
         </div>
 
-        {showNodes && editableWorkspace && <Suspense fallback={<div className="nodes-editor-loading">Loading node editor…</div>}><NodeWorkspace graph={draftGraph} editor={design.editor} params={params} status={graphStatus} onChange={onGraphChange} onLayoutChange={setNodeLayout} onClose={() => { setNodesOpen(false); setActivePanel('terrain'); }} onUndo={undo} onRedo={redo} /></Suspense>}
-        {showNodes && !editableWorkspace && <div className="nodes-recovery-notice" role="alert">The imported graph or editor layout is malformed. Its data is preserved in the project file.<br />{graphStatus.diagnostics[0]?.message}<br /><button type="button" onClick={() => { setNodesOpen(false); setActivePanel('terrain'); }}>Return to viewer</button></div>}
+        {showNodes && editableWorkspace && <Suspense fallback={<div className="nodes-editor-loading">{translate("Loading node editor…")}</div>}><NodeWorkspace graph={draftGraph} editor={design.editor} params={params} status={graphStatus} onChange={onGraphChange} onLayoutChange={setNodeLayout} onClose={() => { setNodesOpen(false); setActivePanel('terrain'); }} onUndo={undo} onRedo={redo} /></Suspense>}
+        {showNodes && !editableWorkspace && <div className="nodes-recovery-notice" role="alert">{translate("The imported graph or editor layout is malformed. Its data is preserved in the project file.")}<br />{translateExternalMessage(graphStatus.diagnostics[0]?.message)}<br /><button type="button" onClick={() => { setNodesOpen(false); setActivePanel('terrain'); }}>{translate("Return to viewer")}</button></div>}
 
         {Panel && !showNodes && !paintState.enabled && (
           <aside className={`side-drawer${activePanel ? ' open' : ''}`} inert={activePanel ? undefined : ''} aria-hidden={!activePanel}>
             <div className="side-panel">
               <div className="side-panel-header">
                 <div className="side-panel-heading">
-                  <div className="side-panel-title">{PANELS.find((panel) => panel.id === displayedPanel).label}</div>
-                  <div className="side-panel-desc">Adjust procedural {params.mode === 'star' ? 'star' : params.mode === 'gas' ? 'gas giant' : 'planet'} settings.</div>
+                  <div className="side-panel-title">{translate(PANELS.find((panel) => panel.id === displayedPanel).label)}</div>
+                  <div className="side-panel-desc">{translate("Adjust procedural {0} settings.", { 0: translate(params.mode) })}</div>
                 </div>
                 <PanelResizeHandle share={panelShare} onChange={setPanelShare} onResizing={setPanelResizing} />
-                <button type="button" className="side-panel-close" onClick={() => setActivePanel(null)} aria-label="Close panel" title="Close panel"><X size={15} /></button>
+                <button type="button" className="side-panel-close" onClick={() => setActivePanel(null)} aria-label={translate("Close panel")} title={translate("Close panel")}><X size={15} /></button>
               </div>
               <div className="side-panel-content">
                 <Panel
@@ -870,13 +873,13 @@ export default function App({
 
       <footer id="statusbar" className="statusbar">
         <span className={`status-dot${booted ? ' ok' : ''}`} />
-        <span>{params.mode === 'star' ? 'Star' : params.mode === 'gas' ? 'Gas Giant' : 'Planet'}</span>
+        <span>{params.mode === 'star' ? translate('Star') : params.mode === 'gas' ? translate('Gas Giant') : translate('Planet')}</span>
         <span className="sb-sep" />
-        <span>Seed {params.seed}</span>
+        <span>{translate("Seed")} {params.seed}</span>
         <div className="sb-right">
-          <span>{stats.chunks} chunks</span><span className="sb-sep" />
-          <span>{(stats.triangles / 1000).toFixed(0)}K tris</span><span className="sb-sep" />
-          <span>{stats.drawCalls} draws</span><span className="sb-sep" />
+          <span>{stats.chunks} {translate("chunks")}</span><span className="sb-sep" />
+          <span>{(stats.triangles / 1000).toFixed(0)}{translate("K tris")}</span><span className="sb-sep" />
+          <span>{stats.drawCalls} {translate("draws")}</span><span className="sb-sep" />
           <span className="sb-fps">{stats.fps} FPS</span>
         </div>
       </footer>

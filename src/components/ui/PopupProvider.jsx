@@ -1,3 +1,6 @@
+import { translateExternalMessage } from '../../i18n/externalMessages.js';
+import { translate } from '../../i18n/locale.js';
+import { useLocale } from '../../i18n/useLocale.js';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -6,6 +9,7 @@ const PopupContext = createContext(null);
 const ICONS = { error: AlertTriangle, success: CheckCircle2, info: Info };
 
 function Notice({ notice, onDismiss }) {
+  useLocale();
   const Icon = ICONS[notice.type] || Info;
 
   useEffect(() => {
@@ -18,10 +22,10 @@ function Notice({ notice, onDismiss }) {
     <div className={`app-popup-notice ${notice.type}`} role={notice.type === 'error' ? 'alert' : 'status'}>
       <span className="app-popup-notice-icon"><Icon size={17} aria-hidden /></span>
       <span className="app-popup-notice-copy">
-        {notice.title && <strong>{notice.title}</strong>}
-        <span>{notice.message}</span>
+        {notice.title && <strong>{translate(notice.title)}</strong>}
+        <span>{translateExternalMessage(notice.message)}</span>
       </span>
-      <button type="button" onClick={() => onDismiss(notice.id)} aria-label="Dismiss notification">
+      <button type="button" onClick={() => onDismiss(notice.id)} aria-label={translate("Dismiss notification")}>
         <X size={14} aria-hidden />
       </button>
     </div>
@@ -29,6 +33,7 @@ function Notice({ notice, onDismiss }) {
 }
 
 function PopupDialog({ dialog, onClose }) {
+  useLocale();
   const [value, setValue] = useState(dialog.initialValue ?? '');
   const inputRef = useRef(null);
   const cancelValue = dialog.kind === 'confirm' ? false : null;
@@ -60,10 +65,10 @@ function PopupDialog({ dialog, onClose }) {
             {dialog.danger ? <AlertTriangle size={18} aria-hidden /> : <Info size={18} aria-hidden />}
           </span>
           <span>
-            <h2 id="app-popup-title">{dialog.title}</h2>
-            {dialog.message && <p>{dialog.message}</p>}
+            <h2 id="app-popup-title">{translate(dialog.title)}</h2>
+            {dialog.message && <p>{translateExternalMessage(dialog.message)}</p>}
           </span>
-          <button type="button" className="app-popup-dialog-close" onClick={() => onClose(cancelValue)} aria-label="Close popup"><X size={15} aria-hidden /></button>
+          <button type="button" className="app-popup-dialog-close" onClick={() => onClose(cancelValue)} aria-label={translate("Close popup")}><X size={15} aria-hidden /></button>
         </header>
         {dialog.kind === 'prompt' && (
           <label className="app-popup-dialog-field">
@@ -80,18 +85,18 @@ function PopupDialog({ dialog, onClose }) {
         )}
         {dialog.kind === 'choice' ? (
           <footer>
-            <button type="button" className="app-popup-cancel" onClick={() => onClose(null)}>{dialog.cancelLabel || 'Cancel'}</button>
+            <button type="button" className="app-popup-cancel" onClick={() => onClose(null)}>{dialog.cancelLabel || translate('Cancel')}</button>
             {(dialog.actions ?? []).map((action, index) => (
               <button key={action.value} ref={index === 0 ? inputRef : undefined} type="button" className={`app-popup-confirm${action.danger ? ' danger' : ''}`} onClick={() => onClose(action.value)}>
-                {action.label}
+                {translate(action.label)}
               </button>
             ))}
           </footer>
         ) : (
           <footer>
-            <button type="button" className="app-popup-cancel" onClick={() => onClose(cancelValue)}>{dialog.cancelLabel || 'Cancel'}</button>
+            <button type="button" className="app-popup-cancel" onClick={() => onClose(cancelValue)}>{dialog.cancelLabel || translate('Cancel')}</button>
             <button ref={dialog.kind === 'prompt' ? undefined : inputRef} type="submit" className={`app-popup-confirm${dialog.danger ? ' danger' : ''}`}>
-              {dialog.confirmLabel || (dialog.kind === 'prompt' ? 'Save' : 'Confirm')}
+              {dialog.confirmLabel || (dialog.kind === 'prompt' ? translate('Save') : translate('Confirm'))}
             </button>
           </footer>
         )}
@@ -101,6 +106,7 @@ function PopupDialog({ dialog, onClose }) {
 }
 
 export function PopupProvider({ children }) {
+  useLocale();
   const [notices, setNotices] = useState([]);
   const [dialog, setDialog] = useState(null);
   const nextId = useRef(0);
@@ -137,17 +143,17 @@ export function PopupProvider({ children }) {
 
   const showConfirm = useCallback((options) => {
     const config = typeof options === 'string' ? { message: options } : options;
-    return openDialog({ kind: 'confirm', title: 'Please confirm', ...config });
+    return openDialog({ kind: 'confirm', title: translate('Please confirm'), ...config });
   }, [openDialog]);
 
   const showPrompt = useCallback((options) => {
     const config = typeof options === 'string' ? { title: options } : options;
-    return openDialog({ kind: 'prompt', title: 'Enter a value', ...config });
+    return openDialog({ kind: 'prompt', title: translate('Enter a value'), ...config });
   }, [openDialog]);
 
   const showChoice = useCallback((options) => {
     const config = typeof options === 'string' ? { title: options } : options;
-    return openDialog({ kind: 'choice', title: 'Choose an option', actions: [], ...config });
+    return openDialog({ kind: 'choice', title: translate('Choose an option'), actions: [], ...config });
   }, [openDialog]);
 
   const closeDialog = useCallback((result) => {

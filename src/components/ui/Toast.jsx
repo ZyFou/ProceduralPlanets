@@ -1,3 +1,6 @@
+import { translateExternalMessage } from '../../i18n/externalMessages.js';
+import { translate } from '../../i18n/locale.js';
+import { useLocale } from '../../i18n/useLocale.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { Info, X } from 'lucide-react';
 
@@ -25,14 +28,15 @@ const ICONS = {
 
 function formatAge(timestamp) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (seconds < 10) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 10) return translate('just now');
+  if (seconds < 60) return translate("{0}s ago", { 0: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.floor(minutes / 60)}h ago`;
+  if (minutes < 60) return translate("{0}m ago", { 0: minutes });
+  return translate("{0}h ago", { 0: Math.floor(minutes / 60) });
 }
 
 export default function NotificationCenter({ recent = [], notificationsIgnored = false, onClear, onToggleIgnore }) {
+  useLocale();
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const count = recent.length;
@@ -60,8 +64,8 @@ export default function NotificationCenter({ recent = [], notificationsIgnored =
         type="button"
         className={`tb-btn tb-icon-btn tb-notification-btn${open ? ' active' : ''}`}
         onClick={() => setOpen((value) => !value)}
-        title="Recent activity"
-        aria-label={`Recent activity${count ? ` (${count})` : ''}`}
+        title={translate("Recent activity")}
+        aria-label={translate("Recent activity{0}", { 0: count ? ` (${count})` : '' })}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -70,10 +74,10 @@ export default function NotificationCenter({ recent = [], notificationsIgnored =
       </button>
 
       {open && (
-        <div className="tb-notification-popover" role="dialog" aria-label="Recent activity">
+        <div className="tb-notification-popover" role="dialog" aria-label={translate("Recent activity")}>
           <div className="tb-notification-heading">
-            <span>Recent activity</span>
-            <button type="button" className="tb-notification-close" onClick={() => setOpen(false)} aria-label="Close recent activity">
+            <span>{translate("Recent activity")}</span>
+            <button type="button" className="tb-notification-close" onClick={() => setOpen(false)} aria-label={translate("Close recent activity")}>
               <X size={13} strokeWidth={1.8} aria-hidden />
             </button>
           </div>
@@ -85,7 +89,7 @@ export default function NotificationCenter({ recent = [], notificationsIgnored =
                   <div key={item.id} className={`tb-notification-item tb-notification-${type}`}>
                     <span className="tb-notification-icon">{ICONS[type]}</span>
                     <span className="tb-notification-copy">
-                      <span className="tb-notification-message">{item.msg}</span>
+                      <span className="tb-notification-message">{translateExternalMessage(item.msg)}</span>
                       <span className="tb-notification-time">{formatAge(item.timestamp)}</span>
                     </span>
                   </div>
@@ -93,19 +97,17 @@ export default function NotificationCenter({ recent = [], notificationsIgnored =
               })}
             </div>
           ) : (
-            <div className="tb-notification-empty">No recent activity</div>
+            <div className="tb-notification-empty">{translate("No recent activity")}</div>
           )}
           <div className="tb-notification-footer">
-            <button type="button" className="tb-notification-action" onClick={onClear} disabled={recent.length === 0}>
-              Clear
-            </button>
+            <button type="button" className="tb-notification-action" onClick={onClear} disabled={recent.length === 0}>{translate("Clear")}</button>
             <button
               type="button"
               className={`tb-notification-action${notificationsIgnored ? ' active' : ''}`}
               onClick={onToggleIgnore}
               aria-pressed={notificationsIgnored}
             >
-              {notificationsIgnored ? 'Enable logging' : 'Ignore'}
+              {notificationsIgnored ? translate('Enable logging') : translate('Ignore')}
             </button>
           </div>
         </div>

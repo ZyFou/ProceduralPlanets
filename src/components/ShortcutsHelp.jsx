@@ -1,3 +1,5 @@
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useRef } from 'react';
 import { Keyboard, X } from 'lucide-react';
 import { EDITOR_SHORTCUTS, SEARCH_SETTINGS_SHORTCUT } from '../keyboardShortcuts.js';
@@ -42,6 +44,7 @@ export const SHORTCUT_GROUPS = [
 ];
 
 export default function ShortcutsHelp({ open, onClose }) {
+  useLocale();
   const ref = useRef(null);
 
   useEffect(() => {
@@ -65,16 +68,16 @@ export default function ShortcutsHelp({ open, onClose }) {
     <section className="shortcuts-help" ref={ref} role="dialog" aria-labelledby="shortcuts-help-title">
       <header>
         <Keyboard size={15} aria-hidden />
-        <h2 id="shortcuts-help-title">Keyboard shortcuts</h2>
-        <button type="button" onClick={onClose} aria-label="Close keyboard shortcuts"><X size={14} /></button>
+        <h2 id="shortcuts-help-title">{translate("Keyboard shortcuts")}</h2>
+        <button type="button" onClick={onClose} aria-label={translate("Close keyboard shortcuts")}><X size={14} /></button>
       </header>
       {SHORTCUT_GROUPS.map((group) => (
         <div className="shortcuts-help-group" key={group.title}>
-          <span className="shortcuts-help-title">{group.title}</span>
+          <span className="shortcuts-help-title">{translate(group.title)}</span>
           {group.items.map(({ label, shortcut, keys }) => (
             <div className="shortcuts-help-row" key={label}>
-              <span>{label}</span>
-              {shortcut ? <ShortcutHint shortcut={shortcut} className="shortcuts-help-keys" /> : <span className="shortcuts-help-keys">{keys}</span>}
+              <span>{translate(label)}</span>
+              {shortcut ? <ShortcutHint shortcut={shortcut} className="shortcuts-help-keys" /> : <span className="shortcuts-help-keys">{translate(keys)}</span>}
             </div>
           ))}
         </div>

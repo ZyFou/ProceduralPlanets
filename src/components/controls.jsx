@@ -1,3 +1,5 @@
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useState } from 'react';
 
 // Small control primitives shared by every panel — same interaction model as
@@ -6,6 +8,7 @@ import { useEffect, useState } from 'react';
 // Ctrl+K search uses to scroll to and highlight it.
 
 export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChange, title, param }) {
+  useLocale();
   const fmt = (v) => Number(v).toFixed(digits);
   const [text, setText] = useState(fmt(value));
   useEffect(() => { setText(fmt(value)); }, [value]);
@@ -18,13 +21,13 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
 
   const fill = ((value - min) / (max - min)) * 100;
   return (
-    <div className="ctl" title={title} data-param={param}>
+    <div className="ctl" title={translate(title)} data-param={param}>
       <div className="ctl-top">
-        <span className="ctl-label">{label}</span>
+        <span className="ctl-label">{translate(label)}</span>
         <input
           className="ctl-val"
           inputMode="decimal"
-          aria-label={label}
+          aria-label={translate(label)}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={commit}
@@ -35,7 +38,7 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
         <div className="ctl-fill" style={{ width: `${fill}%` }} />
         <input
           type="range"
-          aria-label={label}
+          aria-label={translate(label)}
           min={min}
           max={max}
           step={step}
@@ -48,9 +51,10 @@ export function Slider({ label, value, min, max, step = 0.01, digits = 2, onChan
 }
 
 export function Toggle({ label, value, onChange, title, param }) {
+  useLocale();
   return (
-    <label className="toggle" title={title} data-param={param}>
-      <span className="ctl-label">{label}</span>
+    <label className="toggle" title={translate(title)} data-param={param}>
+      <span className="ctl-label">{translate(label)}</span>
       <button
         type="button"
         role="switch"
@@ -65,12 +69,13 @@ export function Toggle({ label, value, onChange, title, param }) {
 }
 
 export function SelectRow({ label, value, options, onChange, title, param }) {
+  useLocale();
   return (
-    <label className="select-row" title={title} data-param={param}>
-      <span className="ctl-label">{label}</span>
+    <label className="select-row" title={translate(title)} data-param={param}>
+      <span className="ctl-label">{translate(label)}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <option key={opt.value} value={opt.value}>{translate(opt.label)}</option>
         ))}
       </select>
     </label>
@@ -81,22 +86,24 @@ const toHex = (rgb) => '#' + rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 
 const fromHex = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 
 export function ColorRow({ label, value, onChange, param }) {
+  useLocale();
   return (
     <label className="color-row" data-param={param}>
       <span className="color-chip" style={{ background: toHex(value) }} />
-      <span className="ctl-label">{label}</span>
+      <span className="ctl-label">{translate(label)}</span>
       <input type="color" value={toHex(value)} onChange={(e) => onChange(fromHex(e.target.value))} />
     </label>
   );
 }
 
 export function Section({ title, children, defaultOpen = true }) {
+  useLocale();
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className={`section${open ? ' open' : ''}`} data-section={typeof title === 'string' ? title : undefined}>
       <button type="button" className="section-header" onClick={() => setOpen(!open)}>
         <span className="section-caret">{open ? '▾' : '▸'}</span>
-        {title}
+        {typeof title === 'string' ? translate(title) : title}
       </button>
       {open && <div className="section-body">{children}</div>}
     </div>

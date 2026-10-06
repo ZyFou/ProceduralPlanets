@@ -1,3 +1,4 @@
+import { translate } from '../../i18n/locale.js';
 // Presentation data stays separate from the portable terrain graph.
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const finitePoint = value => record(value) && Number.isFinite(value.x) && Number.isFinite(value.y);
@@ -66,7 +67,7 @@ export function pasteSelection(graph, editor, clipboard, offset = { x: 36, y: 36
   clipboard.nodes.forEach(n => {
     const p = clipboard.positions[n.id] || { x: 0, y: 0 };
     nodePositions[ids.get(n.id)] = { x: p.x + offset.x, y: p.y + offset.y };
-    if (clipboard.labels[n.id]) nodeLabels[ids.get(n.id)] = `${clipboard.labels[n.id]} copy`;
+    if (clipboard.labels[n.id]) nodeLabels[ids.get(n.id)] = translate("{0} copy", { 0: clipboard.labels[n.id] });
   });
   return {
     graph: { ...graph, nodes: [...graph.nodes, ...clipboard.nodes.map(n => ({ ...n, id: ids.get(n.id), params: structuredClone(n.params) }))], edges: [...graph.edges, ...clipboard.edges.map(e => ({ ...e, id: newEditorId('edge'), source: ids.get(e.source), target: ids.get(e.target) }))] },
@@ -80,7 +81,7 @@ export function groupSelection(graph, editor, ids) {
   if (!nodes.length) return null;
   const points = nodes.map(n => nodePosition(editor, n, graph.nodes.indexOf(n)));
   const x = Math.min(...points.map(p => p.x)) - 28, y = Math.min(...points.map(p => p.y)) - 48;
-  const group = { id: newEditorId('group'), label: 'Planet section', color: '#788392', nodeIds: nodes.map(n => n.id), position: { x, y }, width: Math.max(...points.map(p => p.x)) + 216 - x, height: Math.max(...points.map(p => p.y)) + 118 - y, collapsed: false };
+  const group = { id: newEditorId('group'), label: translate('Planet section'), color: '#788392', nodeIds: nodes.map(n => n.id), position: { x, y }, width: Math.max(...points.map(p => p.x)) + 216 - x, height: Math.max(...points.map(p => p.y)) + 118 - y, collapsed: false };
   const selected = new Set(group.nodeIds);
   return { ...editor, groups: [...(editor.groups || []).map(g => ({ ...g, nodeIds: g.nodeIds.filter(id => !selected.has(id)) })).filter(g => g.nodeIds.length), group] };
 }

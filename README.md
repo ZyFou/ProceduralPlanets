@@ -142,6 +142,17 @@ npm run dev                    # studio on http://localhost:7071 + API on :7070
 `npm run dev:web` or `npm run dev:api` to run only one. If the API cannot start
 (no database), the studio keeps running in local-only mode.
 
+### Interface language
+
+Use the **EN / FR** selector in the home page, studio or exploration header to
+switch the whole interface between English and French. The first visit follows
+the browser language; your choice is saved on this device and shared across
+browser tabs. Changing language preserves the open project and renderer.
+Settings, templates, and height nodes can be searched using translated labels;
+English keywords and parameter identifiers remain searchable. User-authored
+names, descriptions, project data and code exports keep their original content.
+Translations live in `src/i18n/fr.js`; English source messages are the keys.
+
 ## Infinite exploration
 
 Open **Explore** on the studio home page, or **View → Explore infinite worlds**

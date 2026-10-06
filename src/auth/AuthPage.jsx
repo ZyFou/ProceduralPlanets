@@ -1,3 +1,5 @@
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import React, { useState } from 'react';
 import { ArrowLeft, LogIn, UserPlus } from 'lucide-react';
 import { APP_NAME } from '../constants/app.js';
@@ -8,6 +10,7 @@ import { usePopup } from '../components/ui/PopupProvider.jsx';
 const initialFields = { email: '', username: '', identifier: '', password: '', confirmPassword: '' };
 
 export default function AuthPage({ mode, onBack, onSwitch, onSuccess }) {
+  useLocale();
   const isRegister = mode === 'register';
   const { login, register } = useAuth();
   const { showPopup } = usePopup();
@@ -26,7 +29,7 @@ export default function AuthPage({ mode, onBack, onSwitch, onSuccess }) {
     if (busy) return;
     const clientErrors = {};
     if (isRegister && fields.password !== fields.confirmPassword) {
-      clientErrors.confirmPassword = 'Passwords do not match.';
+      clientErrors.confirmPassword = translate('Passwords do not match.');
     }
     if (Object.keys(clientErrors).length) {
       setFieldErrors(clientErrors);
@@ -43,7 +46,7 @@ export default function AuthPage({ mode, onBack, onSwitch, onSuccess }) {
       }
       onSuccess();
     } catch (error) {
-      showPopup(error.message || 'The request could not be completed.', { type: 'error', title: isRegister ? 'Account not created' : 'Sign-in failed' });
+      showPopup(error.message || translate('The request could not be completed.'), { type: 'error', title: isRegister ? translate('Account not created') : translate('Sign-in failed') });
       setFieldErrors(error.fields ?? {});
     } finally {
       setBusy(false);
@@ -52,7 +55,7 @@ export default function AuthPage({ mode, onBack, onSwitch, onSuccess }) {
 
   const input = (name, label, properties = {}) => (
     <label className={`auth-field${fieldErrors[name] ? ' has-error' : ''}`}>
-      <span>{label}</span>
+      <span>{translate(label)}</span>
       <input
         name={name}
         value={fields[name]}
@@ -62,54 +65,54 @@ export default function AuthPage({ mode, onBack, onSwitch, onSuccess }) {
         disabled={busy}
         {...properties}
       />
-      {fieldErrors[name] && <small id={`${name}-error`}>{fieldErrors[name]}</small>}
+      {fieldErrors[name] && <small id={`${name}-error`}>{translate(fieldErrors[name])}</small>}
     </label>
   );
 
   return (
     <section className="auth-page" aria-labelledby="auth-title">
-      <button type="button" className="auth-back" onClick={onBack}><ArrowLeft size={14} /> Back to projects</button>
+      <button type="button" className="auth-back" onClick={onBack}><ArrowLeft size={14} /> {translate("Back to projects")}</button>
       <div className="auth-card">
         <header>
           <span className="auth-mark"><Logo size={25} /></span>
           <div>
             <small>{APP_NAME}</small>
-            <h1 id="auth-title">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
-            <p>{isRegister ? 'Keep your identity ready for cloud projects and sharing.' : 'Sign in to access your account. Local projects remain on this device.'}</p>
+            <h1 id="auth-title">{isRegister ? translate('Create your account') : translate('Welcome back')}</h1>
+            <p>{isRegister ? translate('Keep your identity ready for cloud projects and sharing.') : translate('Sign in to access your account. Local projects remain on this device.')}</p>
           </div>
         </header>
 
         <form onSubmit={submit} noValidate>
-          {isRegister && input('username', 'Username', {
+          {isRegister && input('username', translate('Username'), {
             type: 'text', autoComplete: 'username', minLength: 3, maxLength: 32,
             pattern: '[a-zA-Z0-9_]+', placeholder: 'planet_creator', required: true,
           })}
           {isRegister
-            ? input('email', 'Email', { type: 'email', autoComplete: 'email', maxLength: 320, placeholder: 'you@example.com', required: true })
-            : input('identifier', 'Email or username', { type: 'text', autoComplete: 'username', maxLength: 320, placeholder: 'you@example.com', required: true })}
-          {input('password', 'Password', {
+            ? input('email', translate('Email'), { type: 'email', autoComplete: 'email', maxLength: 320, placeholder: 'you@example.com', required: true })
+            : input('identifier', translate('Email or username'), { type: 'text', autoComplete: 'username', maxLength: 320, placeholder: 'you@example.com', required: true })}
+          {input('password', translate('Password'), {
             type: 'password', autoComplete: isRegister ? 'new-password' : 'current-password',
             minLength: isRegister ? 10 : undefined, maxLength: 128, placeholder: '••••••••••', required: true,
           })}
-          {isRegister && input('confirmPassword', 'Confirm password', {
+          {isRegister && input('confirmPassword', translate('Confirm password'), {
             type: 'password', autoComplete: 'new-password', minLength: 10, maxLength: 128,
             placeholder: '••••••••••', required: true,
           })}
 
           <button type="submit" className="lp-primary auth-submit" disabled={busy}>
             {isRegister ? <UserPlus size={15} /> : <LogIn size={15} />}
-            {busy ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}
+            {busy ? translate('Please wait…') : isRegister ? translate('Create account') : translate('Sign in')}
           </button>
         </form>
 
         <footer>
-          <span>{isRegister ? 'Already have an account?' : 'New to Procedural Planets?'}</span>
+          <span>{isRegister ? translate('Already have an account?') : translate('New to Procedural Planets?')}</span>
           <button type="button" className="lp-link" onClick={() => onSwitch(isRegister ? 'login' : 'register')}>
-            {isRegister ? 'Sign in' : 'Create an account'}
+            {isRegister ? translate('Sign in') : translate('Create an account')}
           </button>
         </footer>
       </div>
-      <p className="auth-local-note">An account is optional. You can keep creating and saving projects locally.</p>
+      <p className="auth-local-note">{translate("An account is optional. You can keep creating and saving projects locally.")}</p>
     </section>
   );
 }
