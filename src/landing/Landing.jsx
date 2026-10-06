@@ -19,6 +19,8 @@ import {
   LogIn,
   LogOut,
   Mail,
+  Menu,
+  Mountain,
   MoreVertical,
   Orbit,
   Pencil,
@@ -34,7 +36,7 @@ import {
   Waves,
   X,
 } from 'lucide-react';
-import { APP_NAME, APP_VERSION, AUTHOR_EMAIL, AUTHOR_PORTFOLIO_URL, GITHUB_REPO_URL } from '../constants/app.js';
+import { APP_NAME, APP_VERSION, AUTHOR_EMAIL, AUTHOR_PORTFOLIO_URL, GITHUB_REPO_URL, PROCEDURAL_TERRAINS_URL } from '../constants/app.js';
 import { Logo } from './shared.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { avatarUrl } from '../auth/authApi.js';
@@ -92,6 +94,9 @@ export default function Landing({
   const [query, setQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(initialCreateOpen);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const headerRef = useRef(null);
+  const navigationToggleRef = useRef(null);
   const [menuFor, setMenuFor] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -113,6 +118,7 @@ export default function Landing({
   }, []);
 
   const showView = (next) => {
+    setNavigationOpen(false);
     setQuery('');
     setMenuFor(null);
     if (HASH_VIEWS.has(next)) {
@@ -131,6 +137,31 @@ export default function Landing({
     if (view === 'profile' && !user) showView('login');
     if (view === 'admin' && user?.role !== 'admin') showView(user ? 'home' : 'login');
   }, [view, authStatus, user]);
+
+  useEffect(() => { setNavigationOpen(false); }, [view, exiting]);
+
+  useEffect(() => {
+    if (!navigationOpen) return undefined;
+    headerRef.current?.querySelector('.lp-nav-links button')?.focus();
+    const closeOutside = (event) => {
+      if (!headerRef.current?.contains(event.target)) setNavigationOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      setNavigationOpen(false);
+      navigationToggleRef.current?.focus();
+    };
+    const desktop = window.matchMedia('(min-width: 1400px)');
+    const closeOnDesktop = () => { if (desktop.matches) setNavigationOpen(false); };
+    window.addEventListener('pointerdown', closeOutside);
+    window.addEventListener('keydown', closeOnEscape);
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => {
+      window.removeEventListener('pointerdown', closeOutside);
+      window.removeEventListener('keydown', closeOnEscape);
+      desktop.removeEventListener('change', closeOnDesktop);
+    };
+  }, [navigationOpen]);
 
   // ---- cloud state for the recent-project badges
   useEffect(() => {
@@ -322,36 +353,53 @@ export default function Landing({
         </div>
       )}
 
-      <header className="lp-nav">
+      <header className="lp-nav" ref={headerRef} onBlur={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setNavigationOpen(false);
+      }}>
         <button type="button" className="lp-brand" onClick={goHome} title={translate("Return to home")}>
           <Logo size={24} /><strong>{APP_NAME}</strong>
         </button>
-        <nav className="lp-nav-links" aria-label={translate("Main navigation")}>
-          <button type="button" onClick={onExplore}>{translate("Explore")}</button>
-          <button type="button" className={view === 'projects' ? 'active' : ''} onClick={() => showView('projects')}>{translate("Projects")}</button>
-          <button type="button" className={view === 'templates' ? 'active' : ''} onClick={() => openTemplates('Planet')}>{translate("Templates")}</button>
-          <button type="button" className={view === 'community' ? 'active' : ''} onClick={() => showView('community')}>{translate("Community")}</button>
-          <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Docs")}</a>
-          <a href="https://www.npmjs.com/package/procedural-planets" target="_blank" rel="noopener noreferrer">{translate("Package")}</a>
-        </nav>
+        <div id="landing-navigation" className={`lp-nav-panel${navigationOpen ? ' is-open' : ''}`} onClick={(event) => {
+          if (!event.target.closest('button, a')) return;
+          setNavigationOpen(false);
+          if (navigationOpen) navigationToggleRef.current?.focus();
+        }}>
+          <nav className="lp-nav-links" aria-label={translate("Main navigation")}>
+            <button type="button" onClick={onExplore}>{translate("Explore")}</button>
+            <button type="button" className={view === 'projects' ? 'active' : ''} onClick={() => showView('projects')}>{translate("Projects")}</button>
+            <button type="button" className={view === 'templates' ? 'active' : ''} onClick={() => openTemplates('Planet')}>{translate("Templates")}</button>
+            <button type="button" className={view === 'community' ? 'active' : ''} onClick={() => showView('community')}>{translate("Community")}</button>
+            <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Docs")}</a>
+            <a href="https://www.npmjs.com/package/procedural-planets" target="_blank" rel="noopener noreferrer">{translate("Package")}</a>
+            <a href={PROCEDURAL_TERRAINS_URL} target="_blank" rel="noopener noreferrer">Procedural Terrains <ExternalLink size={12} aria-hidden="true" /></a>
+          </nav>
+          <div className="lp-nav-account">
+            <button type="button" className="lp-nav-credits" onClick={() => setCreditsOpen(true)} aria-label={translate("Open credits and links")} title={translate("Credits and links")}><CircleHelp size={17} /></button>
+            {user ? <>
+              {user.role === 'admin' && (
+                <button type="button" className={`lp-admin-chip${view === 'admin' ? ' active' : ''}`} title={translate("Open administration")} onClick={() => showView('admin')}>
+                  <ShieldCheck size={14} /><span>{translate("Admin")}</span>
+                </button>
+              )}
+              <button type="button" className={`lp-account-chip${view === 'profile' ? ' active' : ''}`} title={translate("Open your profile")} onClick={() => showView('profile')}>
+                {avatarUrl(user) ? <img src={avatarUrl(user)} alt="" /> : <UserRound size={14} />}
+                <span>{user.username}</span>
+              </button>
+              <button type="button" className="lp-secondary sm lp-auth-logout" onClick={async () => { await logout(); goHome(); }}><LogOut size={13} /> <span>{translate("Logout")}</span></button>
+            </> : <>
+              <button type="button" className="lp-secondary sm lp-auth-login" onClick={() => showView('login')} disabled={authStatus === 'loading'}><LogIn size={13} /> <span>{translate("Sign in")}</span></button>
+              <button type="button" className="lp-primary sm lp-auth-register" onClick={() => showView('register')} disabled={authStatus === 'loading'}><UserPlus size={13} /> <span>{translate("Create account")}</span></button>
+            </>}
+          </div>
+        </div>
         <div className="lp-nav-actions">
           <LanguageSwitcher />
-          <button type="button" className="lp-nav-credits" onClick={() => setCreditsOpen(true)} aria-label={translate("Open credits and links")} title={translate("Credits and links")}><CircleHelp size={17} /></button>
-          {user ? <>
-            {user.role === 'admin' && (
-              <button type="button" className={`lp-admin-chip${view === 'admin' ? ' active' : ''}`} title={translate("Open administration")} onClick={() => showView('admin')}>
-                <ShieldCheck size={14} /><span>{translate("Admin")}</span>
-              </button>
-            )}
-            <button type="button" className={`lp-account-chip${view === 'profile' ? ' active' : ''}`} title={translate("Open your profile")} onClick={() => showView('profile')}>
-              {avatarUrl(user) ? <img src={avatarUrl(user)} alt="" /> : <UserRound size={14} />}
-              <span>{user.username}</span>
-            </button>
-            <button type="button" className="lp-secondary sm lp-auth-logout" onClick={async () => { await logout(); goHome(); }}><LogOut size={13} /> <span>{translate("Logout")}</span></button>
-          </> : <>
-            <button type="button" className="lp-secondary sm lp-auth-login" onClick={() => showView('login')} disabled={authStatus === 'loading'}><LogIn size={13} /> <span>{translate("Sign in")}</span></button>
-            <button type="button" className="lp-primary sm lp-auth-register" onClick={() => showView('register')} disabled={authStatus === 'loading'}><UserPlus size={13} /> <span>{translate("Create account")}</span></button>
-          </>}
+          <button type="button" className="lp-nav-toggle" ref={navigationToggleRef}
+            aria-expanded={navigationOpen} aria-controls="landing-navigation"
+            aria-label={translate(navigationOpen ? 'Close navigation' : 'Open navigation')}
+            onClick={() => setNavigationOpen((open) => !open)}>
+            {navigationOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+          </button>
         </div>
       </header>
 
@@ -442,16 +490,30 @@ export default function Landing({
           </div>
 
           <footer className="lp-footer">
-            <div className="lp-footer-socials">
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open GitHub repository")}><Github size={17} /></a>
-              <a href={AUTHOR_PORTFOLIO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open portfolio")}><Globe2 size={16} /></a>
-              <a href={`mailto:${AUTHOR_EMAIL}`} aria-label={translate("Email {0}", { 0: AUTHOR_EMAIL })}><Mail size={16} /></a>
+            <div className="lp-footer-main">
+              <div className="lp-footer-identity">
+                <button type="button" className="lp-footer-brand" onClick={goHome} title={translate("Return to home")}>
+                  <Logo size={20} /><strong>{APP_NAME}</strong>
+                </button>
+                <span>© {new Date().getFullYear()} {translate("Open source software.")}</span>
+              </div>
+              <div className="lp-footer-socials">
+                <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open GitHub repository")} title="GitHub"><Github size={17} aria-hidden="true" /></a>
+                <a href={AUTHOR_PORTFOLIO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open portfolio")} title={translate("Open portfolio")}><Globe2 size={17} aria-hidden="true" /></a>
+                <a href={`mailto:${AUTHOR_EMAIL}`} aria-label={translate("Email {0}", { 0: AUTHOR_EMAIL })} title={translate("Email")}><Mail size={17} aria-hidden="true" /></a>
+              </div>
             </div>
-            <div className="lp-footer-meta">
-              <span>{'©'} {new Date().getFullYear()} {APP_NAME}{translate(". Open source software.")}</span>
-              <button type="button" className="lp-link" onClick={() => showView('confidentiality')}>{translate("Confidentiality")}</button>
-              <a className="lp-link" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Source")} <ExternalLink size={11} /></a>
-            </div>
+            <nav className="lp-footer-links" aria-label={translate("Footer navigation")}>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Docs")}</a>
+              <a href="https://www.npmjs.com/package/procedural-planets" target="_blank" rel="noopener noreferrer">{translate("Package")}</a>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Source")} <ExternalLink size={12} aria-hidden="true" /></a>
+              <button type="button" onClick={() => showView('confidentiality')}>{translate("Confidentiality")}</button>
+            </nav>
+            <a className="lp-footer-related" href={PROCEDURAL_TERRAINS_URL} target="_blank" rel="noopener noreferrer">
+              <Mountain size={22} aria-hidden="true" />
+              <span><strong>Procedural Terrains</strong><small>{translate("Explore procedural landscapes")}</small></span>
+              <ExternalLink size={14} aria-hidden="true" />
+            </a>
           </footer>
         </main>
       </div>

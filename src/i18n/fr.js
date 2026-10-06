@@ -1,5 +1,10 @@
 // French UI messages. English source strings are the stable message keys.
 export default {
+  "Open navigation": "Ouvrir le menu de navigation",
+  "Close navigation": "Fermer le menu de navigation",
+  "Footer navigation": "Navigation de bas de page",
+  "Explore procedural landscapes": "Explorez des paysages procéduraux",
+  "Open source software.": "Logiciel libre.",
   "Resize settings height": "Redimensionner la hauteur des réglages",
   "{0}% of the workspace": "{0} % de l’espace de travail",
   "Drag to resize settings · Double-click to reset": "Glisser pour redimensionner · Double-cliquer pour réinitialiser",

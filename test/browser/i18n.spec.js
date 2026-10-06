@@ -24,21 +24,27 @@ async function prepare(page, { user = null } = {}) {
   await expect(page.locator('#pp-loader')).toHaveCount(0, { timeout: 90000 });
 }
 
+async function clickNavigation(page, target) {
+  const toggle = page.locator('.lp-nav-toggle');
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+  await target.click();
+}
+
 test('language persists across public pages and reload, including validation messages and mobile navigation', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await prepare(page);
   await page.locator('.lp-nav .language-switcher select').selectOption('fr');
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
   await expect(page.locator('.lp-hero h1')).toContainText('des mondes saisissants');
-  await page.getByRole('button', { name: 'Modèles', exact: true }).click();
+  await clickNavigation(page, page.getByRole('button', { name: 'Modèles', exact: true }));
   await expect(page.getByRole('heading', { name: 'Modèles de planètes' })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Rechercher des modèles' }).fill('gelé');
   await expect(page.locator('.lp-card-info strong')).toHaveText(['Monde gelé']);
-  await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await clickNavigation(page, page.getByRole('button', { name: 'Se connecter', exact: true }));
   await page.locator('.auth-submit').click();
   await expect(page.getByText('Saisissez votre adresse e-mail ou votre nom d’utilisateur.')).toBeVisible();
   await expect(page.getByText('Vérifiez les champs indiqués.')).toBeVisible();
-  await page.getByRole('button', { name: 'Communauté', exact: true }).click();
+  await clickNavigation(page, page.getByRole('button', { name: 'Communauté', exact: true }));
   await expect(page.getByRole('heading', { name: 'Mondes de la communauté' })).toBeVisible();
   await page.getByRole('button', { name: 'Confidentialité', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Confidentialité et vie privée' })).toBeVisible();
@@ -87,18 +93,84 @@ test('studio switches without replacing its canvas or editing project data; Fren
 });
 
 test('French applies to profile, administration and exploration', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => localStorage.setItem('procedural-planets:language', 'fr'));
   await prepare(page, { user: { id: 'admin-test', username: 'admin_test', displayName: 'Admin', role: 'admin', defaultProjectVisibility: 'private' } });
-  await page.getByTitle('Ouvrir votre profil').click();
+  await clickNavigation(page, page.getByTitle('Ouvrir votre profil'));
   await expect(page.getByRole('heading', { name: 'Votre profil' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enregistrer le profil' })).toBeVisible();
-  await page.getByTitle('Ouvrir l’administration').click();
+  await clickNavigation(page, page.getByTitle('Ouvrir l’administration'));
   await expect(page.getByRole('heading', { name: 'Vue d’ensemble' })).toBeVisible();
   await expect(page.getByText('Le service d’administration n’a pas répondu.')).toBeVisible();
-  await page.getByRole('button', { name: 'Explorer', exact: true }).click();
+  await clickNavigation(page, page.getByRole('button', { name: 'Explorer', exact: true }));
   await expect(page.getByRole('button', { name: 'Retour au studio' })).toBeVisible();
   await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Destinations' })).toBeVisible();
   await page.getByRole('button', { name: 'Retour au studio' }).click();
   await expect(page.getByRole('heading', { name: 'Vue d’ensemble' })).toBeVisible();
+});
+
+test('responsive header exposes every link and footer stays usable in both languages', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  await prepare(page);
+  const header = page.locator('.lp-nav');
+  const toggle = page.locator('.lp-nav-toggle');
+  const panel = page.locator('#landing-navigation');
+  const footer = page.locator('.lp-footer');
+  for (const locale of ['en', 'fr']) {
+    await header.locator('select').selectOption(locale);
+    for (const width of [1440, 1024, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const mobile = width < 1400;
+      if (mobile) {
+        await expect(toggle).toBeVisible();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(panel).toBeHidden();
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(panel.locator('.lp-nav-links button').first()).toBeFocused();
+        await page.keyboard.press('Tab');
+        await expect(panel.locator('.lp-nav-links button').nth(1)).toBeFocused();
+      } else await expect(toggle).toBeHidden();
+      await expect(panel.locator('.lp-nav-links button')).toHaveCount(4);
+      for (const link of await panel.locator('.lp-nav-links button, .lp-nav-links a').all()) await expect(link).toBeVisible();
+      await expect(panel.getByRole('button', { name: locale === 'fr' ? 'Se connecter' : 'Sign in', exact: true })).toBeVisible();
+      await expect(panel.getByRole('button', { name: locale === 'fr' ? 'Créer un compte' : 'Create account', exact: true })).toBeVisible();
+      await expect(panel.getByRole('link', { name: 'Procedural Terrains' })).toHaveAttribute('href', 'https://procedural-terrains.com');
+      expect(await header.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      if (mobile) {
+        if (width === 390 && locale === 'fr') await page.screenshot({ path: testInfo.outputPath('navigation-fr-mobile.png') });
+        await page.keyboard.press('Escape');
+        await expect(panel).toBeHidden();
+        await expect(toggle).toBeFocused();
+        await toggle.click();
+        await panel.getByRole('button', { name: locale === 'fr' ? 'Projets' : 'Projects', exact: true }).click();
+        await expect(panel).toBeHidden();
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await toggle.click();
+        await page.mouse.click(4, 500);
+        await expect(panel).toBeHidden();
+      }
+      const terrainLink = footer.getByRole('link', { name: /Procedural Terrains/ });
+      await terrainLink.scrollIntoViewIfNeeded();
+      await expect(terrainLink).toBeInViewport();
+      await expect(terrainLink).toHaveAttribute('href', 'https://procedural-terrains.com');
+      await expect(terrainLink).toHaveAttribute('target', '_blank');
+      await expect(terrainLink).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(await footer.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      expect(await page.locator('.lp-scroll').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      for (const link of await footer.locator('.lp-footer-links > *, .lp-footer-socials a').all()) {
+        const bounds = await link.boundingBox();
+        expect(bounds.height).toBeGreaterThanOrEqual(44);
+      }
+      if (width === 390 && locale === 'fr') await page.screenshot({ path: testInfo.outputPath('footer-fr-mobile.png') });
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 360 });
+  await toggle.click();
+  await expect(panel.getByRole('button', { name: 'Créer un compte', exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Créer un compte', exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Créer votre compte', exact: true })).toBeVisible();
 });
