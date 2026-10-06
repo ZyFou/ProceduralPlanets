@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Camera, Crosshair, Download, Navigation, Orbit, Settings2, X } from 'lucide-react';
 import { Explorer } from './Explorer.js';
+import SurfaceWalkControls from '../components/SurfaceWalkControls.jsx';
 import { AU, LIGHT_YEAR, MIN_SPEED, formatDistance, formatSpeed, length, relative } from './world.js';
 import { clampSpeed } from './flight.js';
 import { DEFAULT_SETTINGS, QUALITY_PRESETS, normalizeSettings, readSettings, writeSettings } from './settings.js';
@@ -83,17 +84,18 @@ export default function Exploration({ onExit }) {
     </header>
     <div className="exploration-view">
       <canvas key={seed} ref={canvasRef} aria-label="Free flight view. Click to capture the mouse. Double-click a planet to teleport." />
+      {!photo && <SurfaceWalkControls getWalker={() => explorerRef.current?.walker} onToggle={() => { const ok = explorerRef.current?.toggleWalk(); if (ok) setPanel(null); return ok; }} />}
       {!photo && <>
         <div className="exploration-reticle" aria-hidden>+</div>
-        {hud?.marker && <div className="exploration-marker" style={{ left: `${hud.marker.x}%`, top: `${hud.marker.y}%` }}><Crosshair size={22} /><span>{hud.target.name}</span></div>}
+        {settings.showTargetMarker && hud?.marker && <div className="exploration-marker" style={{ left: `${hud.marker.x}%`, top: `${hud.marker.y}%` }}><Crosshair size={22} /><span>{hud.target.name}</span></div>}
         <section className="exploration-telemetry" aria-label="Flight instruments">
-          <span className="exploration-eyebrow">FREE FLIGHT</span><strong>{formatSpeed(hud?.speed ?? 0)}</strong>
+          <span className="exploration-eyebrow">{hud?.walking ? 'SURFACE WALK' : 'FREE FLIGHT'}</span><strong>{formatSpeed(hud?.speed ?? 0)}</strong>
           <span>Selected {formatSpeed(speed)} {hud?.limited && '· proximity brake'} {hud?.blocked && '· obstacle'} {hud?.coordinateLimited && '· coordinate boundary'}</span>
           {hud?.target && <p>{hud.target.name}<br /><b>{formatDistance(hud.distance)}</b> to surface{hud.approaching && ' · approaching'}</p>}
           <small>{loading ? 'Preparing nearby worlds…' : 'Ready to explore'} · P photo</small>
         </section>
       </>}
-      {!locked && !error && !photo && <button className="exploration-fly" type="button" onClick={capture}><Navigation size={16} /> Click to fly <span>Esc releases the mouse</span></button>}
+      {!locked && !error && !photo && !hud?.walking && <button className="exploration-fly" type="button" onClick={capture}><Navigation size={16} /> Click to fly <span>Esc releases the mouse</span></button>}
       {error && <div className="exploration-error" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label="Dismiss error"><X size={16} /></button></div>}
       {photo && <section className="exploration-photo-bar" aria-label="Photo controls">
         <span><Camera size={16} /> Photo <small>Time frozen · click view to reframe · H hides controls · Esc exits</small></span>
@@ -137,8 +139,9 @@ export default function Exploration({ onExit }) {
         {panel === 'settings' && <>
           <p className="exploration-help">Saved on this device and applied to loaded and future worlds.</p>
           <div className="exploration-presets">{Object.entries(QUALITY_PRESETS).map(([name, patch]) => <button key={name} type="button" onClick={() => update(patch)}>{name[0].toUpperCase() + name.slice(1)}</button>)}<button type="button" onClick={() => setSettings({ ...DEFAULT_SETTINGS })}>Reset</button></div>
-          {[['renderScale', 'Render scale', .5, 2, .25], ['maxDepth', 'Terrain detail', 6, 11, 1], ['cloudSteps', 'Cloud samples', 8, 96, 8], ['cloudResolution', 'Cloud resolution', .25, 1, .25], ['fov', 'Field of view', 30, 110, 1], ['exposure', 'Exposure', .25, 4, .05]].map(([key, label, min, max, step]) => <div className="exploration-setting" key={key}><label htmlFor={`exploration-${key}`}>{label}<b>{settings[key]}</b></label><input id={`exploration-${key}`} type="range" min={min} max={max} step={step} value={settings[key]} onChange={e => update({ [key]: Number(e.target.value) })} /></div>)}
+          {[['renderScale', 'Render scale', .5, 2, .25], ['maxDepth', 'Terrain detail', 6, 11, 1], ['cloudSteps', 'Cloud samples', 8, 96, 8], ['cloudResolution', 'Cloud resolution', .25, 1, .25], ['cloudDetailScale', 'Billow size', .3, 3, .05], ['fov', 'Field of view', 30, 110, 1], ['exposure', 'Exposure', .25, 4, .05]].map(([key, label, min, max, step]) => <div className="exploration-setting" key={key}><label htmlFor={`exploration-${key}`}>{label}<b>{settings[key]}</b></label><input id={`exploration-${key}`} type="range" min={min} max={max} step={step} value={settings[key]} onChange={e => update({ [key]: Number(e.target.value) })} /></div>)}
           {['clouds', 'atmosphere', 'bloom'].map(key => <label className="exploration-toggle" key={key}><input type="checkbox" checked={settings[key]} onChange={e => update({ [key]: e.target.checked })} />{key[0].toUpperCase() + key.slice(1)}</label>)}
+          <label className="exploration-toggle"><input type="checkbox" checked={settings.showTargetMarker} onChange={e => update({ showTargetMarker: e.target.checked })} />Show target marker</label>
           <small className="exploration-help">{hud?.loaded ?? 0} loaded bodies · {hud?.systems.length ?? 0} systems · {hud?.queued ?? 0} waiting<br />Sector {hud ? Object.values(hud.position.sector).join(' / ') : '0 / 0 / 0'}<br />Higher settings use more GPU memory and time. Planet-specific atmosphere and cloud limits still apply.</small>
           {notice && <small role="status">{notice}</small>}
         </>}

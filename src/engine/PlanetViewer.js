@@ -114,7 +114,7 @@ export class PlanetViewer {
    */
   async prepare(options = {}) {
     this._applyControlLimits();
-    this.controls?.update();
+    if (!this.walker?.active) this.controls?.update();
     await this.planetRenderer.prepare(this.planet, this.camera, options);
     for (let i = 0; i < 240 && !this._disposed; i++) {
       this._renderFrame(0);
@@ -221,7 +221,7 @@ export class PlanetViewer {
   /** One manual frame (no clock advance) — e.g. when rAF is frozen. */
   renderOnce() {
     this._resize();
-    this.controls?.update();
+    if (!this.walker?.active) this.controls?.update();
     this._renderFrame(0);
   }
 
@@ -267,7 +267,7 @@ export class PlanetViewer {
     if (this._disposed) return;
     const dt = Math.min(this._clock.getDelta(), 0.05);
     this._applyControlLimits();
-    this.controls?.update();
+    if (!this.walker?.active) this.controls?.update();
     this._resize();
     this._renderFrame(dt);
 

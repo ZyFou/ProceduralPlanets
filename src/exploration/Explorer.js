@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SurfaceWalker } from '../engine/SurfaceWalker.js';
 import { Planet, PlanetRenderer } from 'procedural-planets';
 import { Flight, bindFlightInput } from './flight.js';
 import { SystemStream } from './streaming.js';
@@ -58,7 +59,18 @@ export class Explorer {
       },
     });
     this.stream.discover(this.flight.position, first.id);
+    this.walker = new SurfaceWalker(this.camera, canvas, active => {
+      this.flight.clear();
+      if (!active && this.walkOrigin) {
+        this.flight.position = this.walkOrigin;
+        this.camera.position.set(0, 0, 0);
+        this.camera.up.set(0, 1, 0);
+        this.flight.look.setFromQuaternion(this.camera.quaternion, 'YXZ');
+        this.walkBody = null;
+      }
+    });
     this.unbind = bindFlightInput(canvas, this.flight, {
+      enabled: () => !this.walker.active,
       onLock: callbacks.onLock, onSpeed: callbacks.onSpeed, onError: callbacks.onError,
       onPick: event => this.pick(event), onTeleport: body => { if (!this.photo) this.teleport(body); },
     });
@@ -87,6 +99,25 @@ export class Explorer {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
+  toggleWalk() {
+    if (this.walker.active) { this.walker.exit(); return true; }
+    const body = this.pick();
+    const resource = body && this.stream.entries.get(body.id)?.resource;
+    if (!resource || resource.params.mode !== 'planet') return false;
+    const v = relative(body.position, this.flight.position);
+    resource.position.set(v.x, v.y, v.z);
+    this.walkOrigin = this.flight.position;
+    this.walkBody = body;
+    // Exploration world units are kilometres; keep eye height and pace in metres.
+    const scale = body.radius / resource.params.radius;
+    this.walker.eyeHeight = .0017 / scale;
+    this.walker.speed = .0035 / scale;
+    if (!this.walker.enter(resource)) { this.walkBody = null; return false; }
+    this.flight.position = translate(body.position, this.walker.localPosition.clone().multiplyScalar(body.radius / resource.params.radius));
+    this.camera.position.set(0, 0, 0);
+    this.nextDiscovery = this.nextHud = 0;
+    return true;
+  }
   setSettings(settings) {
     this.settings = normalizeSettings(settings);
     this.flight.layout = this.settings.layout;
@@ -105,6 +136,7 @@ export class Explorer {
   setPhoto(enabled) {
     this.photo = enabled;
     this.flight.clear();
+    this.walker.clear();
     if (this.canvas.ownerDocument.pointerLockElement === this.canvas) this.canvas.ownerDocument.exitPointerLock();
   }
   async takePhoto(scale = 1) {
@@ -123,6 +155,7 @@ export class Explorer {
     }
   }
   visitSolarSystem() {
+    this.walker.exit();
     const home = generateSolarSystem();
     const earth = home.bodies.find(body => body.name === 'Earth');
     const direction = relative(home.star.position, earth.position);
@@ -131,10 +164,11 @@ export class Explorer {
     this.flight.clear(); this.flight.position = translate(earth.position, offset);
     this.select(earth); this.stream.discover(this.flight.position, earth.id);
   }
-  select(body) { this.target = body; this.flight.approaching = null; this.flight.aim(body); this.nextDiscovery = 0; }
-  approach() { if (this.target) this.flight.approaching = this.target; }
+  select(body) { this.walker.exit(); this.target = body; this.flight.approaching = null; this.flight.aim(body); this.nextDiscovery = 0; }
+  approach() { this.walker.exit(); if (this.target) this.flight.approaching = this.target; }
   teleport(body) {
     if (!body || this.disposed) return;
+    this.walker.exit();
     const v = relative(this.flight.position, body.position);
     const offset = new THREE.Vector3(v.x, v.y, v.z);
     if (!offset.lengthSq()) offset.set(0, 0, 1).applyQuaternion(this.camera.quaternion);
@@ -146,7 +180,7 @@ export class Explorer {
     this.stream.discover(this.flight.position, body.id);
     this.nextLoad = this.nextHud = 0;
   }
-  pause() { this.running = false; this.flight.clear(); this.renderer.setAnimationLoop(null); }
+  pause() { this.running = false; this.flight.clear(); this.walker.clear(); this.renderer.setAnimationLoop(null); }
   pick(event) {
     const direction = new THREE.Vector3();
     if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
@@ -178,7 +212,16 @@ export class Explorer {
     const now = performance.now();
     const dt = forcedDelta ?? this.clock.getDelta();
     const bodies = this.stream.systems.flatMap(system => system.bodies);
-    if (!document.hidden && !this.capturing) this.flight.step(dt, bodies);
+    if (!document.hidden && !this.capturing) {
+      if (this.walker.active) {
+        const previous = this.flight.position;
+        this.walker.step(this.photo ? 0 : dt);
+        const planet = this.walker.planet;
+        this.flight.position = translate(this.walkBody.position, this.walker.localPosition.clone().multiplyScalar(this.walkBody.radius / planet.params.radius));
+        this.flight.actualSpeed = dt > 0 ? length(relative(this.flight.position, previous)) / dt : 0;
+        this.camera.position.set(0, 0, 0);
+      } else this.flight.step(dt, bodies);
+    }
     if (now >= this.nextDiscovery) {
       this.stream.discover(this.flight.position, this.target?.id);
       this.nextDiscovery = now + 500;
@@ -205,6 +248,7 @@ export class Explorer {
         }
       }
       this.callbacks.onHud?.({
+        walking: this.walker.active,
         coordinateLimited: this.flight.coordinateLimited, speed: this.flight.actualSpeed, limited: this.flight.limited, blocked: this.flight.blocked, position: this.flight.position,
         systems: this.stream.systems, loaded: this.stream.entries.size, queued: this.stream.queue.length,
         pending: this.planets.pending, target: this.target,
@@ -219,6 +263,7 @@ export class Explorer {
     this.disposed = true;
     this.pause();
     this.unbind();
+    this.walker.dispose();
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('webglcontextlost', this.contextLost);
     this.stream.dispose();

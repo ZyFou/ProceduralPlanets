@@ -25,4 +25,4 @@ export { DEFAULT_STAR_BODY } from '../engine/star.js';
 export { PARAM_DOCS } from './paramDocs.js';
 export * from '../engine/graph/index.js';
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';

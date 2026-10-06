@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Vector3 } from 'three';
 import { Planet, createInitialGraph, createNode, createRecipe, GRAPH_FORMAT, GRAPH_VERSION } from '../src/lib/index.js';
+import { PlanetPipeline } from '../src/engine/PlanetPipeline.js';
 
 const direction = new Vector3(1, 2, 3).normalize();
 const constantGraph = (value = 0.75) => ({ format: GRAPH_FORMAT, version: GRAPH_VERSION,
@@ -36,6 +37,26 @@ function fakeRenderer({ ready = () => true, linked = true } = {}) {
 }
 
 describe('Planet node runtime', () => {
+  it('keeps shore foam sampling synchronized with graph edits, paint and procedural octaves', async () => {
+    const planet = own(makePlanet());
+    const pipeline = new PlanetPipeline({});
+    try {
+      const passes = planet._getPasses(pipeline);
+      const composite = passes.compositeMats.planet;
+      const version = composite.version;
+      await planet.setTerrainGraph(constantGraph(.2));
+      expect(planet._getPasses(pipeline)).toBe(passes);
+      for (const [key, value] of Object.entries(planet._terrainProgram.uniforms)) expect(composite.uniforms[key]).toBe(value);
+      expect(composite.version).toBe(version);
+      expect(composite.uniforms.uPaintActive).toBe(planet.uniforms.uPaintActive);
+      expect(composite.uniforms.uPaintFaces).toBe(planet.uniforms.uPaintFaces);
+      await planet.setTerrain({ mode: 'procedural', graph: null });
+      planet.setParam('octaves', 7);
+      planet._getPasses(pipeline);
+      expect(composite.fragmentShader).toContain('#define OCTAVES 7');
+      expect(composite.version).toBeGreaterThan(version);
+    } finally { pipeline.dispose(); }
+  });
   it('recreates its applied shape from constructor, JSON and independent clones', async () => {
     const input = constantGraph();
     const source = own(makePlanet(input));

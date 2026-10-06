@@ -1,6 +1,7 @@
 import { PlanetPaintModeManager } from '../paint/PlanetPaintModeManager.js';
 import { PlanetViewer } from './PlanetViewer.js';
 import { PlanetExporter } from './PlanetExporter.js';
+import { SurfaceWalker } from './SurfaceWalker.js';
 
 // ============================================================================
 // Engine — the studio's viewport: a PlanetViewer plus the studio-specific
@@ -13,10 +14,17 @@ export class Engine extends PlanetViewer {
   constructor({ canvas, callbacks = {} }) {
     super({ canvas, callbacks });
     this.paintMode = new PlanetPaintModeManager({ planet: this.planet, camera: this.camera, domElement: canvas, controls: this.controls, renderer: this.renderer });
+    this.walker = new SurfaceWalker(this.camera, canvas, active => { this.controls.enabled = !active; });
   }
 
-  _renderFrame(delta, options) { this.paintMode?.update(); return super._renderFrame(delta, options); }
-  dispose() { this.paintMode?.dispose(); super.dispose(); }
+  toggleWalk() {
+    if (this.walker.active) { this.walker.exit(); return true; }
+    this.paintMode.disable();
+    return this.walker.enter(this.planet);
+  }
+  frame() { this.walker?.exit(); return super.frame(); }
+  _renderFrame(delta, options) { this.walker?.step(delta); this.paintMode?.update(); return super._renderFrame(delta, options); }
+  dispose() { this.walker?.dispose(); this.paintMode?.dispose(); super.dispose(); }
 
   get params() { return this.planet.params; }
   get uniforms() { return this.planet.uniforms; }

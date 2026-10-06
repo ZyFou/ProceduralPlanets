@@ -11,7 +11,7 @@ function mockExplorer() {
   vi.stubGlobal('window', {devicePixelRatio:1});
   const canvas={clientWidth:1000,clientHeight:600,width:1000,height:600,ownerDocument:{pointerLockElement:null,exitPointerLock:vi.fn()}};
   const renderer={capabilities:{maxTextureSize:4096},ratio:1,getPixelRatio(){return this.ratio},setPixelRatio(v){this.ratio=v},setSize(w,h){canvas.width=Math.floor(w*this.ratio);canvas.height=Math.floor(h*this.ratio)}};
-  const explorer=Object.assign(Object.create(Explorer.prototype),{canvas,renderer,settings:{...DEFAULT_SETTINGS},flight:{clear:vi.fn()},camera:{updateProjectionMatrix:vi.fn()},stream:{entries:new Map()},planets:{release:vi.fn()},disposed:false,capturing:false,frame:vi.fn()});
+  const explorer=Object.assign(Object.create(Explorer.prototype),{canvas,renderer,settings:{...DEFAULT_SETTINGS},walker:{exit:vi.fn(),clear:vi.fn()},flight:{clear:vi.fn()},camera:{updateProjectionMatrix:vi.fn()},stream:{entries:new Map()},planets:{release:vi.fn()},disposed:false,capturing:false,frame:vi.fn()});
   return explorer;
 }
 describe('exploration render settings and photo lifecycle',()=>{
@@ -46,9 +46,10 @@ describe('exploration render settings and photo lifecycle',()=>{
     const e=mockExplorer(),resource=new Planet({preset:'terran',cloudQuality:24,maxDepth:9});
     resource.userData.explorationIntrinsic={cloudsEnabled:true,atmoEnabled:true,gasAtmoStrength:resource.params.gasAtmoStrength,starBloom:resource.params.starBloom};
     e.stream.entries.set('Earth',{resource});
-    e.setSettings({...DEFAULT_SETTINGS,clouds:false,maxDepth:7,cloudSteps:12,layout:'azerty'});
+    e.setSettings({...DEFAULT_SETTINGS,clouds:false,maxDepth:7,cloudSteps:12,cloudDetailScale:1.75,showTargetMarker:false,layout:'azerty'});
     expect(resource.world.opts.maxDepth).toBe(7);expect(resource.uniforms.uCloudShadowStr.value).toBe(0);
     expect(resource.params.cloudQuality).toBe(12);expect(e.flight.layout).toBe('azerty');expect(e.planets.release).toHaveBeenCalledOnce();
+    expect(resource.params.cloudDetailScale).toBe(1.75);expect(e.settings.showTargetMarker).toBe(false);
     e.setSettings(e.settings);expect(e.planets.release).toHaveBeenCalledOnce();
     e.setSettings({...e.settings,clouds:true});expect(resource.params.cloudsEnabled).toBe(true);
     resource.dispose();

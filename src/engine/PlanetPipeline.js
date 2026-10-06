@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL } from './surfaceGLSL.js';
 import { STAR_CORONA_GLSL } from './star.js';
+import { PLANET_PAINT_GLSL } from '../paint/planetPaintGLSL.js';
 
 // ============================================================================
 // PlanetPipeline — deferred, physically based planet rendering.
@@ -296,6 +297,8 @@ uniform mat4 uCamWorld;
 uniform vec3 uCamPos;
 uniform vec2 uViewScale;        // rendered view / allocated scene target
 uniform vec2 uCloudRes;         // cloud pass grid over the whole view
+uniform float uWaterOn;
+uniform float uSeaRadius;
 uniform vec2 uCloudOffset;      // this pass covers the cloud shell's screen rect only: its origin
 uniform float uCloudSteps;
 uniform float uCloudDetail;
@@ -351,6 +354,12 @@ void main() {
   vec3 ro = uCamPos;
   vec3 rd = normalize(wp - ro);
   float sceneT = depth >= 1.0 ? 1e20 : length(wp - ro);
+
+  // The ocean is analytic and absent from tDepth. It still occludes clouds.
+  if (uWaterOn > 0.5) {
+    vec2 water = raySphere(ro, rd, uSeaRadius);
+    if (water.x < water.y && water.y > 0.0) sceneT = min(sceneT, max(water.x, 0.0));
+  }
 
   vec2 tOut = raySphere(ro, rd, uCloudTop);
   if (tOut.x > tOut.y || tOut.y < 0.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
@@ -435,6 +444,7 @@ ${ATMOSPHERE_GLSL}
 ${CLOUD_FIELD_GLSL}
 ${SURFACE_GLSL}
 ${STAR_CORONA_GLSL}
+${PLANET_PAINT_GLSL}
 
 uniform sampler2D tScene;
 uniform sampler2D tDepth;
@@ -611,6 +621,10 @@ float foamPattern(vec3 P, float fp, float t) {
 }
 
 vec3 shadeOcean(vec3 ro, vec3 rd, float tW, float tExit, float sceneT, bool noFloor, vec3 seabed) {
+  // A distant island or the far side of the planet can be beyond the ray's
+  // water interval. It is not this water column's seabed: using its radius
+  // produces zero depth and paints shoreline foam across open ocean.
+  noFloor = noFloor || sceneT >= tExit;
   vec3 P = ro + rd * tW;
   vec3 N = normalize(P);
   vec3 V = -rd;
@@ -636,7 +650,7 @@ vec3 shadeOcean(vec3 ro, vec3 rd, float tW, float tExit, float sceneT, bool noFl
   // water column: Beer-Lambert along the view path through the real depth,
   // sunlight attenuated on its way down to the seabed; single scattering
   // gives the deep-water body colour
-  float pathLen = (noFloor ? tExit : sceneT) - tW;
+  float pathLen = max((noFloor ? tExit : sceneT) - tW, 0.0);
   float vDepth = noFloor ? 1e4 : max(uSeaRadius - length(ro + rd * sceneT), 0.0);
   vec3 Tv = exp(-uWaterAbsorb * pathLen);
   vec3 Td = exp(-uWaterAbsorb * vDepth / max(muS, 0.12));
@@ -668,15 +682,19 @@ vec3 shadeOcean(vec3 ro, vec3 rd, float tW, float tExit, float sceneT, bool noFl
   // shelf, whitecaps on big crests where the wind is strong
   float foam = 0.0;
   float tex = foamPattern(P, fp, t);
-  if (!noFloor) {
+  if (uFoamAmount > 0.001) {
+    // Foam belongs to the water point P, not to the terrain hit farther
+    // along the viewing ray. At grazing angles that hit can be a distant
+    // shore and project its foam across deep foreground water.
+    float shoreDepth = max(uSeaRadius - (uRadius + terrainHeight(N) + paintHeight(N)), 0.0);
     float fw = max(uFoamWidth * uHeightScale * 0.05, 1e-3);
-    float shore = 1.0 - smoothstep(0.0, fw, vDepth - (tex - 0.45) * fw * 1.2);
+    float shore = 1.0 - smoothstep(0.0, fw, shoreDepth - (tex - 0.45) * fw * 1.2);
     // breakers: short broken crests rolling in, only close to shore
-    float phase = vDepth / fw * 1.1 - t * 0.45 + gnoise(P * (0.6 / max(uWaveSize, 0.01))) * 0.8;
+    float phase = shoreDepth / fw * 1.1 - t * 0.45 + gnoise(P * (0.6 / max(uWaveSize, 0.01))) * 0.8;
     float fr = fract(phase);
     float surf = smoothstep(0.7, 0.9, fr) * (1.0 - smoothstep(0.9, 1.0, fr));
     surf = mix(surf, 0.1, smoothstep(0.15, 0.45, fwidth(phase)));
-    surf *= (1.0 - smoothstep(fw * 0.8, fw * 2.2, vDepth)) * smoothstep(0.45, 0.75, tex);
+    surf *= (1.0 - smoothstep(fw * 0.8, fw * 2.2, shoreDepth)) * smoothstep(0.45, 0.75, tex);
     foam = max(shore, surf * 0.85) * smoothstep(0.2, 0.55, tex + shore * 0.3);
   }
   // whitecaps: small blotches streaked along the wind on the big crests
@@ -799,6 +817,12 @@ void main() {
     vec4 cl = texture2D(tClouds, clamp(cuv, cmin, uCloudMax)) * 0.36
             + (texture2D(tClouds, clamp(cuv + vec2(o.x, o.y), cmin, uCloudMax)) + texture2D(tClouds, clamp(cuv + vec2(-o.x, o.y), cmin, uCloudMax))
              + texture2D(tClouds, clamp(cuv + vec2(o.x, -o.y), cmin, uCloudMax)) + texture2D(tClouds, clamp(cuv + vec2(-o.x, -o.y), cmin, uCloudMax))) * 0.16;
+    // Reject sky samples that the reduced-resolution filter spreads over
+    // foreground water/terrain at the horizon, using this pixel's own ray.
+    vec2 cloudOuter = raySphere(ro, rd, uCloudTop);
+    vec2 cloudInner = raySphere(ro, rd, uCloudBottom);
+    float cloudStart = length(ro) < uCloudBottom ? cloudInner.y : max(cloudOuter.x, 0.0);
+    if (surfT <= cloudStart || cloudOuter.y < 0.0 || cloudOuter.x > cloudOuter.y) cl = vec4(0.0, 0.0, 0.0, 1.0);
     col = col * cl.a + cl.rgb;
     bgT *= cl.a;
   }
@@ -1053,6 +1077,7 @@ export class PlanetPasses {
       uCloudRes: { value: new THREE.Vector2(1, 1) },
       uCloudOffset: { value: new THREE.Vector2(0, 0) },
       uCloudSteps: { value: 64 },
+      uWaterOn: { value: 0 },
     });
     this.cloudMat.name = 'pp.clouds';
     // two composite programs over one uniform set: planets / gas giants
@@ -1089,6 +1114,21 @@ export class PlanetPasses {
   /** The composite material for a body type. */
   compositeFor(mode) {
     return mode === 'star' ? this.compositeMats.star : this.compositeMats.planet;
+  }
+
+  /** Match shore height sampling to the applied terrain, including graph uniforms. */
+  setTerrain(material, program) {
+    if (this._shoreMaterial === material && this._shoreProgram === program) return;
+    this._shoreMaterial = material; this._shoreProgram = program;
+    Object.assign(this.compositeUniforms, material.uniforms);
+    const shaderProgram = program?.identityParams ? null : program;
+    const source = COMPOSITE_FRAGMENT
+      .replace('#define OCTAVES 4', `#define OCTAVES ${material.defines.OCTAVES}`)
+      .replace(NOISE_FUNCTIONS_GLSL, shaderProgram?.glsl ?? NOISE_FUNCTIONS_GLSL);
+    const composite = this.compositeMats.planet;
+    if (composite.fragmentShader !== source) {
+      composite.fragmentShader = source; composite.needsUpdate = true;
+    }
   }
 
   _allocWeather(size) {
@@ -1580,6 +1620,7 @@ export class PlanetPipeline {
       this.cloudRT.viewport.set(0, 0, rw, rh);
       this.cloudRT.scissorTest = false;
       const cm = passes.cloudMat.uniforms;
+      cm.uWaterOn.value = opts.water ? 1 : 0;
       cm.uCloudSteps.value = opts.cloudSteps;
       cm.uCloudRes.value.set(cw, ch);
       cm.uCloudOffset.value.set(x0, y0);

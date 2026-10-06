@@ -803,6 +803,7 @@ export class Planet extends THREE.Object3D {
       this._lutDirty = this._weatherDirty = true;
     }
     const passes = this._passes;
+    passes.setTerrain(this.world.templateMaterials[0], this._terrainProgram);
     if (this._lutDirty) { passes.lutDirty = true; this._lutDirty = false; }
     if (this._weatherDirty) {
       passes.weatherDirty = true;

@@ -123,11 +123,12 @@ export class Flight {
 
 // All input belongs to the captured canvas. Unlocking, blurring or hiding the
 // tab cancels movement/approach so a missed keyup cannot leave the ship flying.
-export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = () => {}, onPick = () => {}, onTeleport = () => {}, onError = () => {} } = {}) {
+export function bindFlightInput(canvas, flight, { enabled = () => true, onLock = () => {}, onSpeed = () => {}, onPick = () => {}, onTeleport = () => {}, onError = () => {} } = {}) {
   const doc = canvas.ownerDocument;
   const win = doc.defaultView;
   const locked = () => doc.pointerLockElement === canvas;
   const key = event => {
+    if (!enabled()) return;
     if (event.code === 'Escape' && event.type === 'keydown') {
       flight.clear();
       if (locked()) doc.exitPointerLock();
@@ -145,8 +146,9 @@ export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = (
     }
     if (event.code === 'KeyF' && event.type === 'keydown' && !event.repeat) onPick();
   };
-  const mouse = event => { if (locked()) flight.mouse(event.movementX, event.movementY); };
+  const mouse = event => { if (enabled() && locked()) flight.mouse(event.movementX, event.movementY); };
   const wheel = event => {
+    if (!enabled()) return;
     event.preventDefault();
     flight.speed = wheelSpeed(flight.speed, event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1));
     onSpeed(flight.speed);
@@ -157,6 +159,7 @@ export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = (
   const error = () => onError('Mouse capture unavailable. Try clicking the flight view again.');
   let clickedBody;
   const click = event => {
+    if (!enabled()) return;
     // Retain the first click's body: acquiring pointer lock recentres the
     // cursor before the second click of an unlocked double-click.
     if (event.detail !== 2) clickedBody = onPick(locked() ? undefined : event);
@@ -165,6 +168,7 @@ export function bindFlightInput(canvas, flight, { onLock = () => {}, onSpeed = (
     }
   };
   const doubleClick = event => {
+    if (!enabled()) return;
     const body = clickedBody === undefined ? onPick(locked() ? undefined : event) : clickedBody;
     if (body) onTeleport(body);
     clickedBody = undefined;

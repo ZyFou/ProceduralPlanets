@@ -40,7 +40,9 @@ export function fitPlanetCamera(planet, host, proxy) {
     const lz = matrix[2] * corner.x + matrix[6] * corner.y + matrix[10] * corner.z;
     depthPerDistance = Math.min(depthPerDistance, depth / Math.hypot(lx, ly, lz));
   }
-  proxy.near = Math.max(0.05, near * depthPerDistance);
+  proxy.near = host.userData.surfaceWalk
+    ? Math.max(1e-7, host.near / scale)
+    : Math.max(0.05, near * depthPerDistance);
   proxy.far = Math.max(far, proxy.near + 1);
   proxy.updateProjectionMatrix();
   return distance;
