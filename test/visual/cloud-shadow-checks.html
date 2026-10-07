@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Cloud shadow altitude regression checks</title>
+<style>body{background:#101720;color:#e6edf5;font:16px system-ui;padding:24px}pre{white-space:pre-wrap}</style>
+<h1>Cloud shadow altitude regression checks</h1>
+<pre id="result" role="status">Running GPU checks…</pre>
+<script type="module">
+import * as THREE from 'three';
+import { createSharedUniforms } from '../../src/engine/materials.js';
+import { DEFAULT_PARAMS } from '../../src/engine/presets.js';
+import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL } from '../../src/engine/surfaceGLSL.js';
+import { Planet } from '../../src/engine/Planet.js';
+import { PlanetPipeline } from '../../src/engine/PlanetPipeline.js';
+
+const result = document.querySelector('#result');
+const errors = [];
+const originalError = console.error;
+console.error = (...args) => { errors.push(args.map(String).join(' ')); originalError(...args); };
+try {
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setSize(1, 1);
+  const uniforms = createSharedUniforms(DEFAULT_PARAMS);
+  const faces = Array.from({ length: 6 }, () => new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1));
+  const weather = new THREE.CubeTexture(faces);
+  weather.needsUpdate = true;
+  const noise = new THREE.Data3DTexture(new Uint8Array([128, 255, 0, 255]), 1, 1, 1);
+  noise.format = THREE.RGBAFormat;
+  noise.needsUpdate = true;
+  uniforms.uWeatherMap.value = uniforms.uWeatherMapNext.value = weather;
+  uniforms.uCloudNoise.value = noise;
+  uniforms.uCloudCoverage.value = 1;
+  uniforms.uCloudDensity.value = .07;
+  uniforms.uCloudTowering.value = 1;
+  uniforms.uCloudShadowStr.value = 1;
+  uniforms.uCloudShear.value = 0;
+  uniforms.uRainOn.value = 1;
+  uniforms.uRainAmount.value = 1;
+  uniforms.uCloudRotCS.value.set(1, 0);
+  uniforms.uSunDir.value.set(0, 0, 1);
+  uniforms.uReceiver = { value: new THREE.Vector3() };
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: 'void main(){gl_Position=vec4(position.xy,0.0,1.0);}',
+    fragmentShader: `${TOON_GLSL}\n${ATMOSPHERE_GLSL}\n${CLOUD_FIELD_GLSL}
+      uniform vec3 uReceiver;
+      void main(){float rain;float shadow=cloudShadowRain(uReceiver,rain);gl_FragColor=vec4(shadow,rain,0.,1.);}`,
+    depthTest: false, depthWrite: false,
+  });
+  const scene = new THREE.Scene();
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  scene.add(new THREE.Mesh(geometry, material));
+  const camera = new THREE.Camera();
+  const target = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  const pixels = new Uint8Array(4);
+  const sample = radius => {
+    uniforms.uReceiver.value.set(0, 0, radius);
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+    renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+    return Array.from(pixels).slice(0, 2);
+  };
+  const assert = (ok, message) => { if (!ok) throw new Error(message); };
+  const measurements = [];
+  for (const scale of [.01, 1, 2000]) {
+    uniforms.uCloudBottom.value = 100 * scale;
+    uniforms.uCloudTop.value = 110 * scale;
+    for (const mu of [1, .2]) {
+      uniforms.uSunDir.value.set(Math.sqrt(1 - mu * mu), 0, mu);
+      const below = sample(95 * scale);
+      const inside = sample(105 * scale);
+      const nearTop = sample(108.9 * scale);
+      const aboveColumn = sample(109.3 * scale);
+      const atShellTop = sample(110 * scale);
+      const aboveShell = sample(115 * scale);
+      assert(below[0] > 20 && below[1] > 200, 'Clouds overhead must still cast shadows and rain.');
+      assert(inside[0] > 0 && inside[0] < below[0], 'Terrain inside clouds must only receive shadow from the remaining column.');
+      assert(nearTop[0] < inside[0] && nearTop[1] < inside[1], 'Shadow and rainfall must fade toward the cloud top.');
+      for (const value of [aboveColumn, atShellTop, aboveShell]) {
+        assert(value[0] === 0 && value[1] === 0, 'Clouds below terrain must not shadow or rain onto it.');
+      }
+      measurements.push({ scale, mu, below, inside, nearTop, aboveColumn, atShellTop, aboveShell });
+    }
+  }
+  // A low stratiform deck ends well below the enclosing cloud shell.
+  for (const face of faces) face.image.data[1] = 0;
+  weather.needsUpdate = true;
+  uniforms.uCloudBottom.value = 100;
+  uniforms.uCloudTop.value = 110;
+  uniforms.uSunDir.value.set(0, 0, 1);
+  assert(sample(105)[0] > 0, 'Low decks must still shadow terrain beneath their tops.');
+  assert(sample(106.2)[0] === 0, 'Terrain above a low deck must be clear even while inside the shell.');
+  // Convective cell noise can lower a tower beneath the nominal type top.
+  for (const face of faces) face.image.data[1] = 255;
+  weather.needsUpdate = true;
+  noise.image.data[0] = 0;
+  noise.needsUpdate = true;
+  assert(sample(106.5)[0] === 0, 'Terrain above a short cloud cell must not receive its shadow.');
+  uniforms.uCloudShadowStr.value = 0;
+  const rainOnly = sample(95);
+  assert(rainOnly[0] === 0 && rainOnly[1] > 200, 'Disabling shadows must preserve rainfall below clouds.');
+  assert(sample(115).every(value => value === 0), 'Rain-only receivers above clouds must remain dry.');
+  // Compile the full cloud pass too: its column profile uses the same helper.
+  const planet = new Planet();
+  const pipeline = new PlanetPipeline(renderer);
+  pipeline.quad.material = planet._getPasses(pipeline).cloudMat;
+  await renderer.compileAsync(pipeline.quadScene, pipeline.quadCamera);
+  planet.dispose(); pipeline.dispose();
+  if (errors.length) throw new Error(errors.join('\n'));
+  target.dispose(); geometry.dispose(); material.dispose(); weather.dispose(); noise.dispose(); renderer.dispose();
+  result.textContent = 'PASSED: buried clouds cast no shadows; partial columns fade with altitude; low decks and short towers respect their tops; overhead shadows and rainfall remain at multiple planet scales and sun angles.\n' + JSON.stringify(measurements);
+  document.body.dataset.result = 'passed';
+} catch (error) {
+  document.body.dataset.result = 'failed';
+  result.textContent = 'FAILED: ' + error.stack;
+}
+</script>
+</html>

@@ -2,6 +2,7 @@ import { translateExternalMessage } from '../i18n/externalMessages.js';
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useState } from 'react';
+import { CloudLightning, CloudRain, Plus, Sun, Tornado, Wind, X, Zap } from 'lucide-react';
 import { Slider, Toggle, ColorRow, Section, SelectRow } from './controls.jsx';
 import { PLANET_PRESETS, STAR_PRESETS, GAS_PRESETS } from '../engine/presets.js';
 import { DEFAULT_STAR_BODY } from '../engine/star.js';
@@ -184,12 +185,28 @@ export function CloudsPanel({ params: p, onParam }) {
 }
 
 const WEATHER_KINDS = [
-  { type: 'storm', label: 'Thunderstorm' },
-  { type: 'hurricane', label: 'Hurricane' },
-  { type: 'rain', label: 'Rain front' },
-  { type: 'clear', label: 'Clear sky' },
+  { type: 'storm', label: 'Thunderstorm', icon: CloudLightning },
+  { type: 'hurricane', label: 'Hurricane', icon: Tornado },
+  { type: 'rain', label: 'Rain front', icon: CloudRain },
+  { type: 'clear', label: 'Clear sky', icon: Sun },
 ];
-const kindLabel = (type) => WEATHER_KINDS.find((k) => k.type === type)?.label ?? type;
+const kindOf = (type) => WEATHER_KINDS.find((k) => k.type === type) ?? WEATHER_KINDS[0];
+
+// Tinted icon tile of a weather kind (or action tone)
+function WxIcon({ icon: Icon, tone, size = 14 }) {
+  return <span className={`wx-ico wx-${tone}`} aria-hidden><Icon size={size} strokeWidth={2} /></span>;
+}
+
+// Icon + label action button; `trailing` marks a secondary icon (pin: +)
+function WxButton({ icon, tone, label, trailing: Trailing, ...rest }) {
+  return (
+    <button type="button" className={`wx-btn wx-${tone}`} {...rest}>
+      <WxIcon icon={icon} tone={tone} />
+      <span className="wx-btn-label">{label}</span>
+      {Trailing && <Trailing className="wx-btn-trailing" size={13} strokeWidth={2.25} aria-hidden />}
+    </button>
+  );
+}
 
 // Polls the live weather state (its clock runs outside React).
 function useWeatherState(weather, pick) {
@@ -244,21 +261,21 @@ function LiveEvents({ weather, viewLatLon }) {
     <>
       <p className="shader-hint">{translate("Spawn a timed system under the center of the view: it builds up, lasts, then dissipates. Live events are not saved.")}</p>
       <Slider label={translate("Duration")} value={duration} min={10} max={300} step={5} digits={0} onChange={setDuration} title={translate("Seconds of weather time, fades included")} />
-      <div className="preset-grid wx-grid">
+      <div className="wx-grid">
         {WEATHER_KINDS.map((k) => (
-          <button key={k.type} type="button" className={`preset-btn wx-btn wx-${k.type}`} onClick={() => spawn(k.type)}>{translate(k.label)}</button>
+          <WxButton key={k.type} icon={k.icon} tone={k.type} label={translate(k.label)} onClick={() => spawn(k.type)} />
         ))}
-        <button type="button" className="preset-btn wx-btn" onClick={() => weather.strike({ ground: true })} title={translate("Fire a lightning strike in an active system")}>{translate("Strike")}</button>
-        <button type="button" className="preset-btn wx-btn" onClick={() => weather.clear({ fadeOut: 5 })} disabled={!runtime.length}>{translate("Fade all out")}</button>
+        <WxButton icon={Zap} tone="strike" label={translate("Strike")} onClick={() => weather.strike({ ground: true })} title={translate("Fire a lightning strike in an active system")} />
+        <WxButton icon={Wind} tone="fade" label={translate("Fade all out")} onClick={() => weather.clear({ fadeOut: 5 })} disabled={!runtime.length} />
       </div>
       {runtime.length > 0 && (
         <ul className="wx-live">
           {runtime.map((s) => (
             <li key={s.id}>
-              <span className={`wx-dot wx-${s.type}`} />
-              <span className="wx-live-name">{translate(kindLabel(s.type))}</span>
+              <WxIcon icon={kindOf(s.type).icon} tone={s.type} size={12} />
+              <span className="wx-live-name">{translate(kindOf(s.type).label)}</span>
               <span className="wx-live-meta">{Math.round(s.lat)}°, {Math.round(s.lon)}° · {Math.round(s.strength * 100)}%</span>
-              <button type="button" className="wx-x" aria-label={translate("Dissipate")} title={translate("Dissipate")} onClick={() => weather.remove(s.id)}>×</button>
+              <button type="button" className="wx-x" aria-label={translate("Dissipate")} title={translate("Dissipate")} onClick={() => weather.remove(s.id)}><X size={13} /></button>
             </li>
           ))}
         </ul>
@@ -275,13 +292,13 @@ function PinnedSystem({ sys, index, onChange, onRemove }) {
   const retype = (type) => onChange(index, { type, lat: sys.lat, lon: sys.lon, heading: sys.heading, speed: sys.speed,
     start: sys.start, duration: sys.duration, period: sys.period, fadeIn: sys.fadeIn, fadeOut: sys.fadeOut });
   return (
-    <div className={`wx-card wx-${sys.type}`}>
+    <div className="wx-card">
       <div className="wx-card-head">
-        <span className={`wx-dot wx-${sys.type}`} />
+        <WxIcon icon={kindOf(sys.type).icon} tone={sys.type} />
         <select value={sys.type} aria-label={translate("System type")} onChange={(e) => retype(e.target.value)}>
           {WEATHER_KINDS.map((k) => <option key={k.type} value={k.type}>{translate(k.label)}</option>)}
         </select>
-        <button type="button" className="wx-x" aria-label={translate("Remove system")} title={translate("Remove system")} onClick={() => onRemove(index)}>×</button>
+        <button type="button" className="wx-x" aria-label={translate("Remove system")} title={translate("Remove system")} onClick={() => onRemove(index)}><X size={13} /></button>
       </div>
       <Slider label={translate("Latitude")} value={sys.lat} min={-85} max={85} step={0.5} digits={1} onChange={(v) => set('lat', v)} />
       <Slider label={translate("Longitude")} value={sys.lon} min={-180} max={180} step={0.5} digits={1} onChange={(v) => set('lon', v)} />
@@ -339,9 +356,9 @@ export function WeatherPanel({ params: p, onParam, weather, viewLatLon }) {
       </Section>
       <Section title={translate("Pinned systems")}>
         <p className="shader-hint">{translate("Systems saved with the planet. Lifetime 0 keeps one forever; otherwise it follows the weather timeline, optionally repeating.")}</p>
-        <div className="preset-grid wx-grid">
+        <div className="wx-grid">
           {WEATHER_KINDS.map((k) => (
-            <button key={k.type} type="button" className={`preset-btn wx-btn wx-${k.type}`} onClick={() => pin(k.type)} title={translate("Pin at the center of the view")}>+ {translate(k.label)}</button>
+            <WxButton key={k.type} icon={k.icon} tone={k.type} label={translate(k.label)} trailing={Plus} onClick={() => pin(k.type)} title={translate("Pin at the center of the view")} />
           ))}
         </div>
         {systems.map((sys, i) => (

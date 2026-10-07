@@ -2287,6 +2287,8 @@ input {
 .wx-hurricane { --wx: #f87171; }
 .wx-rain { --wx: #60a5fa; }
 .wx-clear { --wx: #fbbf24; }
+.wx-strike { --wx: #fde68a; }
+.wx-fade { --wx: #94a3b8; }
 .wx-clock { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-control); }
 .wx-clock-row { display: flex; align-items: center; gap: 8px; }
 .wx-clock-time { margin-left: auto; color: var(--text-main); font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
@@ -2295,16 +2297,23 @@ input {
 .wx-clock-active { display: flex; flex-wrap: wrap; gap: 4px; }
 .wx-chip { padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--wx, var(--text-dim)) 45%, transparent); border-radius: 999px; color: var(--wx, var(--text-muted)); font-size: 10.5px; }
 .wx-empty { color: var(--text-dim); font-size: 11px; }
-.wx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.wx-btn.wx-storm, .wx-btn.wx-hurricane, .wx-btn.wx-rain, .wx-btn.wx-clear { border-left: 3px solid var(--wx); }
-.wx-btn:disabled { opacity: 0.45; cursor: default; }
-.wx-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--wx, var(--text-dim)); box-shadow: 0 0 6px var(--wx, transparent); }
+.wx-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.wx-ico { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--wx); background: color-mix(in srgb, var(--wx) 14%, transparent); }
+.wx-btn { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; padding: 5px 9px 5px 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-control); color: var(--text-main); font-family: var(--font); font-size: 11.5px; font-weight: 600; text-align: left; cursor: var(--cursor-pointer); transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+.wx-btn-label { flex: 1; min-width: 0; line-height: 1.2; overflow-wrap: anywhere; }
+.wx-btn-trailing { flex: none; color: var(--text-dim); transition: color 0.12s ease; }
+.wx-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--wx) 55%, var(--border-subtle)); background: color-mix(in srgb, var(--wx) 8%, var(--bg-control)); }
+.wx-btn:hover:not(:disabled) .wx-ico { background: color-mix(in srgb, var(--wx) 24%, transparent); }
+.wx-btn:hover:not(:disabled) .wx-btn-trailing { color: var(--wx); }
+.wx-btn:active:not(:disabled) { transform: translateY(1px); }
+.wx-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--wx) 70%, transparent); outline-offset: 1px; }
+.wx-btn:disabled { opacity: 0.4; cursor: default; }
 .wx-live { display: grid; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; }
-.wx-live li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-panel-soft); font-size: 11.5px; }
+.wx-live li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-panel-soft); font-size: 11.5px; }
 .wx-live-name { color: var(--text-main); }
 .wx-live-meta { margin-left: auto; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; }
-.wx-x { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--text-muted); font-size: 15px; line-height: 1; cursor: var(--cursor-pointer); }
+.wx-x { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--text-muted); cursor: var(--cursor-pointer); }
 .wx-x:hover { border-color: var(--border-strong); color: var(--danger); }
-.wx-card { display: grid; gap: 6px; padding: 8px 10px 10px; border: 1px solid var(--border-subtle); border-left: 3px solid var(--wx); border-radius: var(--radius-sm); background: var(--bg-panel-soft); }
+.wx-card { display: grid; gap: 6px; padding: 8px 10px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-panel-soft); }
 .wx-card-head { display: flex; align-items: center; gap: 8px; }
 .wx-card-head select { flex: 1; min-width: 0; height: 26px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-control); color: var(--text-main); font-family: var(--font); font-size: 11.5px; }

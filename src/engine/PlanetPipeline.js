@@ -326,15 +326,11 @@ CloudCol cloudColumnOf(vec4 w) {
   // vertical profile by cloud type: low stratiform decks, cumulus domes,
   // cumulonimbus filling the shell. (No flat anvil shelf: a thin plateau over
   // the deck reads as a second cloud layer with a shadowed rim.)
-  vec4 g = cloudGradient(w.y, w.x);
   // convective columns top out cell by cell (w.w), so a field reads as
   // separate towers instead of the cover map extruded upward; stratiform
   // decks stay level. Only the top moves: a column's body stays as dense as
   // its neighbours, so no vertical striping shows through translucent sides
-  float tt = sat(w.y * (0.4 + 1.2 * uCloudTowering));
-  g.w = min(g.w * mix(1.0, mix(0.62, 1.18, w.w), 0.3 + 0.7 * tt), 1.0);
-  g.z = min(g.z, g.w * 0.8);
-  c.g = g;
+  c.g = cloudColumnGradient(w);
   return c;
 }
 

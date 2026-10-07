@@ -347,6 +347,15 @@ vec4 cloudGradient(float type, float cov) {
   return vec4(0.0, 0.07, top * mix(0.3, 0.15, tt), top);
 }
 
+// Per-cell tower heights, shared by the cloud volume and receivers inside it.
+vec4 cloudColumnGradient(vec4 w) {
+  vec4 g = cloudGradient(w.y, w.x);
+  float tt = sat(w.y * (0.4 + 1.2 * uCloudTowering));
+  g.w = min(g.w * mix(1.0, mix(0.62, 1.18, w.w), 0.3 + 0.7 * tt), 1.0);
+  g.z = min(g.z, g.w * 0.8);
+  return g;
+}
+
 float cloudProfile(float hf, vec4 g) {
   return smoothstep(g.x, g.y, hf) * (1.0 - smoothstep(g.z, g.w, hf));
 }
@@ -357,7 +366,8 @@ float cloudColumn(vec4 g) {
 }
 
 // Fraction of sunlight blocked by the clouds above world point p: the sun
-// ray meets the lower shell and the SAME cover + billow field as the volume
+// ray meets the lookup shell (or starts at the receiver inside the layer),
+// and the SAME cover + billow field as the volume
 // is looked up there, so even small cumulus cast matching shadows. Their
 // darkness follows the column's optical depth (type height x density, rain
 // clouds are heavier) and the slant path through the layer: shadows are
@@ -366,22 +376,38 @@ float cloudColumn(vec4 g) {
 float cloudShadowRain(vec3 p, out float rain) {
   rain = 0.0;
   if (uCloudShadowStr < 0.005 && uRainOn < 0.5) return 0.0;
+  float r = length(p);
+  if (r >= uCloudTop) return 0.0;
   float rm = mix(uCloudBottom, uCloudTop, 0.25);
-  vec2 t = raySphere(p, uSunDir, rm);
-  vec3 q;
-  if (t.y < 0.0 || t.x > t.y) q = normalize(p) * rm;
-  else q = p + uSunDir * (t.x > 0.0 ? t.x : t.y);
+  // Below the lookup shell the forward exit is overhead. Inside the layer,
+  // start at the receiver instead of projecting back down into buried clouds.
+  vec3 q = p;
+  if (r < rm) {
+    vec2 t = raySphere(p, uSunDir, rm);
+    q = p + uSunDir * t.y;
+  }
   vec3 d = normalize(q);
   vec4 w = cloudWeather(d, 0.0);
-  rain = w.z;
-  if (w.x < 0.01 || uCloudShadowStr < 0.005) return 0.0;
   vec4 g = cloudGradient(w.y, w.x);
+  float hf = (r - uCloudBottom) / (uCloudTop - uCloudBottom);
+  if (hf > 0.0) {
+    if (w.w < 0.0) {
+      vec3 dc = cloudRotate(d + shearOffset(d, hf));
+      w.w = textureLod(uCloudNoise, dc * uCloudBottom * uCloudCellFreq + uCloudWind * 0.2, 0.0).r;
+    }
+    g = cloudColumnGradient(w);
+  }
+  // Clip the column's ramps to the terrain height: only the remaining cloud
+  // above the surface can block sunlight or rain onto it.
+  float column = cloudColumn(max(g, vec4(hf)));
+  rain = w.z * sat(column / max(cloudColumn(g), 1e-3));
+  if (w.x < 0.01 || uCloudShadowStr < 0.005 || column <= 0.0) return 0.0;
   vec3 dr = cloudRotate(d);
-  vec2 n = textureLod(uCloudNoise, dr * rm * uCloudShapeFreq + uCloudWind * 0.35, 0.0).rg;
+  vec2 n = textureLod(uCloudNoise, dr * length(q) * uCloudShapeFreq + uCloudWind * 0.35, 0.0).rg;
   float base = sat((n.y - (n.x - 1.0)) / (2.0 - n.x));
   float dens = sat((base - (1.0 - w.x)) / max(w.x, 1e-3)) * w.x;
   float mu = max(dot(d, uSunDir), 0.12);
-  float od = dens * cloudColumn(g) * (1.0 + w.z) * uCloudDensity * 14.0 / sqrt(mu);
+  float od = dens * column * (1.0 + w.z) * uCloudDensity * 14.0 / sqrt(mu);
   return (1.0 - exp(-od)) * uCloudShadowStr;
 }
 
