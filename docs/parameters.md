@@ -169,6 +169,8 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 | `cloudAltitude` | number | `0.004` | 0 – 0.03 | Cloud base above sea level, fraction of radius |
 | `cloudThickness` | number | `0.009` | 0.002 – 0.03 | Shell thickness, fraction of radius — Depth of the cloud layer (fraction of radius) |
 | `cloudSpeed` | number | `0.6` | 0 – 3 | Cloud drift / evolution speed. |
+| `cloudTowering` | number | `0.55` | 0 – 1 | Vertical development: low flat decks .. tall towering cumulonimbus |
+| `cloudShear` | number | `0.25` | 0 – 1 | Wind shear: towers lean downwind — Upper winds carry cloud tops downstream: towers lean |
 
 ### Quality
 
@@ -183,6 +185,44 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 |---|---|---|---|---|
 | `cloudColor` | color | `[1, 1, 1]` | sRGB 0 – 1 | Sunlit cloud tint (sRGB). |
 | `cloudShadow` | color | `[0.78, 0.84, 0.95]` | sRGB 0 – 1 | Ambient (sky-lit) tint |
+
+### Light
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `cloudSilverLining` | number | `1` | 0 – 2 | Forward-scattering glow on cloud edges toward the sun |
+
+### Weather
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `weatherEnabled` | boolean | `true` |  | Render regional weather: storm systems, hurricanes, rain and lightning (needs cloudsEnabled). |
+| `weatherSpeed` | number | `1` | 0 – 5 | Weather clock rate: lifecycles, storm tracks, lightning — Clock of the weather systems: lifecycles, storm tracks, lightning |
+| `weatherSystems` | array | `[]` |  | Pinned weather systems saved with the planet: [{ type: storm \| hurricane \| rain \| clear, lat, lon, radius, intensity, ... }] (see docs/weather.md). |
+
+### Storm systems
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `stormCount` | number | `2` | 0 – 6 | Procedural thunderstorm clusters / rain fronts alive at once |
+| `hurricaneCount` | number | `1` | 0 – 3 | Procedural tropical cyclones alive at once |
+| `stormSize` | number | `1` | 0.3 – 2.5 | Size multiplier of the procedural systems |
+| `stormLifetime` | number | `120` | 20 – 600 | Mean lifetime of a procedural system (weather seconds) |
+
+### Rain
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `rainAmount` | number | `0.5` | 0 – 1 | Precipitation: rain shafts, darker storm clouds, wet ground |
+| `rainColor` | color | `[0.6, 0.64, 0.7]` | sRGB 0 – 1 | Rain shafts / curtains tint |
+
+### Lightning
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `lightningAmount` | number | `0.5` | 0 – 1 | Strike frequency in storms — Strike rate in thunderstorms and hurricane eyewalls |
+| `lightningBrightness` | number | `1` | 0 – 3 | Lightning flash brightness. |
+| `lightningColor` | color | `[0.78, 0.84, 1]` | sRGB 0 – 1 | Lightning flash / bolt colour (sRGB). |
 
 ### Atmosphere
 

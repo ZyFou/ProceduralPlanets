@@ -10,6 +10,7 @@ import {
   Disc3,
   Circle,
   Cloud,
+  CloudLightning,
   Code2,
   Download,
   Droplets,
@@ -30,6 +31,7 @@ import { createTemplateParams, getProjectTemplate } from './project/ProjectTempl
 import { planetCodeSnippet } from './project/codeSnippet.js';
 import { copyText } from './utils/clipboard.js';
 import { DEFAULT_STAR_BODY } from './engine/star.js';
+import { directionToLatLon } from './engine/weather.js';
 import { PANELS } from './components/panels.jsx';
 import { searchSettings } from './components/settingsSearch.js';
 import SettingsSearchOverlay from './components/SettingsSearchOverlay.jsx';
@@ -53,7 +55,10 @@ function formatSearchValue(item, params) {
   if (key === 'preset') return translate('Presets');
   if (value === undefined || value === null) return item.panelId === 'export' ? translate('Export') : '-';
   if (typeof value === 'boolean') return value ? translate('On') : translate('Off');
-  if (Array.isArray(value)) return value.length === 3 ? toHex(value).toUpperCase() : value.join(', ');
+  if (Array.isArray(value)) {
+    if (value.some((v) => typeof v === 'object')) return String(value.length);
+    return value.length === 3 ? toHex(value).toUpperCase() : value.join(', ');
+  }
   if (typeof value === 'number') {
     if (Number.isInteger(value)) return String(value);
     return String(Math.abs(value) >= 100 ? Math.round(value) : Number(value.toFixed(2)));
@@ -78,6 +83,7 @@ const ICONS = {
   style: Circle,
   water: Droplets,
   clouds: Cloud,
+  weather: CloudLightning,
   gasFlow: Waves,
   gasStorms: Sparkles,
   gasColors: Palette,
@@ -512,6 +518,13 @@ export default function App({
     engineRef.current?.setAutoRotate(enabled);
   }, []);
   const onResetView = useCallback(() => engineRef.current?.frame(), []);
+  // latitude / longitude under the centre of the view (weather placement)
+  const viewLatLon = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return { lat: 0, lon: 0 };
+    engine.planet.updateWorldMatrix(true, false);
+    return directionToLatLon(engine.planet.worldToLocal(engine.camera.position.clone()));
+  }, []);
 
   useEffect(() => {
     if (!uiHidden || suspended) return undefined;
@@ -840,6 +853,8 @@ export default function App({
                   onTerrainMode={onTerrainMode}
                   onOpenNodes={() => { setNodesOpen(true); setActivePanel(null); }}
                   onParam={onParam}
+                  weather={engineRef.current?.planet.weather}
+                  viewLatLon={viewLatLon}
                   onPreset={onPreset}
                   onStarPreset={onStarPreset}
                   onGasPreset={onGasPreset}

@@ -125,6 +125,7 @@ uniform highp sampler3D uCloudNoise;   // tileable Worley fbm (r) + Perlin-Worle
 uniform highp sampler3D uCloudErosion; // the same Worley fbm alone (detail taps)
 uniform float uCloudShapeFreq;     // world-space noise frequencies
 uniform float uCloudDetailFreq;
+uniform float uCloudCellFreq;      // column / storm-cell noise: cells as wide as the layer is thick
 uniform vec3  uCloudWind;
 uniform float uCloudCoverage;
 uniform float uCloudSoftness;
@@ -132,11 +133,29 @@ uniform float uCloudDensity;
 uniform float uCloudBottom;        // shell radii (world units)
 uniform float uCloudTop;
 uniform float uCloudRotation;      // drift angle around the pole axis
+uniform vec2  uCloudRotCS;         // its cos / sin (per frame: no trig per lookup)
 uniform float uCloudShadowStr;
+uniform float uCloudTowering;      // vertical development of convective clouds
+uniform float uCloudShear;         // wind shear: lookup offset at the shell top (direction units)
+
+// Regional weather systems (weather.js packs them; uWxCount = 0 costs one
+// branch). Each is a spherical cap around a planet-frame centre:
+//   A  xyz centre, w cos(radius)
+//   B  x 1 / sin(radius), y strength (fades applied), z kind, w spin angle
+//   C  x coverage, y rain, z tower, w eye radius (fraction; sign = spin sense)
+// kinds: 0 thunderstorm cluster, 1 hurricane, 2 stratiform rain, 3 clear sky
+#define MAX_WX 8
+uniform int   uWxCount;
+uniform vec4  uWxA[MAX_WX];
+uniform vec4  uWxB[MAX_WX];
+uniform vec4  uWxC[MAX_WX];
+uniform float uRainAmount;         // precipitation from dense convective cells
+uniform float uRainOn;             // 1 when anything can rain
+uniform vec3  uRainColor;
+uniform float uRainCam;            // rain where the camera is (CPU, once per frame)
 
 vec3 cloudRotate(vec3 d) {
-  float c = cos(uCloudRotation), s = sin(uCloudRotation);
-  return vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
+  return vec3(d.x * uCloudRotCS.x - d.z * uCloudRotCS.y, d.y, d.x * uCloudRotCS.y + d.z * uCloudRotCS.x);
 }
 
 // weather at an already-rotated direction: the field evolves by crossfading
@@ -157,24 +176,242 @@ float cloudCover(vec4 w) {
   return smoothstep(cut - soft * 0.15, cut + soft + 0.05, w.r);
 }
 
-// fraction of sunlight blocked by the cloud layer above world point p:
-// the sun ray is intersected with the mid shell and the SAME coverage +
-// billow-shape field as the volume is looked up, so even small cumulus cast
-// matching shadows
-float cloudShadow(vec3 p) {
-  if (uCloudShadowStr < 0.005) return 0.0;
-  float rm = mix(uCloudBottom, uCloudTop, 0.4);
+// Zonal wind shear: the upper part of a cloud is carried downstream, so
+// towers lean and their tops stream off instead of every column being
+// the 2D field extruded straight up. Trade-wind easterlies in the tropics,
+// westerlies at mid latitudes. Equivariant under the drift rotation.
+vec3 shearOffset(vec3 d, float hf) {
+  float lat = abs(d.y);
+  float s = mix(-1.0, 1.0, smoothstep(0.42, 0.58, lat)) * (1.0 - smoothstep(0.85, 0.97, lat));
+  return vec3(-d.z, 0.0, d.x) * (s * uCloudShear * hf);
+}
+
+vec3 rotateAxis(vec3 v, vec3 a, float ang) {
+  float c = cos(ang), s = sin(ang);
+  return v * c + cross(a, v) * s + a * (dot(a, v) * (1.0 - c));
+}
+
+// tangent frame of a system centre (same convention as weather.js)
+void wxFrame(vec3 c, out vec3 e1, out vec3 e2) {
+  e1 = normalize(cross(c, abs(c.y) > 0.999 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)));
+  e2 = cross(e1, c);
+}
+
+// Weather at a planet-frame unit direction and shell height fraction hf:
+//   x cloud cover (coverage slider applied, 0..1)
+//   y cloud type  (0 flat stratiform deck .. 1 deep convection)
+//   z precipitation (0..1)
+//   w column noise inside a system (the cloud pass reuses it for tower
+//     heights), -1 elsewhere
+// Hurricanes twist the lookup of the background field around their centre
+// (rigid spin + a static spiral, so it never winds up over time), then every
+// system blends its own structure over the cover.
+vec4 cloudWeather(vec3 dir, float hf) {
+  vec3 look = dir;
+  float vk = 0.0;
+  bool inAny = false;
+  for (int i = 0; i < MAX_WX; i++) {
+    if (i >= uWxCount) break;
+    vec4 A = uWxA[i];
+    if (dot(dir, A.xyz) <= A.w) continue;
+    inAny = true;
+    vec4 B = uWxB[i];
+    if (abs(B.z - 1.0) > 0.5 || vk > 0.0) continue;
+    vec3 e1, e2;
+    wxFrame(A.xyz, e1, e2);
+    float rr = length(vec2(dot(dir, e1), dot(dir, e2))) * B.x;
+    float sense = sign(uWxC[i].w);
+    look = rotateAxis(dir, A.xyz, -(B.w + sense * 2.4 * exp(-3.0 * rr)));
+    vk = max(1.0 - smoothstep(0.7, 1.0, rr), 1e-4);
+  }
+  vec3 lk = cloudRotate(look + shearOffset(look, hf));
+  vec4 w = weatherRotated(lk);
+  if (vk > 0.0 && vk < 0.999) w = mix(weatherRotated(cloudRotate(dir + shearOffset(dir, hf))), w, vk);
+  float cov = cloudCover(w);
+  float type = w.g;
+  float rain = 0.0;
+  // system-scale cells (the baked field is far coarser than a storm): ONE
+  // noise tap at the column-noise scale (cells about as wide as the clouds
+  // are tall), turning with a hurricane's frame; only inside a system
+  vec2 cn = vec2(-1.0);
+  if (inAny) cn = textureLod(uCloudNoise, lk * uCloudBottom * uCloudCellFreq + uCloudWind * 0.2, 0.0).rg;
+  for (int i = 0; i < MAX_WX && inAny; i++) {
+    if (i >= uWxCount) break;
+    vec4 A = uWxA[i];
+    if (dot(dir, A.xyz) <= A.w) continue;
+    vec4 B = uWxB[i];
+    vec4 C = uWxC[i];
+    vec3 e1, e2;
+    wxFrame(A.xyz, e1, e2);
+    vec2 q = vec2(dot(dir, e1), dot(dir, e2)) * B.x;   // |q| = 1 at the edge
+    float rr = length(q);
+    // ragged outline (fine cells + the broad background field), always
+    // closed before the cap's edge
+    float inCap = 1.0 - smoothstep(0.85, 1.0, rr);
+    float k = B.y * (1.0 - smoothstep(0.45, 0.95, rr + (cn.r - 0.5) * 0.35 + (w.r - 0.5) * 0.6)) * inCap;
+    if (B.z < 0.5) {
+      // thunderstorm cluster: a dense mass whose cells set how high each
+      // tower climbs (height, not density, varies cell to cell: varying the
+      // cover per column would read as vertical stripes)
+      float cells = smoothstep(0.45, 0.8, cn.r + 0.28 * (1.0 - rr) + 0.12 * cn.g);
+      cov = mix(cov, max(cov, C.x * (0.72 + 0.28 * cells)), k);
+      type = mix(type, mix(0.45, 1.0, cells), k * C.z);
+      rain += k * C.y * (0.35 + 0.65 * cells);
+    } else if (B.z < 1.5) {
+      // hurricane: clear eye, towering eyewall, central dense overcast,
+      // two log-spiral rain bands broken into cells (in the spinning frame)
+      float sense = sign(C.w);
+      float eye = abs(C.w);
+      float ang = atan(q.y, q.x) - B.w;
+      float arms = 0.5 + 0.5 * cos(2.0 * ang * sense + 5.5 * log(max(rr, 1e-3)) + (cn.r - 0.5) * 3.0 + w.r * 1.5);
+      float we = (rr - eye * 1.9) / (eye * 1.15);
+      float wall = exp(-we * we);
+      float cdo = (1.0 - smoothstep(eye * 2.2, 0.42, rr)) * (0.8 + 0.3 * cn.g);
+      float bands = smoothstep(0.45, 0.9, arms) * (1.0 - smoothstep(0.5, 1.0, rr)) * smoothstep(eye * 1.5, eye * 4.0, rr)
+                  * smoothstep(0.25, 0.6, cn.g + 0.2);
+      float s = max(wall, max(cdo, bands * (0.6 + 0.5 * w.r)));
+      float eyeClear = 1.0 - smoothstep(eye * 0.8, eye * 1.45, rr);
+      // subsiding moats between the bands thin the background clouds
+      float kh = B.y * inCap * (1.0 - smoothstep(0.6, 1.0, rr));
+      cov = mix(cov, max(cov * mix(1.0, 0.45, sat(rr * 2.0 - 0.4)), sat(s * C.x)), kh);
+      cov *= 1.0 - eyeClear * kh;
+      type = mix(type, 1.0, kh * C.z * max(wall, cdo * 0.8));
+      rain += kh * C.y * s * (1.0 - eyeClear);
+    } else if (B.z < 2.5) {
+      // stratiform rain front: a long band of flat, thick grey deck
+      vec2 qf = vec2(q.x * 0.82 + q.y * 0.57, q.y * 0.82 - q.x * 0.57);
+      float re = length(vec2(qf.x, qf.y * 2.4)) + (cn.r - 0.5) * 0.5;
+      float kf = B.y * (1.0 - smoothstep(0.45, 0.95, re)) * inCap;
+      float deck = C.x * smoothstep(0.2, 0.5, cn.g * 0.7 + 0.32 + 0.2 * w.r);
+      cov = mix(cov, max(cov, deck), kf);
+      type = mix(type, 0.12 + 0.5 * C.z, kf);
+      rain += kf * C.y * deck;
+    } else {
+      // clear sky: subsiding air dissolves the clouds
+      cov *= 1.0 - k * C.x;
+      rain *= 1.0 - k;
+    }
+  }
+  if (uRainOn > 0.5) rain += uRainAmount * smoothstep(0.6, 0.95, cov) * smoothstep(0.55, 0.9, type);
+  else rain = 0.0;
+  return vec4(cov, type, sat(rain), cn.x);
+}
+
+// Precipitation alone, for the rain-shaft march: the same systems without
+// the hurricane twist or the cell tap (the shafts' own noise breaks them up),
+// so each step costs one weather lookup.
+float cloudRainAt(vec3 dir) {
+  vec4 w = weatherAt(dir);
+  float cov = cloudCover(w);
+  float rain = 0.0;
+  for (int i = 0; i < MAX_WX; i++) {
+    if (i >= uWxCount) break;
+    vec4 A = uWxA[i];
+    float c = dot(dir, A.xyz);
+    if (c <= A.w) continue;
+    vec4 B = uWxB[i];
+    vec4 C = uWxC[i];
+    // angular distance as a fraction of the radius (|q| of cloudWeather)
+    float rr = sqrt(max(1.0 - c * c, 0.0)) * B.x;
+    float k = B.y * (1.0 - smoothstep(0.45, 0.95, rr + (w.r - 0.5) * 0.6)) * (1.0 - smoothstep(0.85, 1.0, rr));
+    if (B.z < 0.5) rain += k * C.y * 0.75;
+    else if (B.z < 1.5) {
+      float eye = abs(C.w);
+      rain += k * C.y * (1.0 - smoothstep(0.42, 0.9, rr) * 0.6) * smoothstep(eye * 0.8, eye * 1.45, rr);
+    } else if (B.z < 2.5) rain += k * C.y * 0.8 * (1.0 - smoothstep(0.3, 0.7, rr));
+    else rain *= 1.0 - k;
+  }
+  rain += uRainAmount * smoothstep(0.6, 0.95, cov) * smoothstep(0.55, 0.9, w.g);
+  return sat(rain);
+}
+
+// Vertical extent of the cloud types as fractions of the shell:
+// x / y base ramp, z / w top ramp. Stratiform decks stay low and flat,
+// cumulus are as tall as wide, cumulonimbus fill the shell. The cores of
+// systems (high cover) build higher than their fringes, which shapes domes.
+vec4 cloudGradient(float type, float cov) {
+  float tt = sat(type * (0.4 + 1.2 * uCloudTowering));
+  float top = mix(0.3, 1.0, sat(tt * 0.75 + cov * 0.45));
+  // The density fades over most of the column's height. With the coverage
+  // remap (density needs base x profile > 1 - cover) this shapes DOMES: a
+  // system's thin fringe only holds cloud near the base, its dense core the
+  // full height, so outlines round off upward instead of being the cover map
+  // extruded into vertical walls. A short ramp would also give flat lids,
+  // and lids at different heights read as stacked layers.
+  return vec4(0.0, 0.07, top * mix(0.3, 0.15, tt), top);
+}
+
+float cloudProfile(float hf, vec4 g) {
+  return smoothstep(g.x, g.y, hf) * (1.0 - smoothstep(g.z, g.w, hf));
+}
+
+// fraction of the shell a column of this type fills (shadows, rain)
+float cloudColumn(vec4 g) {
+  return max(0.5 * (g.z + g.w) - 0.5 * (g.x + g.y), 0.0);
+}
+
+// Fraction of sunlight blocked by the clouds above world point p: the sun
+// ray meets the lower shell and the SAME cover + billow field as the volume
+// is looked up there, so even small cumulus cast matching shadows. Their
+// darkness follows the column's optical depth (type height x density, rain
+// clouds are heavier) and the slant path through the layer: shadows are
+// faint under thin fair-weather cumulus, deep under storms, long and dark at
+// low sun. rain = precipitation at that point (wet ground).
+float cloudShadowRain(vec3 p, out float rain) {
+  rain = 0.0;
+  if (uCloudShadowStr < 0.005 && uRainOn < 0.5) return 0.0;
+  float rm = mix(uCloudBottom, uCloudTop, 0.25);
   vec2 t = raySphere(p, uSunDir, rm);
-  if (t.y < 0.0 || t.x > t.y) return 0.0;
-  float tt = t.x > 0.0 ? t.x : t.y;
-  vec3 q = p + uSunDir * tt;
-  vec3 dr = cloudRotate(normalize(q));
-  float cov = cloudCover(weatherRotated(dr));
-  if (cov < 0.01) return 0.0;
+  vec3 q;
+  if (t.y < 0.0 || t.x > t.y) q = normalize(p) * rm;
+  else q = p + uSunDir * (t.x > 0.0 ? t.x : t.y);
+  vec3 d = normalize(q);
+  vec4 w = cloudWeather(d, 0.0);
+  rain = w.z;
+  if (w.x < 0.01 || uCloudShadowStr < 0.005) return 0.0;
+  vec4 g = cloudGradient(w.y, w.x);
+  vec3 dr = cloudRotate(d);
   vec2 n = textureLod(uCloudNoise, dr * rm * uCloudShapeFreq + uCloudWind * 0.35, 0.0).rg;
   float base = sat((n.y - (n.x - 1.0)) / (2.0 - n.x));
-  float dens = sat((base - (1.0 - cov)) / max(cov, 1e-3)) * cov;
-  return (1.0 - exp(-dens * 9.0 * uCloudDensity)) * uCloudShadowStr;
+  float dens = sat((base - (1.0 - w.x)) / max(w.x, 1e-3)) * w.x;
+  float mu = max(dot(d, uSunDir), 0.12);
+  float od = dens * cloudColumn(g) * (1.0 + w.z) * uCloudDensity * 14.0 / sqrt(mu);
+  return (1.0 - exp(-od)) * uCloudShadowStr;
+}
+
+float cloudShadow(vec3 p) {
+  float rain;
+  return cloudShadowRain(p, rain);
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Lightning (weather.js schedules the strikes): a few point flashes that
+// light the cloud volume from inside, and cloud-to-ground bolt polylines.
+// Included by the cloud pass and the composite only.
+// ---------------------------------------------------------------------------
+export const LIGHTNING_GLSL = /* glsl */ `
+#define MAX_FLASH 4
+#define MAX_BOLT 2
+#define BOLT_PTS 8
+uniform int  uFlashCount;
+uniform vec4 uFlashPos[MAX_FLASH];   // xyz planet-local, w glow radius
+uniform vec4 uFlashCol[MAX_FLASH];   // rgb radiance, w 1 = reached the ground
+uniform int  uBoltCount;
+uniform vec4 uBoltPts[MAX_BOLT * BOLT_PTS];
+uniform vec4 uBoltCol[MAX_BOLT];     // rgb radiance, w channel width (world)
+
+// light a flash scatters at p (diffused through the cloud around it)
+vec3 flashLight(vec3 p) {
+  vec3 L = vec3(0.0);
+  for (int i = 0; i < MAX_FLASH; i++) {
+    if (i >= uFlashCount) break;
+    vec3 d = p - uFlashPos[i].xyz;
+    float r = uFlashPos[i].w;
+    float x2 = dot(d, d) / (r * r);
+    L += uFlashCol[i].rgb * exp(-sqrt(x2) * 1.8) / (1.0 + x2 * 3.0);
+  }
+  return L;
 }
 `;
 

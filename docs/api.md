@@ -45,6 +45,8 @@ Unknown keys, and values of the wrong type, are skipped with a warning.
 | `lightSource` | Where the sunlight comes from (below) |
 | `time` | Shader clock in seconds (waves, gas flow, star surface) |
 | `cloudTime` | Integrated cloud clock |
+| `weather` | Regional, timed weather: `add` / `update` / `remove` systems, `sample`, `strike`, the weather clock ([weather.md](weather.md)) |
+| `transitioning` | Parameter keys with a `transition()` still running |
 | `boundingRadius` | Local-space radius enclosing everything drawn (atmosphere, rings, corona). Used for culling |
 | `surfaceRadius` | Local-space radius of the solid or liquid surface. Used for picking |
 | `starShaderBody` | The `starSurface()` GLSL in use |
@@ -70,6 +72,8 @@ Unknown keys, and values of the wrong type, are skipped with a warning.
 | `getSurfacePoint(localDir, target?)` | **World-space** point on the terrain or sea surface along a local direction |
 | `raycast(raycaster, intersects)` | `THREE.Raycaster` support (a sphere at `surfaceRadius`) |
 | `update(delta)` | Advance the clocks. `PlanetRenderer` calls this unless `autoUpdate` is off |
+| `transition(patch, { duration })` | Glide numeric / colour parameters to new values over `duration` seconds of planet time. Rebuild / re-bake keys and counts switch at once. Returns `this` |
+| `addEventListener('lightning', fn)` | Every lightning strike: `{ position (world), direction (local), intensity, ground, system }` |
 | `serialize()` | `{ app, version, mode, params }`, the same shape as the studio's `planet_preset.json` |
 | `clone()` / `copy(source)` | Object3D clone, including the parameters, light source and star shader |
 | `dispose()` | Free the planet's GPU resources |
@@ -230,6 +234,9 @@ one. Put it right after the `RenderPass` and end the chain with an
 | `PLANET_PRESETS`, `GAS_PRESETS`, `STAR_PRESETS` | Preset tables `{ name: { label, patch } }` |
 | `DEFAULT_STAR_BODY` | The default `starSurface()` GLSL (a starting point for `setStarShader`) |
 | `PLANET_TYPES` | Type name → render mode |
+| `WEATHER_TYPES`, `MAX_WEATHER_SYSTEMS` | Weather system kinds and the GPU slot count |
+| `normalizeWeatherSystem(def)` | A completed, validated weather system definition (or `null`) |
+| `latLonToDirection(lat, lon)`, `directionToLatLon(dir)` | Degrees ↔ planet-local direction (the weather convention) |
 | `VERSION` | Package version |
 
 ---

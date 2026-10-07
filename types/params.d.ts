@@ -243,6 +243,36 @@ export interface PlanetParams {
   cloudColor?: ColorInput;
   /** Ambient (sky-lit) tint Default: [0.78, 0.84, 0.95]. */
   cloudShadow?: ColorInput;
+  /** Vertical development: low flat decks .. tall towering cumulonimbus Range 0..1. Default: 0.55. */
+  cloudTowering?: number;
+  /** Wind shear: towers lean downwind — Upper winds carry cloud tops downstream: towers lean Range 0..1. Default: 0.25. */
+  cloudShear?: number;
+  /** Forward-scattering glow on cloud edges toward the sun Range 0..2. Default: 1. */
+  cloudSilverLining?: number;
+  /** Render regional weather: storm systems, hurricanes, rain and lightning (needs cloudsEnabled). Default: true. */
+  weatherEnabled?: boolean;
+  /** Weather clock rate: lifecycles, storm tracks, lightning — Clock of the weather systems: lifecycles, storm tracks, lightning Range 0..5. Default: 1. */
+  weatherSpeed?: number;
+  /** Procedural thunderstorm clusters / rain fronts alive at once Range 0..6. Default: 2. */
+  stormCount?: number;
+  /** Procedural tropical cyclones alive at once Range 0..3. Default: 1. */
+  hurricaneCount?: number;
+  /** Size multiplier of the procedural systems Range 0.3..2.5. Default: 1. */
+  stormSize?: number;
+  /** Mean lifetime of a procedural system (weather seconds) Range 20..600. Default: 120. */
+  stormLifetime?: number;
+  /** Precipitation: rain shafts, darker storm clouds, wet ground Range 0..1. Default: 0.5. */
+  rainAmount?: number;
+  /** Rain shafts / curtains tint Default: [0.6, 0.64, 0.7]. */
+  rainColor?: ColorInput;
+  /** Strike frequency in storms — Strike rate in thunderstorms and hurricane eyewalls Range 0..1. Default: 0.5. */
+  lightningAmount?: number;
+  /** Lightning flash brightness. Range 0..3. Default: 1. */
+  lightningBrightness?: number;
+  /** Lightning flash / bolt colour (sRGB). Default: [0.78, 0.84, 1]. */
+  lightningColor?: ColorInput;
+  /** Pinned weather systems saved with the planet: [{ type: storm | hurricane | rain | clear, lat, lon, radius, intensity, ... }] (see docs/weather.md). Default: []. */
+  weatherSystems?: import('./index').WeatherSystemDefinition[];
   /** Render atmospheric scattering. Default: true. */
   atmoEnabled?: boolean;
   /** Rayleigh tint (blue = Earth) Default: [0.35, 0.6, 1]. */
@@ -390,6 +420,21 @@ export interface ResolvedPlanetParams {
   cloudResolution: number;
   cloudColor: [number, number, number];
   cloudShadow: [number, number, number];
+  cloudTowering: number;
+  cloudShear: number;
+  cloudSilverLining: number;
+  weatherEnabled: boolean;
+  weatherSpeed: number;
+  stormCount: number;
+  hurricaneCount: number;
+  stormSize: number;
+  stormLifetime: number;
+  rainAmount: number;
+  rainColor: [number, number, number];
+  lightningAmount: number;
+  lightningBrightness: number;
+  lightningColor: [number, number, number];
+  weatherSystems: import('./index').WeatherSystemDefinition[];
   atmoEnabled: boolean;
   atmoColor: [number, number, number];
   atmoStrength: number;

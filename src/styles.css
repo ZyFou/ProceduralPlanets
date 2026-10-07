@@ -2281,3 +2281,30 @@ input {
   .paint-panel .side-panel-header { padding: 12px; }
   .paint-panel .side-panel-content { padding: 8px 12px; }
 }
+
+/* ---------------------------------------------------------------- weather */
+.wx-storm { --wx: #a78bfa; }
+.wx-hurricane { --wx: #f87171; }
+.wx-rain { --wx: #60a5fa; }
+.wx-clear { --wx: #fbbf24; }
+.wx-clock { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-control); }
+.wx-clock-row { display: flex; align-items: center; gap: 8px; }
+.wx-clock-time { margin-left: auto; color: var(--text-main); font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.wx-link { padding: 0; border: 0; background: none; color: #8fcaff; font-size: 11px; cursor: var(--cursor-pointer); }
+.wx-link:hover { text-decoration: underline; }
+.wx-clock-active { display: flex; flex-wrap: wrap; gap: 4px; }
+.wx-chip { padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--wx, var(--text-dim)) 45%, transparent); border-radius: 999px; color: var(--wx, var(--text-muted)); font-size: 10.5px; }
+.wx-empty { color: var(--text-dim); font-size: 11px; }
+.wx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wx-btn.wx-storm, .wx-btn.wx-hurricane, .wx-btn.wx-rain, .wx-btn.wx-clear { border-left: 3px solid var(--wx); }
+.wx-btn:disabled { opacity: 0.45; cursor: default; }
+.wx-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--wx, var(--text-dim)); box-shadow: 0 0 6px var(--wx, transparent); }
+.wx-live { display: grid; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; }
+.wx-live li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-panel-soft); font-size: 11.5px; }
+.wx-live-name { color: var(--text-main); }
+.wx-live-meta { margin-left: auto; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; }
+.wx-x { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--text-muted); font-size: 15px; line-height: 1; cursor: var(--cursor-pointer); }
+.wx-x:hover { border-color: var(--border-strong); color: var(--danger); }
+.wx-card { display: grid; gap: 6px; padding: 8px 10px 10px; border: 1px solid var(--border-subtle); border-left: 3px solid var(--wx); border-radius: var(--radius-sm); background: var(--bg-panel-soft); }
+.wx-card-head { display: flex; align-items: center; gap: 8px; }
+.wx-card-head select { flex: 1; min-width: 0; height: 26px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-control); color: var(--text-main); font-family: var(--font); font-size: 11.5px; }

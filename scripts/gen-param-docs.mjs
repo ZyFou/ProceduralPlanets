@@ -68,6 +68,10 @@ const EXTRA = {
   waveSpeed: 'Wave animation speed.',
   seaLevel: 'Sea level, as a fraction of heightScale above the base radius.',
   foamAmount: 'Overall foam strength (shore + whitecaps).',
+  weatherEnabled: 'Render regional weather: storm systems, hurricanes, rain and lightning (needs cloudsEnabled).',
+  weatherSystems: 'Pinned weather systems saved with the planet: [{ type: storm | hurricane | rain | clear, lat, lon, radius, intensity, ... }] (see docs/weather.md).',
+  lightningColor: 'Lightning flash / bolt colour (sRGB).',
+  lightningBrightness: 'Lightning flash brightness.',
 };
 
 const GROUP = { mode: 'General', renderVersion: 'General', seed: 'General' };
@@ -136,7 +140,8 @@ const defs = parseDefaults(fs.readFileSync(presetsPath, 'utf8'));
 const ui = parsePanels(fs.readFileSync(panelsPath, 'utf8'));
 
 const domainOf = (k) => (k in STAR_DEFAULTS ? 'star' : k in GAS_DEFAULTS ? 'gas' : 'planet');
-const typeOf = (v) => (Array.isArray(v) ? 'color' : typeof v === 'boolean' ? 'boolean' : typeof v === 'number' ? 'number' : 'string');
+const typeOf = (v) => (Array.isArray(v) ? (v.length === 3 && v.every((x) => typeof x === 'number') ? 'color' : 'array')
+  : typeof v === 'boolean' ? 'boolean' : typeof v === 'number' ? 'number' : 'string');
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 const docs = {};
@@ -170,7 +175,8 @@ const js = `${header}// Metadata for every Planet parameter: domain (planet | ga
 export const PARAM_DOCS = ${JSON.stringify(docs, null, 2)};
 `;
 
-const fmt = (v) => (Array.isArray(v) ? `[${v.join(', ')}]` : typeof v === 'string' ? `'${v}'` : String(v));
+const fmt = (v) => (Array.isArray(v) ? (v.length && typeof v[0] === 'object' ? JSON.stringify(v) : `[${v.join(', ')}]`)
+  : typeof v === 'string' ? `'${v}'` : String(v));
 const range = (e) => (e.min !== undefined ? `${e.min} – ${e.max}` : e.type === 'color' ? 'sRGB 0 – 1' : '');
 const esc = (s) => String(s).replace(/\|/g, '\\|');
 const TITLES = { planet: 'Terrestrial planets', gas: 'Gas giants', star: 'Stars' };
@@ -204,7 +210,8 @@ for (const domain of ['planet', 'gas', 'star']) {
   }
 }
 
-const tsType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : k === 'upscaler' ? "'bilinear' | 'spatial'" : e.type === 'color' ? 'ColorInput' : e.type);
+const tsType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : k === 'upscaler' ? "'bilinear' | 'spatial'"
+  : k === 'weatherSystems' ? "import('./index').WeatherSystemDefinition[]" : e.type === 'color' ? 'ColorInput' : e.type);
 let dts = `${header}
 /** sRGB colour: [r, g, b] in 0..1, '#rrggbb', 0xrrggbb or a THREE.Color. */
 export type ColorInput = [number, number, number] | string | number | import('three').Color;
@@ -221,14 +228,15 @@ dts += `}
 /** Parameter object as stored on a Planet (every key present, colours as [r, g, b]). */
 export interface ResolvedPlanetParams {
 `;
-const resolvedType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : e.type === 'color' ? '[number, number, number]' : e.type);
+const resolvedType = (e, k) => (k === 'mode' ? "'planet' | 'gas' | 'star'" : k === 'weatherSystems' ? "import('./index').WeatherSystemDefinition[]"
+  : e.type === 'color' ? '[number, number, number]' : e.type);
 for (const [k, e] of Object.entries(docs)) dts += `  ${k}: ${resolvedType(e, k)};\n`;
 dts += '}\n';
 
 // ---------------------------------------------------------------- presets
 const HIGHLIGHT = {
   planet: ['seaLevel', 'waterEnabled', 'waterEmissive', 'tempBias', 'craters', 'cloudsEnabled', 'cloudCoverage',
-    'atmoEnabled', 'atmoStrength', 'polarCaps'],
+    'atmoEnabled', 'atmoStrength', 'polarCaps', 'hurricaneCount', 'stormCount', 'rainAmount'],
   gas: ['gasBandCount', 'gasRingsEnabled', 'gasTilt', 'gasGreatSpot', 'gasStorms', 'gasContrast'],
   star: ['starTemperature', 'starSpots', 'starCoronaSize', 'starPulseAmount', 'starBrightness'],
 };

@@ -14,7 +14,7 @@ const TYPE = { planet: 'terrestrial', gas: 'gas', star: 'star' };
 
 const round = (v) => Math.round(v * 1e4) / 1e4;
 const same = (a, b) => (Array.isArray(a)
-  ? a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-6)
+  ? a.length === b.length && a.every((x, i) => (typeof x === 'object' ? JSON.stringify(x) === JSON.stringify(b[i]) : Math.abs(x - b[i]) < 1e-6))
   : typeof a === 'number' ? Math.abs(a - b) < 1e-9 : a === b);
 
 function domainKeys(mode) {
@@ -32,12 +32,13 @@ export function snippetParams(params) {
     if (SKIP.has(key) || !(key in params)) continue;
     const v = params[key];
     if (key !== 'seed' && same(v, DEFAULT_PARAMS[key])) continue;
-    out[key] = Array.isArray(v) ? v.map(round) : typeof v === 'number' ? round(v) : v;
+    out[key] = Array.isArray(v) ? v.map((x) => (typeof x === 'number' ? round(x) : x)) : typeof v === 'number' ? round(v) : v;
   }
   return out;
 }
 
-const fmt = (v) => (Array.isArray(v) ? `[${v.join(', ')}]` : typeof v === 'string' ? `'${v}'` : String(v));
+const fmt = (v) => (Array.isArray(v) ? (v.some((x) => typeof x === 'object') ? JSON.stringify(v) : `[${v.join(', ')}]`)
+  : typeof v === 'string' ? `'${v}'` : String(v));
 
 /** JavaScript that recreates the planet with the procedural-planets package. */
 export function planetCodeSnippet(params, terrain, paint) {

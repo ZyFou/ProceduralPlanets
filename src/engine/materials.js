@@ -5,6 +5,7 @@ import {
   TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL, CLIMATE_NOISE_GLSL,
 } from './surfaceGLSL.js';
 import { seedToOffset } from './presets.js';
+import { createWeatherUniforms } from './weather.js';
 
 // ============================================================================
 // Shared uniforms + the terrain chunk material. Terrain chunk materials are
@@ -95,10 +96,18 @@ export function createSharedUniforms(p) {
     uCloudBottom:   { value: p.radius * 1.01 },
     uCloudTop:      { value: p.radius * 1.02 },
     uCloudRotation: { value: 0 },
+    uCloudRotCS:    { value: new THREE.Vector2(1, 0) },
     uCloudShadowStr:{ value: p.cloudsEnabled ? p.cloudShadowStrength : 0 },
     uCloudShapeFreq:  { value: 0.02 },   // world-space, set per frame by Engine
     uCloudDetailFreq: { value: 0.1 },
+    uCloudCellFreq:   { value: 0.01 },
     uCloudWind:       { value: new THREE.Vector3() },
+    uCloudTowering:   { value: p.cloudTowering },
+    uCloudShear:      { value: 0 },      // derived per frame (shell thickness)
+    uCloudSilver:     { value: p.cloudSilverLining },
+
+    // weather systems, rain, lightning — packed per frame by PlanetWeather
+    ...createWeatherUniforms(p),
 
     // atmosphere — physical coefficients derived in Engine._syncAtmosphere
     uTransmittanceLUT: { value: null },
@@ -186,6 +195,7 @@ export const UNIFORM_MAP = {
   cloudDensity: 'uCloudDensity', cloudScale: 'uCloudScale',
   cloudDetail: 'uCloudDetail', cloudSpeed: 'uCloudSpeed',
   cloudColor: 'uCloudColor', cloudShadow: 'uCloudShadow',
+  cloudTowering: 'uCloudTowering', cloudSilverLining: 'uCloudSilver', rainColor: 'uRainColor',
   // cloudShadowStrength is gated by cloudsEnabled — handled in Engine.setParam
   atmoColor: 'uAtmoColor', atmoStrength: 'uAtmoStrength',
   // gas giant (mode toggles visibility; gasStorms / gasGreatSpot are gated
@@ -424,7 +434,11 @@ void main() {
 
   // sun: atmospheric transmittance (reddens at the terminator, planet
   // shadow on the night side), cloud shadows; sky light from above
-  vec3 sun = sunIrradiance(vWorldPos) * (1.0 - cloudShadow(vWorldPos));
+  float rainHere;
+  vec3 sun = sunIrradiance(vWorldPos) * (1.0 - cloudShadowRain(vWorldPos, rainHere));
+  // ground soaked under rain: darker (water fills the pores); snow and
+  // the seabed stay as they are
+  albedo *= 1.0 - smoothstep(0.03, 0.45, rainHere) * 0.42 * (1.0 - snow) * step(uSeaLevel, h);
   float ndl = max(dot(nd, uSunDir), 0.0) * smoothstep(-0.05, 0.12, dot(n, uSunDir) + 0.1);
   float diff = toonShade(ndl);
   vec3 col = albedo * (sun * diff + skyIrradiance(vWorldPos, nd)) / PI;

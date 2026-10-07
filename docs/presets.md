@@ -12,16 +12,16 @@ returns the names by type at runtime.
 | Preset | Label | Keys changed | Highlights |
 |---|---|---|---|
 | `terran` | Terran | — (the defaults) |  |
-| `desert` | Desert | 24 | `seaLevel: 0.3`, `tempBias: 0.75`, `cloudCoverage: 0.22`, `polarCaps: 0.35` |
-| `ice` | Ice | 15 | `seaLevel: 0.38`, `tempBias: -0.8`, `cloudCoverage: 0.6`, `polarCaps: 1` |
+| `desert` | Desert | 29 | `seaLevel: 0.3`, `tempBias: 0.75`, `cloudCoverage: 0.22`, `polarCaps: 0.35`, `hurricaneCount: 0`, `stormCount: 1`, `rainAmount: 0.2` |
+| `ice` | Ice | 20 | `seaLevel: 0.38`, `tempBias: -0.8`, `cloudCoverage: 0.6`, `polarCaps: 1`, `hurricaneCount: 0`, `stormCount: 2` |
 | `moon` | Moon | 21 | `seaLevel: 0`, `waterEnabled: false`, `craters: 0.9`, `cloudsEnabled: false`, `atmoEnabled: false`, `polarCaps: 0` |
 | `lava` | Lava | 26 | `seaLevel: 0.36`, `waterEmissive: 1`, `cloudsEnabled: false`, `atmoStrength: 0.8`, `polarCaps: 0` |
-| `ocean` | Ocean | 14 | `seaLevel: 0.52`, `tempBias: 0.25`, `cloudCoverage: 0.52`, `atmoStrength: 1.1` |
+| `ocean` | Ocean | 17 | `seaLevel: 0.52`, `tempBias: 0.25`, `cloudCoverage: 0.52`, `atmoStrength: 1.1`, `hurricaneCount: 2`, `stormCount: 3`, `rainAmount: 0.65` |
 | `mars` | Mars | 23 | `seaLevel: 0`, `waterEnabled: false`, `craters: 0.45`, `cloudsEnabled: false`, `atmoStrength: 0.35`, `polarCaps: 0.55` |
-| `swamp` | Swamp | 32 | `seaLevel: 0.5`, `tempBias: 0.35`, `cloudCoverage: 0.58`, `polarCaps: 0.15` |
-| `alien` | Alien | 22 | `tempBias: 0.2`, `atmoStrength: 1.2` |
-| `ashen` | Ashen | 29 | `seaLevel: 0.24`, `waterEmissive: 1`, `cloudCoverage: 0.45`, `atmoStrength: 0.9`, `polarCaps: 0` |
-| `candy` | Candy | 20 | `cloudCoverage: 0.4` |
+| `swamp` | Swamp | 37 | `seaLevel: 0.5`, `tempBias: 0.35`, `cloudCoverage: 0.58`, `polarCaps: 0.15`, `hurricaneCount: 0`, `stormCount: 4`, `rainAmount: 0.85` |
+| `alien` | Alien | 24 | `tempBias: 0.2`, `atmoStrength: 1.2` |
+| `ashen` | Ashen | 37 | `seaLevel: 0.24`, `waterEmissive: 1`, `cloudCoverage: 0.45`, `atmoStrength: 0.9`, `polarCaps: 0`, `hurricaneCount: 0`, `stormCount: 4`, `rainAmount: 0.4` |
+| `candy` | Candy | 22 | `cloudCoverage: 0.4` |
 
 ## Gas giants (`type: 'gas'`)
 

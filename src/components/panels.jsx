@@ -1,11 +1,12 @@
 import { translateExternalMessage } from '../i18n/externalMessages.js';
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Slider, Toggle, ColorRow, Section, SelectRow } from './controls.jsx';
 import { PLANET_PRESETS, STAR_PRESETS, GAS_PRESETS } from '../engine/presets.js';
 import { DEFAULT_STAR_BODY } from '../engine/star.js';
 import { planetCodeSnippet } from '../project/codeSnippet.js';
+import { normalizeWeatherSystem } from '../engine/weather.js';
 
 // One component per side-panel tab. Each receives (params, onParam) and, for
 // the style panel, onPreset. Pure declarative mappings — no engine access.
@@ -163,7 +164,12 @@ export function CloudsPanel({ params: p, onParam }) {
         <Slider param="cloudDetailScale" label={translate("Billow size")} value={p.cloudDetailScale} min={0.3} max={3} step={0.05} onChange={(v) => onParam('cloudDetailScale', v)} />
         <Slider param="cloudAltitude" label={translate("Altitude")} value={p.cloudAltitude} min={0} max={0.03} step={0.001} digits={3} onChange={(v) => onParam('cloudAltitude', v)} title={translate("Cloud base above sea level (fraction of radius)")} />
         <Slider param="cloudThickness" label={translate("Thickness")} value={p.cloudThickness} min={0.002} max={0.03} step={0.001} digits={3} onChange={(v) => onParam('cloudThickness', v)} title={translate("Depth of the cloud layer (fraction of radius)")} />
+        <Slider param="cloudTowering" label={translate("Towering")} value={p.cloudTowering} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudTowering', v)} title={translate("Vertical development: low flat decks to tall towering cumulonimbus")} />
+        <Slider param="cloudShear" label={translate("Wind shear")} value={p.cloudShear} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudShear', v)} title={translate("Upper winds carry cloud tops downstream: towers lean")} />
         <Slider param="cloudSpeed" label={translate("Speed")} value={p.cloudSpeed} min={0} max={3} step={0.05} onChange={(v) => onParam('cloudSpeed', v)} />
+      </Section>
+      <Section title={translate("Light")}>
+        <Slider param="cloudSilverLining" label={translate("Silver lining")} value={p.cloudSilverLining} min={0} max={2} step={0.05} onChange={(v) => onParam('cloudSilverLining', v)} title={translate("Forward-scattering glow on cloud edges when looking toward the sun")} />
       </Section>
       <Section title={translate("Quality")}>
         <Slider param="cloudQuality" label={translate("Ray steps")} value={p.cloudQuality} min={24} max={128} step={4} digits={0} onChange={(v) => onParam('cloudQuality', v)} title={translate("Maximum raymarch steps through the cloud layer")} />
@@ -172,6 +178,177 @@ export function CloudsPanel({ params: p, onParam }) {
       <Section title={translate("Colors")}>
         <ColorRow param="cloudColor" label={translate("Cloud")} value={p.cloudColor} onChange={(v) => onParam('cloudColor', v)} />
         <ColorRow param="cloudShadow" label={translate("Sky-lit tint")} value={p.cloudShadow} onChange={(v) => onParam('cloudShadow', v)} />
+      </Section>
+    </>
+  );
+}
+
+const WEATHER_KINDS = [
+  { type: 'storm', label: 'Thunderstorm' },
+  { type: 'hurricane', label: 'Hurricane' },
+  { type: 'rain', label: 'Rain front' },
+  { type: 'clear', label: 'Clear sky' },
+];
+const kindLabel = (type) => WEATHER_KINDS.find((k) => k.type === type)?.label ?? type;
+
+// Polls the live weather state (its clock runs outside React).
+function useWeatherState(weather, pick) {
+  const [state, setState] = useState(() => (weather ? pick(weather) : null));
+  useEffect(() => {
+    if (!weather) return undefined;
+    const tick = () => setState(pick(weather));
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [weather]);
+  return state;
+}
+
+const liveSnapshot = (weather) => ({
+  time: weather.time,
+  systems: weather.list().map((s) => ({ id: s.id, source: s.source, type: s.type, strength: s.strength, lat: s.lat, lon: s.lon })),
+});
+
+function WeatherClock({ weather }) {
+  useLocale();
+  const live = useWeatherState(weather, liveSnapshot);
+  if (!live) return null;
+  const counts = WEATHER_KINDS.map((k) => [k, live.systems.filter((s) => s.type === k.type).length]).filter(([, n]) => n);
+  return (
+    <div className="wx-clock">
+      <div className="wx-clock-row">
+        <span className="ctl-label">{translate("Weather time")}</span>
+        <span className="wx-clock-time">{translate("{0} s", { 0: Math.floor(live.time) })}</span>
+        <button type="button" className="wx-link" onClick={() => { weather.time = 0; }} title={translate("Replay the timeline from 0 s (timed and repeating systems restart)")}>{translate("Restart")}</button>
+      </div>
+      <div className="wx-clock-active">
+        {counts.length
+          ? counts.map(([k, n]) => <span key={k.type} className={`wx-chip wx-${k.type}`}>{translate(k.label)} × {n}</span>)
+          : <span className="wx-empty">{translate("No active systems")}</span>}
+      </div>
+    </div>
+  );
+}
+
+function LiveEvents({ weather, viewLatLon }) {
+  useLocale();
+  const [duration, setDuration] = useState(60);
+  const live = useWeatherState(weather, liveSnapshot);
+  if (!weather) return null;
+  const spawn = (type) => {
+    const { lat, lon } = viewLatLon?.() ?? { lat: 0, lon: 0 };
+    weather.add({ type, lat, lon, duration, fadeIn: Math.min(6, duration * 0.2), fadeOut: Math.min(10, duration * 0.3) });
+  };
+  const runtime = live?.systems.filter((s) => s.source === 'runtime') ?? [];
+  return (
+    <>
+      <p className="shader-hint">{translate("Spawn a timed system under the center of the view: it builds up, lasts, then dissipates. Live events are not saved.")}</p>
+      <Slider label={translate("Duration")} value={duration} min={10} max={300} step={5} digits={0} onChange={setDuration} title={translate("Seconds of weather time, fades included")} />
+      <div className="preset-grid wx-grid">
+        {WEATHER_KINDS.map((k) => (
+          <button key={k.type} type="button" className={`preset-btn wx-btn wx-${k.type}`} onClick={() => spawn(k.type)}>{translate(k.label)}</button>
+        ))}
+        <button type="button" className="preset-btn wx-btn" onClick={() => weather.strike({ ground: true })} title={translate("Fire a lightning strike in an active system")}>{translate("Strike")}</button>
+        <button type="button" className="preset-btn wx-btn" onClick={() => weather.clear({ fadeOut: 5 })} disabled={!runtime.length}>{translate("Fade all out")}</button>
+      </div>
+      {runtime.length > 0 && (
+        <ul className="wx-live">
+          {runtime.map((s) => (
+            <li key={s.id}>
+              <span className={`wx-dot wx-${s.type}`} />
+              <span className="wx-live-name">{translate(kindLabel(s.type))}</span>
+              <span className="wx-live-meta">{Math.round(s.lat)}°, {Math.round(s.lon)}° · {Math.round(s.strength * 100)}%</span>
+              <button type="button" className="wx-x" aria-label={translate("Dissipate")} title={translate("Dissipate")} onClick={() => weather.remove(s.id)}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function PinnedSystem({ sys, index, onChange, onRemove }) {
+  useLocale();
+  const set = (key, value) => onChange(index, { ...sys, [key]: value });
+  const flashes = sys.type === 'storm' || sys.type === 'hurricane';
+  // switching type keeps the place and the timing, the rest takes the new type's defaults
+  const retype = (type) => onChange(index, { type, lat: sys.lat, lon: sys.lon, heading: sys.heading, speed: sys.speed,
+    start: sys.start, duration: sys.duration, period: sys.period, fadeIn: sys.fadeIn, fadeOut: sys.fadeOut });
+  return (
+    <div className={`wx-card wx-${sys.type}`}>
+      <div className="wx-card-head">
+        <span className={`wx-dot wx-${sys.type}`} />
+        <select value={sys.type} aria-label={translate("System type")} onChange={(e) => retype(e.target.value)}>
+          {WEATHER_KINDS.map((k) => <option key={k.type} value={k.type}>{translate(k.label)}</option>)}
+        </select>
+        <button type="button" className="wx-x" aria-label={translate("Remove system")} title={translate("Remove system")} onClick={() => onRemove(index)}>×</button>
+      </div>
+      <Slider label={translate("Latitude")} value={sys.lat} min={-85} max={85} step={0.5} digits={1} onChange={(v) => set('lat', v)} />
+      <Slider label={translate("Longitude")} value={sys.lon} min={-180} max={180} step={0.5} digits={1} onChange={(v) => set('lon', v)} />
+      <Slider label={translate("Radius")} value={sys.radius} min={2} max={40} step={0.5} digits={1} onChange={(v) => set('radius', v)} title={translate("Degrees of arc")} />
+      <Slider label={translate("Intensity")} value={sys.intensity} min={0} max={1} step={0.05} onChange={(v) => set('intensity', v)} />
+      {sys.type !== 'clear' && <Slider label={translate("Rain")} value={sys.rain} min={0} max={1} step={0.05} onChange={(v) => set('rain', v)} />}
+      {flashes && <Slider label={translate("Lightning")} value={sys.lightning} min={0} max={2} step={0.05} onChange={(v) => set('lightning', v)} />}
+      {sys.type === 'hurricane' && <Slider label={translate("Spin")} value={sys.spin} min={-0.5} max={0.5} step={0.01} onChange={(v) => set('spin', v)} title={translate("Radians per second; positive turns counter-clockwise seen from above")} />}
+      <Slider label={translate("Heading")} value={sys.heading} min={0} max={360} step={5} digits={0} onChange={(v) => set('heading', v)} title={translate("Direction of travel: 0 north, 90 east")} />
+      <Slider label={translate("Track speed")} value={sys.speed} min={0} max={0.2} step={0.005} digits={3} onChange={(v) => set('speed', v)} title={translate("Degrees of arc per weather second")} />
+      <Slider label={translate("Lifetime")} value={sys.duration} min={0} max={600} step={5} digits={0} onChange={(v) => set('duration', v)} title={translate("Seconds alive, fades included (0 = permanent)")} />
+      {sys.duration > 0 && <>
+        <Slider label={translate("Starts at")} value={sys.start} min={0} max={600} step={5} digits={0} onChange={(v) => set('start', v)} title={translate("Weather time of the first appearance")} />
+        <Slider label={translate("Repeat every")} value={sys.period} min={0} max={900} step={5} digits={0} onChange={(v) => set('period', v)} title={translate("Seconds between appearances (0 = once)")} />
+        <Slider label={translate("Fade in")} value={sys.fadeIn} min={0} max={120} step={1} digits={0} onChange={(v) => set('fadeIn', v)} />
+        <Slider label={translate("Fade out")} value={sys.fadeOut} min={0} max={120} step={1} digits={0} onChange={(v) => set('fadeOut', v)} />
+      </>}
+    </div>
+  );
+}
+
+export function WeatherPanel({ params: p, onParam, weather, viewLatLon }) {
+  useLocale();
+  const systems = p.weatherSystems ?? [];
+  const setSystems = (next) => onParam('weatherSystems', next);
+  const pin = (type) => {
+    const { lat, lon } = viewLatLon?.() ?? { lat: 0, lon: 0 };
+    setSystems([...systems, normalizeWeatherSystem({ type, lat: Math.round(lat * 2) / 2, lon: Math.round(lon * 2) / 2, fadeIn: 8, fadeOut: 12 })]);
+  };
+  return (
+    <>
+      <Section title={translate("Weather")}>
+        <Toggle param="weatherEnabled" label={translate("Enabled")} value={p.weatherEnabled} onChange={(v) => onParam('weatherEnabled', v)} />
+        <Slider param="weatherSpeed" label={translate("Weather speed")} value={p.weatherSpeed} min={0} max={5} step={0.05} onChange={(v) => onParam('weatherSpeed', v)} title={translate("Clock of the weather systems: lifecycles, storm tracks, lightning")} />
+        {!p.cloudsEnabled && <p className="shader-hint">{translate("Weather needs the cloud layer: enable it in the Clouds tab.")}</p>}
+        <WeatherClock weather={weather} />
+      </Section>
+      <Section title={translate("Storm systems")}>
+        <Slider param="stormCount" label={translate("Storms & fronts")} value={p.stormCount} min={0} max={6} step={1} digits={0} onChange={(v) => onParam('stormCount', v)} title={translate("Thunderstorm clusters and rain fronts alive at once: they form, travel and dissipate on their own")} />
+        <Slider param="hurricaneCount" label={translate("Hurricanes")} value={p.hurricaneCount} min={0} max={3} step={1} digits={0} onChange={(v) => onParam('hurricaneCount', v)} title={translate("Tropical cyclones alive at once: eye, eyewall, spiral rain bands")} />
+        <Slider param="stormSize" label={translate("System size")} value={p.stormSize} min={0.3} max={2.5} step={0.05} onChange={(v) => onParam('stormSize', v)} />
+        <Slider param="stormLifetime" label={translate("Lifetime")} value={p.stormLifetime} min={20} max={600} step={5} digits={0} onChange={(v) => onParam('stormLifetime', v)} title={translate("Mean lifetime of a system in weather seconds (it builds up and dissipates)")} />
+      </Section>
+      <Section title={translate("Rain")}>
+        <Slider param="rainAmount" label={translate("Rain")} value={p.rainAmount} min={0} max={1} step={0.05} onChange={(v) => onParam('rainAmount', v)} title={translate("Precipitation from dense convective clouds: rain shafts, darker storm clouds, wet ground")} />
+        <ColorRow param="rainColor" label={translate("Rain tint")} value={p.rainColor} onChange={(v) => onParam('rainColor', v)} />
+      </Section>
+      <Section title={translate("Lightning")}>
+        <Slider param="lightningAmount" label={translate("Frequency")} value={p.lightningAmount} min={0} max={1} step={0.05} onChange={(v) => onParam('lightningAmount', v)} title={translate("Strike rate in thunderstorms and hurricane eyewalls")} />
+        <Slider param="lightningBrightness" label={translate("Brightness")} value={p.lightningBrightness} min={0} max={3} step={0.05} onChange={(v) => onParam('lightningBrightness', v)} />
+        <ColorRow param="lightningColor" label={translate("Flash color")} value={p.lightningColor} onChange={(v) => onParam('lightningColor', v)} />
+      </Section>
+      <Section title={translate("Live events")}>
+        <LiveEvents weather={weather} viewLatLon={viewLatLon} />
+      </Section>
+      <Section title={translate("Pinned systems")}>
+        <p className="shader-hint">{translate("Systems saved with the planet. Lifetime 0 keeps one forever; otherwise it follows the weather timeline, optionally repeating.")}</p>
+        <div className="preset-grid wx-grid">
+          {WEATHER_KINDS.map((k) => (
+            <button key={k.type} type="button" className={`preset-btn wx-btn wx-${k.type}`} onClick={() => pin(k.type)} title={translate("Pin at the center of the view")}>+ {translate(k.label)}</button>
+          ))}
+        </div>
+        {systems.map((sys, i) => (
+          <PinnedSystem key={i} sys={sys} index={i}
+            onChange={(index, next) => setSystems(systems.map((s, j) => (j === index ? normalizeWeatherSystem(next) ?? s : s)))}
+            onRemove={(index) => setSystems(systems.filter((_, j) => j !== index))} />
+        ))}
       </Section>
     </>
   );
@@ -558,6 +735,7 @@ export const PANELS = [
   { id: 'style', label: 'Style', component: StylePanel, modes: ['planet'] },
   { id: 'water', label: 'Water', component: WaterPanel, modes: ['planet'] },
   { id: 'clouds', label: 'Clouds', component: CloudsPanel, modes: ['planet'] },
+  { id: 'weather', label: 'Weather', component: WeatherPanel, modes: ['planet'] },
   { id: 'gasFlow', label: 'Flow', component: GasFlowPanel, modes: ['gas'] },
   { id: 'gasStorms', label: 'Storms', component: GasStormsPanel, modes: ['gas'] },
   { id: 'gasColors', label: 'Colors', component: GasColorsPanel, modes: ['gas'] },

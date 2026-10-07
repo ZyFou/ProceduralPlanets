@@ -294,6 +294,11 @@ export class PlanetRenderer {
       const starBloom = mode === 'star' && bloom;
       if (!starBloom || all) add(composite, !!target);
       if (starBloom) add(composite, true);
+      if (all && mode === 'planet') {
+        const fx = passes.compositeFor('planet', true);
+        setEmbedBlending(fx, embed, depthTest);
+        add(fx, !!target);
+      }
     }
     if (bloom) {
       add(pipe.bloomDownMat, true);
@@ -331,6 +336,7 @@ export class PlanetRenderer {
     const camLocal = _v.setFromMatrixPosition(px.matrixWorld);
 
     if (planet.world.group.visible) planet.world.update(camLocal, px);
+    planet.weather._setCamera(planet.uniforms, camLocal);
 
     // ---- embed uniforms
     const e = pipe.embed;
@@ -353,8 +359,20 @@ export class PlanetRenderer {
       if (rect === false) return;   // off screen
     }
 
+    // the composite with the weather effects compiled in, only on frames with
+    // lightning or rain at the camera; compiled in the background first (a
+    // flash before it is ready is simply not drawn)
+    let weatherFx = false;
+    if (frame.mode === 'planet' && frame.clouds && planet.weather.enabled) {
+      const fx = passes.compositeFor('planet', true);
+      setEmbedBlending(fx, embed, opt.depthTest);
+      weatherFx = this.warmer.ensure([{ material: fx, offscreen: !!target }]).ready
+        && planet.weather._fxActive(planet.uniforms);
+    }
+
     pipe.render(passes, planet._scene, px, {
       ...frame,
+      weatherFx,
       camDist,
       embed,
       depthTest: opt.depthTest,
@@ -460,7 +478,7 @@ export class PlanetRenderer {
     passes.fitWeatherSize(entry.slot.s / 2);
     this._fitTerrainVariants(planet);
     planet._updateSunDirection();
-    const frame = planet._prepareFrame();
+    const frame = planet._prepareFrame({ impostor: true });
     const entries = this._programEntries(planet, passes, frame, true, atlas.target);
     if (!this.warmer.ensure(entries).ready) {
       this.info.pending++;
@@ -490,6 +508,7 @@ export class PlanetRenderer {
     cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
 
     if (planet.world.group.visible) planet.world.update(local, cam);
+    planet.uniforms.uRainCam.value = 0;
 
     const e = pipe.embed;
     e.uViewMat.value.copy(cam.matrixWorldInverse);

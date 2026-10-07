@@ -24,6 +24,122 @@ export type GasPresetName = 'gasGiant' | 'ringed' | 'iceGiant' | 'toxic' | 'nebu
 export type StarPresetName = 'sun' | 'redGiant' | 'blueGiant' | 'whiteDwarf' | 'ember' | 'eldritch';
 export type PresetName = TerrestrialPresetName | GasPresetName | StarPresetName;
 
+/** Kinds of regional weather system. */
+export type WeatherSystemType = 'storm' | 'hurricane' | 'rain' | 'clear';
+
+/**
+ * A regional weather system: a spherical cap on the planet that thickens,
+ * towers, rains, flashes or clears the clouds under it. Times are seconds on
+ * the weather clock (planet.weather.time, advanced x weatherSpeed).
+ */
+export interface WeatherSystemDefinition {
+  type: WeatherSystemType;
+  /** Optional stable id (runtime systems get one from add()). */
+  id?: string | number;
+  name?: string;
+  /** Centre latitude / longitude in degrees (y = north pole, longitude like sunAzimuth). */
+  lat?: number;
+  lon?: number;
+  /** Centre as a planet-local direction (overrides lat / lon). */
+  direction?: Vector3;
+  /** Radius in degrees of arc (storm 6, hurricane 10, rain 12, clear 10). */
+  radius?: number;
+  /** 0..1 overall strength (default 1). */
+  intensity?: number;
+  /** 0..1 how much cloud the system builds (clear: how much it removes). */
+  coverage?: number;
+  /** 0..1 precipitation under the system. */
+  rain?: number;
+  /** 0..2 lightning activity (x the lightningAmount parameter). */
+  lightning?: number;
+  /** 0..1 how deep the convection is (tall towers / anvils). */
+  tower?: number;
+  /** Hurricanes: eye radius as a fraction of the radius (default 0.075). */
+  eye?: number;
+  /** Hurricanes: spin in rad / s, positive = counter-clockwise seen from above (default by hemisphere). */
+  spin?: number;
+  /** Track: heading in degrees (0 north, 90 east) and speed in degrees of arc per second. */
+  heading?: number;
+  speed?: number;
+  /** Lifecycle: start time, duration (0 = forever), fade in / out, period (repeat, 0 = once). */
+  start?: number;
+  duration?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+  period?: number;
+}
+
+export interface WeatherAddOptions extends WeatherSystemDefinition {
+  /** Seconds from now (when start is not given; start defaults to now). */
+  delay?: number;
+}
+
+/** A live weather system (planet.weather.list()). */
+export interface WeatherSystemState {
+  id: string | number;
+  source: 'runtime' | 'declared' | 'procedural';
+  type: WeatherSystemType;
+  lat: number;
+  lon: number;
+  /** intensity x fades, 0..1 */
+  strength: number;
+  /** current radius in degrees (systems grow while forming) */
+  radius: number;
+  definition: WeatherSystemDefinition;
+}
+
+/** Weather the systems put at a direction (planet.weather.sample()). */
+export interface WeatherSample {
+  rain: number;
+  storm: number;
+  hurricane: number;
+  clear: number;
+  lightning: number;
+}
+
+/** Fired on a Planet for every lightning strike (planet.addEventListener('lightning', ...)). */
+export interface LightningEvent {
+  type: 'lightning';
+  /** World position: the ground strike point, or the flash inside the cloud. */
+  position: Vector3;
+  /** Planet-local direction of the strike. */
+  direction: Vector3;
+  intensity: number;
+  /** Cloud-to-ground (true) or in-cloud flash. */
+  ground: boolean;
+  system: string | number | null;
+}
+
+/** planet.weather — regional, timed weather on a terrestrial planet. */
+export class PlanetWeather {
+  /** Weather clock, seconds (Planet.update advances it x weatherSpeed). Settable. */
+  time: number;
+  /** True when systems, rain and lightning render (terrestrial, clouds + weather on). */
+  readonly enabled: boolean;
+  /** Add a runtime system (fadeIn 4 s / fadeOut 6 s by default); returns its id. */
+  add(definition: WeatherAddOptions): string | number;
+  /** Change a runtime system; with { duration } numeric fields glide over that many seconds. */
+  update(id: string | number, patch: Partial<WeatherSystemDefinition>, options?: { duration?: number }): boolean;
+  /** Fade a runtime system out and drop it. */
+  remove(id: string | number, options?: { fadeOut?: number }): boolean;
+  /** Fade every runtime system out (default 4 s). */
+  clear(options?: { fadeOut?: number }): void;
+  /** A copy of a runtime system's definition. */
+  get(id: string | number): WeatherSystemDefinition | null;
+  /** Every system alive now (runtime, declared, procedural). */
+  list(): WeatherSystemState[];
+  /** Weather from the systems at a planet-local direction (CPU, analytic). */
+  sample(direction: Vector3): WeatherSample;
+  /** Fire a lightning strike now (in a system, or at a direction). */
+  strike(options?: { direction?: Vector3; system?: string | number; intensity?: number; ground?: boolean }): boolean;
+}
+
+export const WEATHER_TYPES: readonly WeatherSystemType[];
+export const MAX_WEATHER_SYSTEMS: number;
+export function latLonToDirection(lat: number, lon: number, target?: Vector3): Vector3;
+export function directionToLatLon(direction: Vector3): { lat: number; lon: number };
+export function normalizeWeatherSystem(definition: WeatherSystemDefinition): WeatherSystemDefinition | null;
+
 /** Where a planet's sunlight comes from. */
 export type LightSource = Object3D | Vector3 | null;
 
@@ -119,6 +235,8 @@ export class Planet extends Object3D {
   time: number;
   /** Integrated cloud clock. */
   cloudTime: number;
+  /** Regional, timed weather: storms, hurricanes, rain, clear skies, lightning. */
+  readonly weather: PlanetWeather;
   /** Radius (local units) of a sphere containing everything the planet draws. */
   readonly boundingRadius: number;
   /** Radius (local units) of the solid / liquid surface used for picking. */
@@ -154,6 +272,15 @@ export class Planet extends Object3D {
 
   /** Advance the planet clocks (PlanetRenderer does this unless autoUpdate is off). */
   update(delta: number): void;
+  /**
+   * Glide parameters to new values over `duration` seconds of planet time
+   * (numbers and colours; rebuild / re-bake keys and counts switch at once).
+   */
+  transition(patch: PlanetParams, options?: { duration?: number }): this;
+  /** Parameter keys with a transition still running. */
+  readonly transitioning: string[];
+  addEventListener(type: 'lightning', listener: (event: LightningEvent) => void): void;
+  removeEventListener(type: 'lightning', listener: (event: LightningEvent) => void): void;
 
   /** Plain JSON, same shape as the studio's planet_preset.json. */
   serialize(): SerializedPlanet;

@@ -8,12 +8,17 @@
 //   PlanetViewer    a self-contained canvas + camera + controls viewer
 //   bakePlanet      a static, cheap THREE.Group with baked textures
 //   PlanetPass      EffectComposer pass wrapping PlanetRenderer
+//   PlanetWeather   planet.weather: regional, timed storms / hurricanes /
+//                   rain / clear skies and lightning
 // ============================================================================
 
 export {
   Planet, PLANET_TYPES, findPreset, listPresets, validateParams, normalizeParam, resolvePlanetParams,
 } from '../engine/Planet.js';
 export { PlanetRenderer } from '../engine/PlanetRenderer.js';
+export {
+  PlanetWeather, WEATHER_TYPES, MAX_WEATHER_SYSTEMS, latLonToDirection, directionToLatLon, normalizeWeatherSystem,
+} from '../engine/weather.js';
 export { PlanetViewer } from '../engine/PlanetViewer.js';
 export { bakePlanet } from '../engine/PlanetBaker.js';
 export { PlanetPass } from './PlanetPass.js';

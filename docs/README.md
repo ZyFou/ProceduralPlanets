@@ -5,6 +5,7 @@
 - [API reference](api.md)
 - [Parameters](parameters.md) *(generated)*: every parameter, with type, default, range and meaning
 - [Presets](presets.md) *(generated)*: the built-in looks
+- [Weather](weather.md): storms, hurricanes, rain fronts, lightning; timed and scripted weather
 - [Baking and export](baking.md): `bakePlanet`, glTF / ZIP export
 - [Studio interop](studio-interop.md): from the studio to code
 - [Examples](../examples/)

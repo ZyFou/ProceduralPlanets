@@ -1306,6 +1306,167 @@ export const PARAM_DOCS = {
     ],
     "description": "Ambient (sky-lit) tint"
   },
+  "cloudTowering": {
+    "domain": "planet",
+    "group": "Shape & motion",
+    "label": "Towering",
+    "type": "number",
+    "default": 0.55,
+    "description": "Vertical development: low flat decks .. tall towering cumulonimbus",
+    "min": 0,
+    "max": 1,
+    "step": 0.05
+  },
+  "cloudShear": {
+    "domain": "planet",
+    "group": "Shape & motion",
+    "label": "Wind shear",
+    "type": "number",
+    "default": 0.25,
+    "description": "Wind shear: towers lean downwind — Upper winds carry cloud tops downstream: towers lean",
+    "min": 0,
+    "max": 1,
+    "step": 0.05
+  },
+  "cloudSilverLining": {
+    "domain": "planet",
+    "group": "Light",
+    "label": "Silver lining",
+    "type": "number",
+    "default": 1,
+    "description": "Forward-scattering glow on cloud edges toward the sun",
+    "min": 0,
+    "max": 2,
+    "step": 0.05
+  },
+  "weatherEnabled": {
+    "domain": "planet",
+    "group": "Weather",
+    "label": "Weather",
+    "type": "boolean",
+    "default": true,
+    "description": "Render regional weather: storm systems, hurricanes, rain and lightning (needs cloudsEnabled)."
+  },
+  "weatherSpeed": {
+    "domain": "planet",
+    "group": "Weather",
+    "label": "Weather speed",
+    "type": "number",
+    "default": 1,
+    "description": "Weather clock rate: lifecycles, storm tracks, lightning — Clock of the weather systems: lifecycles, storm tracks, lightning",
+    "min": 0,
+    "max": 5,
+    "step": 0.05
+  },
+  "stormCount": {
+    "domain": "planet",
+    "group": "Storm systems",
+    "label": "Storms & fronts",
+    "type": "number",
+    "default": 2,
+    "description": "Procedural thunderstorm clusters / rain fronts alive at once",
+    "min": 0,
+    "max": 6,
+    "step": 1
+  },
+  "hurricaneCount": {
+    "domain": "planet",
+    "group": "Storm systems",
+    "label": "Hurricanes",
+    "type": "number",
+    "default": 1,
+    "description": "Procedural tropical cyclones alive at once",
+    "min": 0,
+    "max": 3,
+    "step": 1
+  },
+  "stormSize": {
+    "domain": "planet",
+    "group": "Storm systems",
+    "label": "System size",
+    "type": "number",
+    "default": 1,
+    "description": "Size multiplier of the procedural systems",
+    "min": 0.3,
+    "max": 2.5,
+    "step": 0.05
+  },
+  "stormLifetime": {
+    "domain": "planet",
+    "group": "Storm systems",
+    "label": "Lifetime",
+    "type": "number",
+    "default": 120,
+    "description": "Mean lifetime of a procedural system (weather seconds)",
+    "min": 20,
+    "max": 600,
+    "step": 5
+  },
+  "rainAmount": {
+    "domain": "planet",
+    "group": "Rain",
+    "label": "Rain",
+    "type": "number",
+    "default": 0.5,
+    "description": "Precipitation: rain shafts, darker storm clouds, wet ground",
+    "min": 0,
+    "max": 1,
+    "step": 0.05
+  },
+  "rainColor": {
+    "domain": "planet",
+    "group": "Rain",
+    "label": "Rain tint",
+    "type": "color",
+    "default": [
+      0.6,
+      0.64,
+      0.7
+    ],
+    "description": "Rain shafts / curtains tint"
+  },
+  "lightningAmount": {
+    "domain": "planet",
+    "group": "Lightning",
+    "label": "Frequency",
+    "type": "number",
+    "default": 0.5,
+    "description": "Strike frequency in storms — Strike rate in thunderstorms and hurricane eyewalls",
+    "min": 0,
+    "max": 1,
+    "step": 0.05
+  },
+  "lightningBrightness": {
+    "domain": "planet",
+    "group": "Lightning",
+    "label": "Brightness",
+    "type": "number",
+    "default": 1,
+    "description": "Lightning flash brightness.",
+    "min": 0,
+    "max": 3,
+    "step": 0.05
+  },
+  "lightningColor": {
+    "domain": "planet",
+    "group": "Lightning",
+    "label": "Flash color",
+    "type": "color",
+    "default": [
+      0.78,
+      0.84,
+      1
+    ],
+    "description": "Lightning flash / bolt colour (sRGB)."
+  },
+  "weatherSystems": {
+    "domain": "planet",
+    "group": "Weather",
+    "label": "weatherSystems",
+    "type": "array",
+    "default": [],
+    "description": "Pinned weather systems saved with the planet: [{ type: storm | hurricane | rain | clear, lat, lon, radius, intensity, ... }] (see docs/weather.md)."
+  },
   "atmoEnabled": {
     "domain": "planet",
     "group": "Atmosphere",

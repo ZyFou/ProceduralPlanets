@@ -6,6 +6,7 @@ and dropped into your own scene.
 <p align="center"><img src="docs/images/terran.webp" alt="A terrestrial ocean world with continents, shallow-water shelves, volumetric clouds and an atmospheric rim" width="860"></p>
 
 - **Terrestrial planets.** GPU height field on a cube-sphere quadtree LOD, climate biomes, an analytic ocean (Beer–Lambert water, sun glint, foam), volumetric clouds and physically based atmospheric scattering.
+- **Weather.** Regional, timed storms, hurricanes, rain fronts and clear skies that form, travel and dissipate; rain shafts, wet ground and lightning; scriptable through `planet.weather` ([docs/weather.md](docs/weather.md)).
 - **Gas giants.** Belts, zones and jets, storms and a great spot, rings with shadows.
 - **Stars.** Blackbody colour, granulation, sunspots, prominences, a corona and bloom.
 - **Two ways to use them.** Live full-quality planets composited into your frame with correct depth, or cheap baked meshes with standard materials.
@@ -102,8 +103,8 @@ scene.add(moon);   // plain meshes with MeshStandardMaterial, lit by your lights
 <p align="center"><img src="docs/images/studio.webp" alt="Procedural Planets Studio: a live planet in the viewport, the Terrain panel with radius, sea level and noise sliders, and a tool rail for biomes, style, water, clouds, performance and export" width="860"></p>
 
 The studio is a browser editor built on the same engine as the package. Switch
-between planet, gas giant and star; tune terrain, biomes, style, water, clouds
-and performance settings with live feedback; search every setting with
+between planet, gas giant and star; tune terrain, biomes, style, water, clouds,
+weather and performance settings with live feedback; search every setting with
 <kbd>Ctrl</kbd>+<kbd>K</kbd>; save projects; and export glTF / ZIP or a
 ready-to-paste code snippet from the **Export** panel's *Use in code* section.
 

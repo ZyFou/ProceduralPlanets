@@ -15,6 +15,7 @@ import {
 import { createGasSurfaceMaterial, createRingMaterial, createRingGeometry, GasJetTable } from './gas.js';
 import { PlanetWorld } from './PlanetWorld.js';
 import { PlanetHeightSampler } from './PlanetHeightSampler.js';
+import { PlanetWeather, normalizeWeatherSystems } from './weather.js';
 
 // ============================================================================
 // Planet — one procedural body (terrestrial planet, gas giant or star) as a
@@ -37,6 +38,10 @@ const ATMO_KEYS = new Set(['radius', 'heightScale', 'seaLevel', 'atmoEnabled', '
 const GAS_ATMO_HEIGHT = 0.025;
 const WATER_KEYS = new Set(['radius', 'heightScale', 'seaLevel', 'colShallow', 'waterClarity']);
 const WEATHER_KEYS = new Set(['seed', 'cloudScale']);
+// params transition() sets at once instead of gliding (rebuilds, re-bakes,
+// counts, non-numeric)
+const NO_TRANSITION = new Set([...REBUILD_KEYS, ...WEATHER_KEYS, 'stormCount', 'hurricaneCount',
+  'cloudQuality', 'renderVersion']);
 
 const srgbToLinear = (c) => Math.pow(Math.max(c, 0), 2.2);
 
@@ -132,6 +137,10 @@ export function normalizeParam(key, value) {
   if (key === 'upscaler') {
     return ['bilinear', 'spatial'].includes(value) ? { ok: true, value } : { ok: false, reason: 'invalid' };
   }
+  if (key === 'weatherSystems') {
+    const list = normalizeWeatherSystems(value);
+    return list ? { ok: true, value: list } : { ok: false, reason: 'invalid' };
+  }
   if (Array.isArray(def)) {
     const c = toColorArray(value);
     return c ? { ok: true, value: c } : { ok: false, reason: 'invalid' };
@@ -223,6 +232,10 @@ export class Planet extends THREE.Object3D {
     this.lightSource = options.lightSource ?? null;
 
     this.cloudTime = 0;     // integrated cloud clock (cloudSpeed-scaled)
+    /** Regional, timed weather: systems, rain, lightning (see weather.js). */
+    this.weather = new PlanetWeather(this);
+    this.weather._setDeclared(this.params.weatherSystems);
+    this._tweens = new Map();
 
     this.uniforms = createSharedUniforms(this.params);
     this._scene = new THREE.Scene();
@@ -520,6 +533,7 @@ export class Planet extends THREE.Object3D {
   /** Current value of one parameter. */
   get(key) {
     const v = this.params[key];
+    if (key === 'weatherSystems') return JSON.parse(JSON.stringify(v));
     return Array.isArray(v) ? [...v] : v;
   }
 
@@ -534,6 +548,7 @@ export class Planet extends THREE.Object3D {
     const accepted = acceptParams(patch, 'Planet.set');
     let structural = false;
     for (const [k, v] of Object.entries(accepted)) {
+      this._tweens.delete(k);   // an explicit value wins over a running transition
       if (REBUILD_KEYS.has(k)) {
         if (this.params[k] !== v) structural = true;
         this.params[k] = v;
@@ -580,6 +595,9 @@ export class Planet extends THREE.Object3D {
       }
       case 'cloudResolution':
         return;   // applied per frame (PlanetPasses.setCloudResolution)
+      case 'weatherSystems':
+        this.weather._setDeclared(value);
+        return;
       case 'radius':
       case 'heightScale':
       case 'seaLevel': {
@@ -791,6 +809,43 @@ export class Planet extends THREE.Object3D {
   update(delta) {
     this.uniforms.uTime.value += delta;
     this.cloudTime += delta * this.params.cloudSpeed;
+    this.weather._advance(delta);
+    if (this._tweens.size) this._advanceTransitions();
+  }
+
+  /**
+   * Glide parameters to new values over `duration` seconds of planet time
+   * (smoothstep easing): planet.transition({ cloudCoverage: 0.8,
+   * rainAmount: 1 }, { duration: 20 }). Numbers and colours glide; keys that
+   * rebuild or re-bake (octaves, seed, cloudScale...) and counts switch at
+   * once. A later set() of a key cancels its transition. Returns this.
+   */
+  transition(patch, { duration = 1 } = {}) {
+    const accepted = acceptParams(patch, 'Planet.transition');
+    const now = this.uniforms.uTime.value;
+    for (const [k, to] of Object.entries(accepted)) {
+      const from = this.params[k];
+      const glide = duration > 0 && !NO_TRANSITION.has(k)
+        && (typeof from === 'number' || (Array.isArray(from) && from.length === 3 && typeof from[0] === 'number'));
+      this._tweens.delete(k);
+      if (!glide) { this.set(k, to); continue; }
+      this._tweens.set(k, { from: Array.isArray(from) ? [...from] : from, to, t0: now, dur: duration });
+    }
+    return this;
+  }
+
+  /** Parameters with a transition still running. */
+  get transitioning() { return [...this._tweens.keys()]; }
+
+  _advanceTransitions() {
+    const now = this.uniforms.uTime.value;
+    for (const [k, tw] of this._tweens) {
+      const x = Math.min(1, Math.max(0, (now - tw.t0) / tw.dur));
+      const e = x * x * (3 - 2 * x);
+      const v = Array.isArray(tw.from) ? tw.from.map((a, i) => a + (tw.to[i] - a) * e) : tw.from + (tw.to - tw.from) * e;
+      this.setParam(k, v);
+      if (x >= 1) this._tweens.delete(k);
+    }
   }
 
   // ----------------------------------------------------- renderer interface
@@ -868,20 +923,33 @@ export class Planet extends THREE.Object3D {
     dir.applyQuaternion(_q).normalize();
   }
 
-  /** @internal per-frame uniforms + render options for PlanetPipeline. */
-  _prepareFrame() {
+  /**
+   * @internal per-frame uniforms + render options for PlanetPipeline.
+   * { impostor: true } leaves lightning out (a capture outlives a flash).
+   */
+  _prepareFrame({ impostor = false } = {}) {
     const p = this.params;
     const u = this.uniforms;
     const ct = this.cloudTime;
     const R = p.radius;
     u.uCloudRotation.value = (ct * 0.004) % (Math.PI * 2);
+    u.uCloudRotCS.value.set(Math.cos(u.uCloudRotation.value), Math.sin(u.uCloudRotation.value));
     // cloud noise frequencies in WORLD units, tied to the shell thickness
     const thick = Math.max(R * p.cloudThickness, 1e-3);
-    const shapeFreq = 1 / (thick * 1.6 * p.cloudDetailScale);
+    // billows grow only with the square root of the layer thickness: a
+    // thicker layer stacks more of them into taller towers instead of
+    // magnifying the same clouds vertically (unchanged at the default 0.009)
+    const billow = Math.sqrt(thick * R * 0.009);
+    const shapeFreq = 1 / (billow * 1.6 * p.cloudDetailScale);
+    // towers / storm cells stay about as wide as the layer is thick
+    u.uCloudCellFreq.value = 0.33 / (thick * 1.6 * p.cloudDetailScale);
     const wind = ct * 0.004;
     u.uCloudShapeFreq.value = shapeFreq;
     u.uCloudDetailFreq.value = shapeFreq * 4.1;
     u.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
+    // shear: how far the shell top is carried downstream (direction units)
+    u.uCloudShear.value = p.cloudShear * Math.max(p.cloudThickness, 0.0005) * 2.2;
+    this.weather._writeUniforms(u, { lightning: !impostor });
     return {
       mode: p.mode,
       bloom: p.mode === 'star' ? p.starBloom : 0,

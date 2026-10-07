@@ -85,6 +85,23 @@ const SETTINGS_INDEX = [
   { panelId: 'clouds', sectionLabel: 'Quality', settingId: 'clouds.cloudResolution', label: 'Cloud resolution', keywords: 'cloud resolution performance quality' },
   { panelId: 'clouds', sectionLabel: 'Colors', settingId: 'clouds.cloudColor', label: 'Cloud color', keywords: 'cloud color' },
   { panelId: 'clouds', sectionLabel: 'Colors', settingId: 'clouds.cloudShadow', label: 'Sky-lit tint', keywords: 'cloud shadow ambient color tint' },
+  { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudTowering', label: 'Towering', keywords: 'cloud towering vertical cumulonimbus anvil convection height' },
+  { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudShear', label: 'Wind shear', keywords: 'cloud wind shear lean anvil tilt' },
+  { panelId: 'clouds', sectionLabel: 'Light', settingId: 'clouds.cloudSilverLining', label: 'Silver lining', keywords: 'cloud silver lining sun glow forward scattering backlight' },
+
+  // Weather
+  { panelId: 'weather', sectionLabel: 'Weather', settingId: 'weather.weatherEnabled', label: 'Weather enabled', keywords: 'weather meteo storm rain lightning enable disable' },
+  { panelId: 'weather', sectionLabel: 'Weather', settingId: 'weather.weatherSpeed', label: 'Weather speed', keywords: 'weather clock speed time lifecycle' },
+  { panelId: 'weather', sectionLabel: 'Storm systems', settingId: 'weather.stormCount', label: 'Storms & fronts', keywords: 'storm thunderstorm front count procedural weather' },
+  { panelId: 'weather', sectionLabel: 'Storm systems', settingId: 'weather.hurricaneCount', label: 'Hurricanes', keywords: 'hurricane cyclone typhoon tropical storm eye spiral' },
+  { panelId: 'weather', sectionLabel: 'Storm systems', settingId: 'weather.stormSize', label: 'System size', keywords: 'storm size hurricane radius' },
+  { panelId: 'weather', sectionLabel: 'Storm systems', settingId: 'weather.stormLifetime', label: 'Lifetime', keywords: 'storm lifetime duration fade dissipate' },
+  { panelId: 'weather', sectionLabel: 'Rain', settingId: 'weather.rainAmount', label: 'Rain', keywords: 'rain precipitation shafts wet showers drizzle' },
+  { panelId: 'weather', sectionLabel: 'Rain', settingId: 'weather.rainColor', label: 'Rain tint', keywords: 'rain color tint snow' },
+  { panelId: 'weather', sectionLabel: 'Lightning', settingId: 'weather.lightningAmount', label: 'Lightning frequency', keywords: 'lightning thunder strike flash bolt frequency' },
+  { panelId: 'weather', sectionLabel: 'Lightning', settingId: 'weather.lightningBrightness', label: 'Lightning brightness', keywords: 'lightning flash brightness bolt' },
+  { panelId: 'weather', sectionLabel: 'Lightning', settingId: 'weather.lightningColor', label: 'Lightning color', keywords: 'lightning flash color bolt' },
+  { panelId: 'weather', sectionLabel: 'Pinned systems', settingId: 'weather.weatherSystems', label: 'Weather systems', keywords: 'weather system pinned storm hurricane rain clear sky place timed' },
 
   // Gas — Flow
   { panelId: 'gasFlow', sectionLabel: 'Preset', settingId: 'gasFlow.preset', label: 'Gas preset', keywords: 'gas preset giant style jupiter saturn neptune' },

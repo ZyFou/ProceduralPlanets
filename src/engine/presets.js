@@ -160,6 +160,23 @@ export const DEFAULT_PARAMS = {
   cloudResolution: 0.5,    // cloud pass resolution scale
   cloudColor:  [1.0, 1.0, 1.0],
   cloudShadow: [0.78, 0.84, 0.95],   // ambient (sky-lit) tint
+  cloudTowering: 0.55,     // vertical development: low flat decks .. tall towering cumulonimbus
+  cloudShear: 0.25,        // wind shear: towers lean downwind
+  cloudSilverLining: 1.0,  // forward-scattering glow on cloud edges toward the sun
+
+  // weather (regional, timed systems + rain + lightning; see docs/weather.md)
+  weatherEnabled: true,
+  weatherSpeed: 1.0,       // weather clock rate: lifecycles, storm tracks, lightning
+  stormCount: 2,           // procedural thunderstorm clusters / rain fronts alive at once
+  hurricaneCount: 1,       // procedural tropical cyclones alive at once
+  stormSize: 1.0,          // size multiplier of the procedural systems
+  stormLifetime: 120,      // mean lifetime of a procedural system (weather seconds)
+  rainAmount: 0.5,         // precipitation: rain shafts, darker storm clouds, wet ground
+  rainColor: [0.60, 0.64, 0.70],     // rain shafts / curtains tint
+  lightningAmount: 0.5,    // strike frequency in storms
+  lightningBrightness: 1.0,
+  lightningColor: [0.78, 0.84, 1.00],
+  weatherSystems: [],      // pinned weather systems (storm / hurricane / rain / clear)
 
   // atmosphere (single scattering, scaled to the planet)
   atmoEnabled: true,
@@ -200,6 +217,7 @@ export const PLANET_PRESETS = {
       colForest: [0.420, 0.360, 0.220], colRock: [0.560, 0.380, 0.260],
       colSnow: [0.960, 0.930, 0.890],
       cloudCoverage: 0.22, atmoColor: [0.55, 0.62, 0.85], atmoHaze: 0.75,
+      stormCount: 1, hurricaneCount: 0, rainAmount: 0.2, lightningAmount: 0.7, cloudTowering: 0.75,
     },
   },
   ice: {
@@ -212,6 +230,8 @@ export const PLANET_PRESETS = {
       colSand: [0.600, 0.620, 0.620], colGrass: [0.520, 0.560, 0.540],
       colForest: [0.300, 0.360, 0.340], colRock: [0.400, 0.420, 0.440],
       cloudCoverage: 0.6, atmoColor: [0.40, 0.62, 1.0],
+      hurricaneCount: 0, stormCount: 2, cloudTowering: 0.3, lightningAmount: 0.1,
+      rainColor: [0.86, 0.89, 0.93],
     },
   },
   moon: {
@@ -251,6 +271,7 @@ export const PLANET_PRESETS = {
       colSand: [0.900, 0.840, 0.660],
       cloudCoverage: 0.52, foamWidth: 0.3, whitecaps: 0.5,
       atmoStrength: 1.1,
+      hurricaneCount: 2, stormCount: 3, rainAmount: 0.65,
     },
   },
   mars: {
@@ -281,6 +302,8 @@ export const PLANET_PRESETS = {
       snowLine: 1.0, polarCaps: 0.15,
       cloudCoverage: 0.58, cloudColor: [0.94, 0.96, 0.90], atmoHaze: 0.7,
       atmoColor: [0.45, 0.62, 0.80],
+      hurricaneCount: 0, stormCount: 4, rainAmount: 0.85, lightningAmount: 0.6,
+      rainColor: [0.55, 0.60, 0.55],
     },
   },
   alien: {
@@ -297,6 +320,7 @@ export const PLANET_PRESETS = {
       colRock: [0.360, 0.340, 0.400], colSnow: [0.920, 0.960, 0.960],
       cloudColor: [0.96, 1.00, 0.94], cloudShadow: [0.80, 0.90, 0.85],
       atmoColor: [0.55, 0.95, 0.70], atmoStrength: 1.2,
+      lightningColor: [0.70, 1.00, 0.78], rainColor: [0.62, 0.72, 0.66],
     },
   },
   ashen: {
@@ -312,6 +336,9 @@ export const PLANET_PRESETS = {
       colSnow: [0.550, 0.530, 0.530], snowLine: 1.2,
       cloudCoverage: 0.45, cloudColor: [0.42, 0.40, 0.42],
       cloudShadow: [0.40, 0.38, 0.42], cloudShadowStrength: 0.7,
+      hurricaneCount: 0, stormCount: 4, lightningAmount: 1.0, lightningBrightness: 1.4,
+      rainAmount: 0.4, rainColor: [0.33, 0.31, 0.32], lightningColor: [1.00, 0.86, 0.78],
+      cloudTowering: 0.85,
       atmoColor: [0.75, 0.55, 0.45], atmoHaze: 1.0, atmoStrength: 0.9,
     },
   },
@@ -328,6 +355,7 @@ export const PLANET_PRESETS = {
       colSnow: [1.000, 0.970, 1.000], colFoam: [1.000, 0.900, 0.980],
       cloudColor: [1.0, 0.92, 0.97], atmoColor: [0.95, 0.60, 0.95],
       toonEnabled: true, toonBands: 3, cloudCoverage: 0.40,
+      lightningColor: [1.00, 0.75, 0.95], rainColor: [0.90, 0.70, 0.85],
     },
   },
 };
