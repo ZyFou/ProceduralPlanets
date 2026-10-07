@@ -1,27 +1,20 @@
 .language-switcher {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 4px 6px;
+  box-sizing: border-box;
+  width: var(--language-button-size, 34px);
+  height: var(--language-button-size, 34px);
+  padding: 0;
   border: 1px solid rgba(160, 178, 198, .22);
-  border-radius: 6px;
+  border-radius: 8px;
   color: inherit;
+  font-family: inherit;
   font-size: 11px;
+  font-weight: 600;
   background: rgba(12, 18, 30, .7);
-}
-.language-switcher select {
-  max-width: 110px;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  font: inherit;
   cursor: pointer;
 }
-.language-switcher option { color: #e1e8f1; background: #111927; }
-.language-switcher:focus-within { outline: 2px solid #79aaff; outline-offset: 2px; }
-@media (max-width: 640px) {
-  .language-switcher { padding: 3px; }
-  .language-switcher > svg { display: none; }
-  .language-switcher select { width: 49px; }
-}
+.language-switcher:hover { background: rgba(30, 42, 62, .9); }
+.language-switcher:focus-visible { outline: 2px solid #79aaff; outline-offset: 2px; }

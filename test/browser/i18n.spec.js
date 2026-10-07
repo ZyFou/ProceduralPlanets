@@ -33,7 +33,7 @@ async function clickNavigation(page, target) {
 test('language persists across public pages and reload, including validation messages and mobile navigation', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await prepare(page);
-  await page.locator('.lp-nav .language-switcher select').selectOption('fr');
+  await page.locator('.lp-nav .language-switcher').click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
   await expect(page.locator('.lp-hero h1')).toContainText('des mondes saisissants');
   await clickNavigation(page, page.getByRole('button', { name: 'Modèles', exact: true }));
@@ -53,8 +53,8 @@ test('language persists across public pages and reload, including validation mes
   await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
   await expect(page.locator('#pp-loader')).toHaveCount(0, { timeout: 90000 });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('.lp-nav .language-switcher select')).toBeVisible();
-  await page.locator('.lp-nav .language-switcher select').selectOption('en');
+  await expect(page.locator('.lp-nav .language-switcher')).toBeVisible();
+  await page.locator('.lp-nav .language-switcher').click();
   await expect(page.getByRole('heading', { name: 'Confidentiality & privacy' })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -72,7 +72,7 @@ test('studio switches without replacing its canvas or editing project data; Fren
   await expect(page.getByRole('button', { name: 'Paint Mode', exact: true })).toBeEnabled();
   await page.evaluate(() => { window.__i18nEngine = window.planetStudio; window.__i18nCanvas = document.querySelector('#viewport'); });
   const before = await page.evaluate(() => JSON.stringify(window.planetStudio.params));
-  await page.locator('#topbar .language-switcher select').selectOption('fr');
+  await page.locator('#topbar .language-switcher').click();
   await page.getByRole('button', { name: 'Fichier', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Nom du projet' })).toHaveValue('Star');
   await page.keyboard.press('Escape');
@@ -83,7 +83,7 @@ test('studio switches without replacing its canvas or editing project data; Fren
   await expect(page.locator('[data-param="seaLevel"]')).toBeVisible();
   await page.keyboard.press('p');
   await expect(page.getByRole('complementary', { name: 'Réglages de peinture' })).toBeVisible();
-  await page.locator('#topbar .language-switcher select').selectOption('en');
+  await page.locator('#topbar .language-switcher').click();
   await expect(page.getByRole('complementary', { name: 'Paint settings' })).toBeVisible();
   expect(await page.evaluate(() => window.__i18nEngine === window.planetStudio && window.__i18nCanvas === document.querySelector('#viewport'))).toBe(true);
   expect(await page.evaluate(() => JSON.stringify(window.planetStudio.params))).toBe(before);
@@ -118,7 +118,7 @@ test('responsive header exposes every link and footer stays usable in both langu
   const panel = page.locator('#landing-navigation');
   const footer = page.locator('.lp-footer');
   for (const locale of ['en', 'fr']) {
-    await header.locator('select').selectOption(locale);
+    if (await header.locator('.language-switcher').innerText() !== locale.toUpperCase()) await header.locator('.language-switcher').click();
     for (const width of [1440, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       const mobile = width < 1400;
@@ -129,6 +129,13 @@ test('responsive header exposes every link and footer stays usable in both langu
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await expect(panel.locator('.lp-nav-links button').first()).toBeFocused();
+        await expect(panel).toHaveCSS('opacity', '1');
+        const panelBounds = await panel.boundingBox();
+        expect(panelBounds.x).toBe(0); expect(panelBounds.y).toBe(0);
+        expect(panelBounds.width).toBe(width); expect(panelBounds.height).toBe(844);
+        await expect(page.locator('.lp-scroll')).toHaveAttribute('inert', '');
+        const accountBounds = await panel.locator('.lp-auth-register').boundingBox();
+        expect(accountBounds.x + accountBounds.width).toBeGreaterThan(width - 32);
         await page.keyboard.press('Tab');
         await expect(panel.locator('.lp-nav-links button').nth(1)).toBeFocused();
       } else await expect(toggle).toBeHidden();
@@ -150,14 +157,13 @@ test('responsive header exposes every link and footer stays usable in both langu
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');
         await toggle.click();
         await page.mouse.click(4, 500);
+        await expect(panel).toBeVisible();
+        await toggle.click();
         await expect(panel).toBeHidden();
       }
-      const terrainLink = footer.getByRole('link', { name: /Procedural Terrains/ });
-      await terrainLink.scrollIntoViewIfNeeded();
-      await expect(terrainLink).toBeInViewport();
-      await expect(terrainLink).toHaveAttribute('href', 'https://procedural-terrains.com');
-      await expect(terrainLink).toHaveAttribute('target', '_blank');
-      await expect(terrainLink).toHaveAttribute('rel', 'noopener noreferrer');
+      await expect(footer.getByRole('link', { name: /Procedural Terrains/ })).toHaveCount(0);
+      await footer.scrollIntoViewIfNeeded();
+      await expect(footer.getByRole('button', { name: locale === 'fr' ? 'Confidentialité' : 'Confidentiality', exact: true })).toBeInViewport();
       expect(await footer.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       expect(await page.locator('.lp-scroll').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       for (const link of await footer.locator('.lp-footer-links > *, .lp-footer-socials a').all()) {

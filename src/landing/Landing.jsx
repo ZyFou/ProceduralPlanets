@@ -20,7 +20,6 @@ import {
   LogOut,
   Mail,
   Menu,
-  Mountain,
   MoreVertical,
   Orbit,
   Pencil,
@@ -147,6 +146,15 @@ export default function Landing({
       if (!headerRef.current?.contains(event.target)) setNavigationOpen(false);
     };
     const closeOnEscape = (event) => {
+      if (event.key === 'Tab') {
+        const controls = [...headerRef.current.querySelectorAll('button:not(:disabled), a[href]')];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first?.focus();
+        }
+      }
       if (event.key !== 'Escape') return;
       setNavigationOpen(false);
       navigationToggleRef.current?.focus();
@@ -353,7 +361,7 @@ export default function Landing({
         </div>
       )}
 
-      <header className="lp-nav" ref={headerRef} onBlur={(event) => {
+      <header className={`lp-nav${navigationOpen ? ' is-open' : ''}`} ref={headerRef} onBlur={(event) => {
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setNavigationOpen(false);
       }}>
         <button type="button" className="lp-brand" onClick={goHome} title={translate("Return to home")}>
@@ -403,7 +411,7 @@ export default function Landing({
         </div>
       </header>
 
-      <div className="lp-scroll">
+      <div className="lp-scroll" inert={navigationOpen ? '' : undefined}>
         <main className="lp-content">
           <div key={view} className="lp-content-scroll">
             {AUTH_VIEWS.has(view) && <AuthPage key={view} mode={view} onBack={goHome} onSwitch={showView} onSuccess={goHome} />}
@@ -509,11 +517,6 @@ export default function Landing({
               <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Source")} <ExternalLink size={12} aria-hidden="true" /></a>
               <button type="button" onClick={() => showView('confidentiality')}>{translate("Confidentiality")}</button>
             </nav>
-            <a className="lp-footer-related" href={PROCEDURAL_TERRAINS_URL} target="_blank" rel="noopener noreferrer">
-              <Mountain size={22} aria-hidden="true" />
-              <span><strong>Procedural Terrains</strong><small>{translate("Explore procedural landscapes")}</small></span>
-              <ExternalLink size={14} aria-hidden="true" />
-            </a>
           </footer>
         </main>
       </div>

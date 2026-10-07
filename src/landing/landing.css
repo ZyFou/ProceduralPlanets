@@ -879,13 +879,6 @@ body:has(.landing-overlay) {
 .lp-footer-links { display: flex; flex-wrap: wrap; gap: 0 16px; }
 .lp-footer-links a, .lp-footer-links button { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-muted); font: 500 12px var(--font); text-decoration: none; cursor: var(--cursor-pointer); }
 .lp-footer-links a:hover, .lp-footer-links button:hover { color: var(--text-bright); }
-.lp-footer-related { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border: 1px solid rgba(37, 99, 235, .25); border-radius: 12px; background: rgba(37, 99, 235, .06); color: var(--accent); text-decoration: none; transition: border-color .15s ease, background .15s ease; }
-.lp-footer-related:hover { border-color: var(--accent); background: var(--accent-bg); }
-.lp-footer-related > svg { flex-shrink: 0; }
-.lp-footer-related > svg:last-child { margin-left: auto; }
-.lp-footer-related > span { display: grid; gap: 4px; min-width: 0; }
-.lp-footer-related strong { color: var(--text-bright); font-size: 12px; font-weight: 600; }
-.lp-footer-related small { color: var(--text-muted); font-size: 11.5px; line-height: 1.5; }
 
 @keyframes lp-footer-icon-wobble {
   0% { transform: rotate(0deg) translateY(0); }
@@ -1312,29 +1305,53 @@ body:has(.landing-overlay) {
 /* Keep every header action available through a disclosure menu on smaller screens. */
 @media (max-width: 1399px) {
   .lp-nav-toggle { display: grid; }
+  .lp-nav .language-switcher { --language-button-size: 44px; }
   .lp-nav-actions { margin-left: auto; }
-  .lp-nav-panel { display: none; position: absolute; top: 100%; left: 16px; right: 16px; flex-direction: column; align-items: stretch; gap: 16px; max-height: calc(100dvh - 80px - env(safe-area-inset-top, 0px)); overflow-y: auto; overscroll-behavior: contain; padding: 16px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 0 0 16px 16px; background: #0b0e15; box-shadow: 0 20px 48px rgba(0, 0, 0, .5); }
-  .lp-nav-panel.is-open { display: flex; }
+  .lp-nav > .lp-brand, .lp-nav-actions { position: relative; z-index: 1; }
+  .lp-nav-panel {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    height: 100dvh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: calc(84px + env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+    background: #0b0e15;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-16px);
+    transition: opacity .24s ease, transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+  }
+  .lp-nav-panel.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); transition-delay: 0s; }
+  .lp:has(.lp-nav.is-open) .lp-scroll { overflow: hidden; }
   .lp-nav-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; margin: 0; }
   .lp-nav-links button, .lp-nav-links a { display: flex; align-items: center; justify-content: flex-start; min-height: 44px; padding: 10px 12px; text-align: left; white-space: normal; }
   .lp-nav-links a:last-child { grid-column: 1 / -1; }
-  .lp-nav-account { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .08); }
+  .lp-nav-account { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: auto; gap: 8px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .08); }
   .lp-nav-account > button { min-height: 44px; }
-  .lp-nav-account .lp-nav-credits { width: 44px; order: 1; }
+  .lp-nav-account .lp-nav-credits { width: 44px; margin-right: auto; }
   .lp-nav-account .lp-account-chip { max-width: 100%; }
 }
 
 @media (max-width: 560px) {
   .lp-nav { gap: 8px; padding-inline: 12px; }
   .lp-nav-actions { gap: 6px; }
-  .lp-nav-panel { left: 12px; right: 12px; padding: 12px; }
   .lp-footer-main { align-items: flex-start; }
   .lp-footer-identity { flex-basis: 100%; }
   .lp-footer-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
-  .lp-nav .language-switcher { min-height: 44px; box-sizing: border-box; }
 }
 
 @media (max-width: 380px) {
   .lp-brand { gap: 6px; font-size: 12px; }
   .lp-brand .landing-logo { width: 20px; height: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-nav-panel { transition: none; transform: none; }
 }
