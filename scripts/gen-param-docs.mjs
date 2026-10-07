@@ -109,6 +109,10 @@ function parseDefaults(src) {
 
 // ---------------------------------------------------------------- panels.jsx
 function parsePanels(src) {
+  // Read English source messages inside localized JSX props. Generated package
+  // docs remain deterministic and do not depend on the studio's active language.
+  src = src.replace(/\b(label|title)=\{translate\(("(?:\\.|[^"\\])*")\)\}/g,
+    (_, attribute, message) => `${attribute}="${JSON.parse(message)}"`);
   const out = {};
   let panel = '';
   let section = '';

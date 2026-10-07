@@ -1,3 +1,5 @@
+import { translate } from './i18n/locale.js';
+import { useLocale } from './i18n/useLocale.js';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import App from './App.jsx';
 import Landing from './landing/Landing.jsx';
@@ -16,6 +18,7 @@ const EXIT_MS = 520;
 const AUTOSAVE_MS = 450;
 
 export default function Root() {
+  useLocale();
   const { user } = useAuth();
   const { showPopup, showPrompt } = usePopup();
   const [exploring, setExploring] = useState(false);
@@ -106,8 +109,8 @@ export default function Root() {
     const template = getProjectTemplate(templateId);
     const project = await projectStore.save(normalizeProject({
       metadata: {
-        name: template.name,
-        description: template.description,
+        name: translate(template.name),
+        description: translate(template.description),
         templateId: template.id,
         thumbnail: templateThumbs[template.id] ?? null,
       },
@@ -120,7 +123,7 @@ export default function Root() {
     const template = getProjectTemplate(templateId);
     setCurrentProject({
       id: `preview-${template.id}`,
-      metadata: { name: template.name, description: template.description, templateId: template.id, thumbnail: null },
+      metadata: { name: translate(template.name), description: translate(template.description), templateId: template.id, thumbnail: null },
       params: createTemplateParams(template.id),
       preview: true,
     });
@@ -178,7 +181,7 @@ export default function Root() {
     const project = currentProjectRef.current;
     if (!project || project.preview) return;
     if (!project.metadata.name.trim()) {
-      showPopup('Give the project a name before saving.', { type: 'error' });
+      showPopup(translate('Give the project a name before saving.'), { type: 'error' });
       return;
     }
     clearTimeout(saveTimerRef.current);
@@ -187,25 +190,25 @@ export default function Root() {
     const bound = await projectSyncStore.get(saved.id);
     if (!bound) {
       showPopup(user
-        ? `${saved.metadata.name} saved on this device. Sync it from Projects to keep a cloud copy.`
-        : `${saved.metadata.name} saved on this device.`, { type: 'success' });
+        ? translate("{0} saved on this device. Sync it from Projects to keep a cloud copy.", { 0: saved.metadata.name })
+        : translate("{0} saved on this device.", { 0: saved.metadata.name }), { type: 'success' });
       return;
     }
     if (!user) {
-      showPopup(`${saved.metadata.name} saved on this device. Sign in to sync the cloud copy.`, { type: 'info' });
+      showPopup(translate("{0} saved on this device. Sign in to sync the cloud copy.", { 0: saved.metadata.name }), { type: 'info' });
       return;
     }
     setSyncing(true);
     try {
       await pushBoundProject(saved);
-      showPopup(`${saved.metadata.name} saved and synced to the cloud.`, { type: 'success' });
+      showPopup(translate("{0} saved and synced to the cloud.", { 0: saved.metadata.name }), { type: 'success' });
     } catch (error) {
       if (error.code === 'PROJECT_SYNC_CONFLICT') {
-        showPopup('The cloud copy was changed elsewhere. Your work is saved on this device; open Projects to choose which version to keep.', { type: 'error', title: 'Sync conflict' });
+        showPopup(translate('The cloud copy was changed elsewhere. Your work is saved on this device; open Projects to choose which version to keep.'), { type: 'error', title: translate('Sync conflict') });
       } else if (error.code === 'PROJECT_NOT_FOUND') {
-        showPopup('The cloud copy no longer exists. Your work is saved on this device; sync it again from Projects.', { type: 'error' });
+        showPopup(translate('The cloud copy no longer exists. Your work is saved on this device; sync it again from Projects.'), { type: 'error' });
       } else {
-        showPopup(`Saved on this device, but the cloud sync failed: ${error.message}`, { type: 'error' });
+        showPopup(translate("Saved on this device, but the cloud sync failed: {0}", { 0: error.message }), { type: 'error' });
       }
     } finally {
       setSyncing(false);
@@ -216,10 +219,10 @@ export default function Root() {
     const project = currentProjectRef.current;
     if (!project || project.preview) return;
     const name = (await showPrompt({
-      title: 'Save as a new project',
-      inputLabel: 'Project name',
-      initialValue: `${project.metadata.name} copy`,
-      confirmLabel: 'Save copy',
+      title: translate('Save as a new project'),
+      inputLabel: translate('Project name'),
+      initialValue: translate("{0} copy", { 0: project.metadata.name }),
+      confirmLabel: translate('Save copy'),
       maxLength: 120,
     }))?.trim();
     if (!name) return;
@@ -228,20 +231,20 @@ export default function Root() {
     await projectStore.save(project);
     const copy = await projectStore.duplicate(project, { name });
     setCurrentProject(copy);
-    showPopup(`Saved as ${name}. You are now editing the copy.`, { type: 'success' });
+    showPopup(translate("Saved as {0}. You are now editing the copy.", { 0: name }), { type: 'success' });
   }, [showPopup, showPrompt]);
 
   const importFile = useCallback(async (file, { open = true } = {}) => {
     try {
       const project = await projectStore.importCopy(await readProjectFile(file));
-      showPopup(`${project.metadata.name} imported.`, { type: 'success' });
+      showPopup(translate("{0} imported.", { 0: project.metadata.name }), { type: 'success' });
       if (open) {
         if (landingVisible) openEditor(project);
         else setCurrentProject(project);
       }
       return project;
     } catch (error) {
-      showPopup(error.message || 'Could not import this file.', { type: 'error', title: 'Import failed' });
+      showPopup(error.message || translate('Could not import this file.'), { type: 'error', title: translate('Import failed') });
       return null;
     }
   }, [landingVisible, openEditor, showPopup]);
@@ -308,7 +311,7 @@ export default function Root() {
         />
         {landingVisible && <Landing {...landingProps} onExplore={() => setExploring(true)} />}
       </div>
-      {exploring && <Suspense fallback={<div role="status">Opening exploration…</div>}><Exploration onExit={() => setExploring(false)} /></Suspense>}
+      {exploring && <Suspense fallback={<div role="status">{translate("Opening exploration…")}</div>}><Exploration onExit={() => setExploring(false)} /></Suspense>}
     </>
   );
 }

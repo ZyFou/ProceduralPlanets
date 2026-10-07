@@ -1,0 +1,20 @@
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: var(--language-button-size, 34px);
+  height: var(--language-button-size, 34px);
+  padding: 0;
+  border: 1px solid rgba(160, 178, 198, .22);
+  border-radius: 8px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(12, 18, 30, .7);
+  cursor: pointer;
+}
+.language-switcher:hover { background: rgba(30, 42, 62, .9); }
+.language-switcher:focus-visible { outline: 2px solid #79aaff; outline-offset: 2px; }

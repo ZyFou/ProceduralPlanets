@@ -1,3 +1,4 @@
+import { translate } from '../i18n/locale.js';
 const DB_NAME = 'procedural-planets-projects';
 const STORE_NAME = 'projects';
 const SYNC_STORE_NAME = 'project-sync';
@@ -145,7 +146,7 @@ export function normalizeProject(source = {}) {
     id: input.id ?? createId(),
     metadata: {
       ...input.metadata,
-      name: String(input.metadata?.name ?? input.name ?? 'Untitled planet').trim() || 'Untitled planet',
+      name: String(input.metadata?.name ?? input.name ?? translate('Untitled planet')).trim() || translate('Untitled planet'),
       description: String(input.metadata?.description ?? ''),
       created,
       modified: input.metadata?.modified ?? input.modified ?? now(),
@@ -210,7 +211,7 @@ export const projectStore = {
 
   async rename(project, name) {
     const nextName = String(name ?? '').trim();
-    if (!nextName) throw new Error('A project name is required.');
+    if (!nextName) throw new Error(translate('A project name is required.'));
     return this.save({ ...project, metadata: { ...project.metadata, name: nextName } });
   },
 
@@ -220,7 +221,7 @@ export const projectStore = {
       id: createId(),
       metadata: {
         ...project.metadata,
-        name: String(name ?? `${project.metadata.name} copy`),
+        name: String(name ?? translate("{0} copy", { 0: project.metadata.name })),
         created: now(),
         modified: now(),
       },
@@ -234,7 +235,7 @@ export const projectStore = {
       id: createId(),
       metadata: {
         ...project?.metadata,
-        name: String(name ?? project?.metadata?.name ?? 'Shared planet'),
+        name: String(name ?? project?.metadata?.name ?? translate('Shared planet')),
         created: now(),
       },
     });

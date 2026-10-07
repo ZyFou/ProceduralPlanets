@@ -358,6 +358,25 @@
       const pctEl = el.querySelector('.ppl-pct');
       const mark = el.querySelector('.ppl-mark');
       const canvas = el.querySelector('.ppl-canvas');
+      // Localize the first paint before the React modules have loaded.
+      let language = (navigator.languages || [navigator.language])
+        .map(value => value.toLowerCase().split('-')[0]).find(value => ['en', 'fr'].includes(value)) || 'en';
+      try {
+        const saved = localStorage.getItem('procedural-planets:language');
+        if (['en', 'fr'].includes(saved)) language = saved;
+      } catch { /* Language detection also works without local storage. */ }
+      const loaderMessages = {
+        'Loading studio': 'Chargement du studio', 'Loading Procedural Planets': 'Chargement de Procedural Planets',
+        'Starting engine': 'Démarrage du moteur', 'Compiling shaders': 'Compilation des shaders',
+        'Baking cloud noise': 'Précalcul du bruit des nuages', 'Forming weather': 'Formation des systèmes météo',
+        'Warming up the GPU': 'Préparation du GPU', 'Rendering first frame': 'Rendu de la première image',
+        'Assembling planet': 'Assemblage de la planète', 'Ready': 'Prêt',
+      };
+      const loaderText = text => language === 'fr' ? loaderMessages[text] || text : text;
+      document.documentElement.lang = language;
+      if (language === 'fr') document.title = 'Procedural Planets — Studio de création';
+      el.setAttribute('aria-label', loaderText('Loading Procedural Planets'));
+      stageEl.textContent = loaderText('Loading studio');
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       // the planet: off the main thread when possible
@@ -415,7 +434,7 @@
           if (closing) return;
           target = Math.min(1, Math.max(target, value));
           if (stageEnd !== undefined && stageEnd > creepTo - 0.001) { creepTo = Math.max(stageEnd, target); stageT = performance.now(); }
-          if (label && stageEl.textContent !== label) stageEl.textContent = label;
+          if (label && stageEl.textContent !== label) stageEl.textContent = loaderText(label);
         },
         done() {
           return new Promise((resolve) => {
@@ -433,14 +452,14 @@
             };
             // a background tab gets no frames to animate: just get out of the way
             if (document.hidden) { end(); return; }
-            stageEl.textContent = 'Assembling planet';
+            stageEl.textContent = loaderText('Assembling planet');
             // the rest of the bar (and of the planet) at a pace you can follow
             closing = {
               from: shown,
               t0: performance.now(),
               ms: reduced ? 300 : 450 + 1100 * (1 - shown),
               end() {
-                stageEl.textContent = 'Ready';
+                stageEl.textContent = loaderText('Ready');
                 if (reduced) {
                   document.documentElement.classList.remove('pp-booting');
                   el.classList.add('done');

@@ -1,3 +1,6 @@
+import LanguageSwitcher from '../i18n/LanguageSwitcher.jsx';
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useRef, useState } from 'react';
 import {
   Camera,
@@ -41,7 +44,7 @@ const DOCUMENT_STATE = {
 };
 
 export default function TopBar({
-  projectName = 'Untitled planet',
+  projectName = translate('Untitled planet'),
   documentState = 'local',
   shortcutsEnabled = true,
   onProjectNameChange,
@@ -77,6 +80,7 @@ export default function TopBar({
   onClearNotifications,
   onToggleNotificationLogging,
 }) {
+  useLocale();
   const fileRef = useRef(null);
   const fileMenuRef = useRef(null);
   const editMenuRef = useRef(null);
@@ -149,11 +153,11 @@ export default function TopBar({
       type="button"
       className={`tb-btn tb-menu-btn${openMenu === id ? ' active' : ''}`}
       onClick={() => setOpenMenu(openMenu === id ? null : id)}
-      title={label}
+      title={translate(label)}
       aria-haspopup="menu"
       aria-expanded={openMenu === id}
     >
-      <span className="tb-text">{label}</span>
+      <span className="tb-text">{translate(label)}</span>
       <Caret />
     </button>
   );
@@ -163,7 +167,7 @@ export default function TopBar({
   return (
     <header id="topbar" className={openMenu ? 'file-menu-open' : ''}>
       <div className="tb-group tb-brand">
-        <button type="button" className="tb-brand-button" onClick={onHome} title="Back to projects">
+        <button type="button" className="tb-brand-button" onClick={onHome} title={translate("Back to projects")}>
           <Orbit className="logo" aria-hidden />
           <span className="app-name">{APP_NAME}</span>
         </button>
@@ -171,15 +175,15 @@ export default function TopBar({
 
       <div className="tb-group tb-left">
         <div className="tb-dropdown" ref={fileMenuRef}>
-          {menuButton('file', 'File')}
-          <div className={`tb-menu tb-menu-with-shortcuts${openMenu === 'file' ? ' open' : ''}`} role="menu" aria-label="File">
+          {menuButton('file', translate('File'))}
+          <div className={`tb-menu tb-menu-with-shortcuts${openMenu === 'file' ? ' open' : ''}`} role="menu" aria-label={translate("File")}>
             <label className="tb-project-name-field">
-              <span>Project name</span>
+              <span>{translate("Project name")}</span>
               <input
                 type="text"
                 value={projectName}
                 maxLength={120}
-                aria-label="Project name"
+                aria-label={translate("Project name")}
                 onChange={(event) => onProjectNameChange?.(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter') return;
@@ -190,77 +194,64 @@ export default function TopBar({
             </label>
             <div className="tb-menu-divider" role="separator" />
             <button type="button" role="menuitem" onClick={run(onNew)}>
-              <FilePlus2 size={14} strokeWidth={1.75} aria-hidden /> New planet
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.newPlanet} className="tb-menu-shortcut" />
+              <FilePlus2 size={14} strokeWidth={1.75} aria-hidden />{translate("New planet")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.newPlanet} className="tb-menu-shortcut" />
             </button>
             <button type="button" role="menuitem" onClick={run(onHome)}>
-              <FolderOpen size={14} strokeWidth={1.75} aria-hidden /> Projects
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.projects} className="tb-menu-shortcut" />
+              <FolderOpen size={14} strokeWidth={1.75} aria-hidden />{translate("Projects")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.projects} className="tb-menu-shortcut" />
             </button>
             <div className="tb-menu-divider" role="separator" />
             <button type="button" role="menuitem" onClick={run(onSave)}>
-              <Save size={14} strokeWidth={1.75} aria-hidden /> Save
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.save} className="tb-menu-shortcut" />
+              <Save size={14} strokeWidth={1.75} aria-hidden />{translate("Save")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.save} className="tb-menu-shortcut" />
             </button>
             <button type="button" role="menuitem" onClick={run(onSaveAs)}>
-              <FileText size={14} strokeWidth={1.75} aria-hidden /> Save as…
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.saveAs} className="tb-menu-shortcut" />
+              <FileText size={14} strokeWidth={1.75} aria-hidden />{translate("Save as…")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.saveAs} className="tb-menu-shortcut" />
             </button>
             <button type="button" role="menuitem" onClick={run(openFilePicker)}>
-              <Upload size={14} strokeWidth={1.75} aria-hidden /> Load…
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.load} className="tb-menu-shortcut" />
+              <Upload size={14} strokeWidth={1.75} aria-hidden />{translate("Load…")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.load} className="tb-menu-shortcut" />
             </button>
             <button type="button" role="menuitem" onClick={run(onDownload)}>
-              <Download size={14} strokeWidth={1.75} aria-hidden /> Download .ppplanet
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.download} className="tb-menu-shortcut" />
+              <Download size={14} strokeWidth={1.75} aria-hidden />{translate("Download .ppplanet")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.download} className="tb-menu-shortcut" />
             </button>
             <div className="tb-menu-divider" role="separator" />
             <button type="button" role="menuitem" onClick={run(onCopyCode)}>
-              <Code2 size={14} strokeWidth={1.75} aria-hidden /> Copy code snippet
-            </button>
+              <Code2 size={14} strokeWidth={1.75} aria-hidden />{translate("Copy code snippet")}</button>
             <button type="button" role="menuitem" onClick={run(onScreenshot)}>
-              <Camera size={14} strokeWidth={1.75} aria-hidden /> Screenshot (PNG)
-            </button>
+              <Camera size={14} strokeWidth={1.75} aria-hidden />{translate("Screenshot (PNG)")}</button>
           </div>
         </div>
-        <span className={`tb-document-state ${documentState}`} title={state.label}>
-          <state.Icon size={12} aria-hidden /> {state.short ?? state.label}
+        <span className={`tb-document-state ${documentState}`} title={translate(state.label)}>
+          <state.Icon size={12} aria-hidden /> {translate(state.short ?? state.label)}
         </span>
 
         <div className="tb-dropdown" ref={editMenuRef}>
-          {menuButton('edit', 'Edit')}
-          <div className={`tb-menu tb-menu-with-shortcuts${openMenu === 'edit' ? ' open' : ''}`} role="menu" aria-label="Edit">
+          {menuButton('edit', translate('Edit'))}
+          <div className={`tb-menu tb-menu-with-shortcuts${openMenu === 'edit' ? ' open' : ''}`} role="menu" aria-label={translate("Edit")}>
             <button type="button" role="menuitem" onClick={run(onUndo)} disabled={!canUndo}>
-              <Undo2 size={14} strokeWidth={1.75} aria-hidden /> Undo
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.undo} className="tb-menu-shortcut" />
+              <Undo2 size={14} strokeWidth={1.75} aria-hidden />{translate("Undo")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.undo} className="tb-menu-shortcut" />
             </button>
             <button type="button" role="menuitem" onClick={run(onRedo)} disabled={!canRedo}>
-              <Redo2 size={14} strokeWidth={1.75} aria-hidden /> Redo
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.redo} className="tb-menu-shortcut" />
+              <Redo2 size={14} strokeWidth={1.75} aria-hidden />{translate("Redo")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.redo} className="tb-menu-shortcut" />
             </button>
             <div className="tb-menu-divider" role="separator" />
             <button type="button" role="menuitem" onClick={run(onRandomize)}>
-              <Dices size={14} strokeWidth={1.75} aria-hidden /> Random seed
-              <ShortcutHint shortcut={EDITOR_SHORTCUTS.randomSeed} className="tb-menu-shortcut" />
+              <Dices size={14} strokeWidth={1.75} aria-hidden />{translate("Random seed")}<ShortcutHint shortcut={EDITOR_SHORTCUTS.randomSeed} className="tb-menu-shortcut" />
             </button>
             <label className="tb-project-name-field tb-seed-field">
-              <span>Seed</span>
-              <input value={seed} inputMode="numeric" onChange={(event) => onSeedInput?.(event.target.value)} aria-label="Seed" />
+              <span>{translate("Seed")}</span>
+              <input value={seed} inputMode="numeric" onChange={(event) => onSeedInput?.(event.target.value)} aria-label={translate("Seed")} />
             </label>
             <div className="tb-menu-divider" role="separator" />
             <button type="button" role="menuitem" onClick={run(onResetTemplate)}>
-              <RotateCcw size={14} strokeWidth={1.75} aria-hidden /> Reset to template
-            </button>
+              <RotateCcw size={14} strokeWidth={1.75} aria-hidden />{translate("Reset to template")}</button>
           </div>
         </div>
 
         <div className="tb-dropdown" ref={viewMenuRef}>
-          {menuButton('view', 'View')}
-          <div className={`tb-menu${openMenu === 'view' ? ' open' : ''}`} role="menu" aria-label="View">
-            <button type="button" role="menuitem" onClick={run(onExplore)}><Orbit size={14} strokeWidth={1.75} aria-hidden /> Explore infinite worlds</button>
+          {menuButton('view', translate('View'))}
+          <div className={`tb-menu${openMenu === 'view' ? ' open' : ''}`} role="menu" aria-label={translate("View")}>
+            <button type="button" role="menuitem" onClick={run(onExplore)}><Orbit size={14} strokeWidth={1.75} aria-hidden /> {translate("Explore infinite worlds")}</button>
             <button type="button" role="menuitem" onClick={run(onResetView)}>
-              <RotateCcw size={14} strokeWidth={1.75} aria-hidden /> Reset camera
-            </button>
+              <RotateCcw size={14} strokeWidth={1.75} aria-hidden />{translate("Reset camera")}</button>
             <button
               type="button"
               role="menuitemcheckbox"
@@ -268,47 +259,45 @@ export default function TopBar({
               className={autoRotate ? 'active' : ''}
               onClick={run(() => onAutoRotate?.(!autoRotate))}
             >
-              <Orbit size={14} strokeWidth={1.75} aria-hidden /> Auto rotate
-            </button>
+              <Orbit size={14} strokeWidth={1.75} aria-hidden />{translate("Auto rotate")}</button>
             <button type="button" role="menuitem" onClick={run(onToggleUi)}>
-              <EyeOff size={14} strokeWidth={1.75} aria-hidden /> Hide UI
-            </button>
+              <EyeOff size={14} strokeWidth={1.75} aria-hidden />{translate("Hide UI")}</button>
             <button type="button" role="menuitem" onClick={run(onToggleHelp)}>
-              <HelpCircle size={14} strokeWidth={1.75} aria-hidden /> Shortcuts and controls
-            </button>
+              <HelpCircle size={14} strokeWidth={1.75} aria-hidden />{translate("Shortcuts and controls")}</button>
           </div>
         </div>
 
-        <div className="tb-history" role="group" aria-label="History">
-          <button type="button" className="tb-btn tb-icon-btn" onClick={onUndo} disabled={!canUndo} title={`Undo (${shortcutText(EDITOR_SHORTCUTS.undo)})`} aria-label="Undo">
+        <div className="tb-history" role="group" aria-label={translate("History")}>
+          <button type="button" className="tb-btn tb-icon-btn" onClick={onUndo} disabled={!canUndo} title={translate("Undo ({0})", { 0: shortcutText(EDITOR_SHORTCUTS.undo) })} aria-label={translate("Undo")}>
             <Undo2 size={14} strokeWidth={1.75} aria-hidden />
           </button>
-          <button type="button" className="tb-btn tb-icon-btn" onClick={onRedo} disabled={!canRedo} title={`Redo (${shortcutText(EDITOR_SHORTCUTS.redo)})`} aria-label="Redo">
+          <button type="button" className="tb-btn tb-icon-btn" onClick={onRedo} disabled={!canRedo} title={translate("Redo ({0})", { 0: shortcutText(EDITOR_SHORTCUTS.redo) })} aria-label={translate("Redo")}>
             <Redo2 size={14} strokeWidth={1.75} aria-hidden />
           </button>
         </div>
       </div>
 
       <div className="tb-center">
-        <button type="button" className={`tb-btn tb-search-btn${searchOpen ? ' active' : ''}`} onClick={onOpenSearch} title={`Search settings (${shortcutText(SEARCH_SETTINGS_SHORTCUT)})`} aria-label="Search settings" aria-pressed={searchOpen}>
+        <button type="button" className={`tb-btn tb-search-btn${searchOpen ? ' active' : ''}`} onClick={onOpenSearch} title={translate("Search settings ({0})", { 0: shortcutText(SEARCH_SETTINGS_SHORTCUT) })} aria-label={translate("Search settings")} aria-pressed={searchOpen}>
           <Search size={13} />
-          <span className="tb-text">Search settings</span>
+          <span className="tb-text">{translate("Search settings")}</span>
           <ShortcutHint shortcut={SEARCH_SETTINGS_SHORTCUT} className="tb-shortcut" />
         </button>
       </div>
 
       <div className="tb-group tb-right">
-        <button type="button" className="tb-btn tb-icon-btn tb-random-btn" onClick={onRandomize} title={`Random seed (${shortcutText(EDITOR_SHORTCUTS.randomSeed)})`} aria-label="Random seed"><Dices size={14} /></button>
+        <LanguageSwitcher />
+        <button type="button" className="tb-btn tb-icon-btn tb-random-btn" onClick={onRandomize} title={translate("Random seed ({0})", { 0: shortcutText(EDITOR_SHORTCUTS.randomSeed) })} aria-label={translate("Random seed")}><Dices size={14} /></button>
         <NotificationCenter
           recent={recentNotifications}
           notificationsIgnored={notificationsIgnored}
           onClear={onClearNotifications}
           onToggleIgnore={onToggleNotificationLogging}
         />
-        <button type="button" className={`tb-btn primary${exportActive ? ' active' : ''}`} onClick={onExport} title="Export the planet" aria-label="Export the planet">
-          <Download size={14} /><span className="tb-text">Export</span>
+        <button type="button" className={`tb-btn primary${exportActive ? ' active' : ''}`} onClick={onExport} title={translate("Export the planet")} aria-label={translate("Export the planet")}>
+          <Download size={14} /><span className="tb-text">{translate("Export")}</span>
         </button>
-        <button type="button" className={`tb-btn tb-icon-btn tb-help-btn${helpOpen ? ' active' : ''}`} onClick={onToggleHelp} title="Keyboard shortcuts and controls" aria-label="Keyboard shortcuts and controls" aria-expanded={helpOpen}>
+        <button type="button" className={`tb-btn tb-icon-btn tb-help-btn${helpOpen ? ' active' : ''}`} onClick={onToggleHelp} title={translate("Keyboard shortcuts and controls")} aria-label={translate("Keyboard shortcuts and controls")} aria-expanded={helpOpen}>
           <HelpCircle size={14} strokeWidth={1.75} aria-hidden />
         </button>
         <span className="app-version">v{APP_VERSION}</span>

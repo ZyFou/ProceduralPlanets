@@ -1,3 +1,5 @@
+import { translate } from '../../i18n/locale.js';
+import { useLocale } from '../../i18n/useLocale.js';
 import { Mountain, Waves, Minus, Palette, Eraser, SlidersHorizontal } from 'lucide-react';
 
 export const PAINT_TOOLS = [
@@ -10,9 +12,10 @@ export const PAINT_TOOLS = [
 ];
 
 export default function PaintToolbar({ activeTool, onSelect }) {
-  return <nav className="paint-toolbar left-toolbar" aria-label="Paint Tools">
-    {PAINT_TOOLS.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`toolbar-btn${activeTool === id ? ' active' : ''}`} title={label} aria-label={label} aria-pressed={activeTool === id} onClick={() => onSelect(id)}>
-      <Icon size={19} strokeWidth={1.75} aria-hidden /><span className="toolbar-btn-label">{label}</span>
+  useLocale();
+  return <nav className="paint-toolbar left-toolbar" aria-label={translate("Paint Tools")}>
+    {PAINT_TOOLS.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`toolbar-btn${activeTool === id ? ' active' : ''}`} title={translate(label)} aria-label={translate(label)} aria-pressed={activeTool === id} onClick={() => onSelect(id)}>
+      <Icon size={19} strokeWidth={1.75} aria-hidden /><span className="toolbar-btn-label">{translate(label)}</span>
     </button>)}
   </nav>;
 }

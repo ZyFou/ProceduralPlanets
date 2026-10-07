@@ -111,15 +111,16 @@ body:has(.landing-overlay) {
   cursor: var(--cursor-pointer);
 }
 .lp-brand:hover strong { color: var(--accent); }
-.lp-nav-links { display: flex; align-items: center; gap: 4px; }
+.lp-nav-panel { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.lp-nav-links { display: flex; align-items: center; justify-content: center; gap: 2px; margin: 0 auto; }
 .lp-nav-links button,
 .lp-nav-links a {
-  padding: 8px 14px;
+  padding: 8px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  font: 500 13.5px var(--font);
+  font: 500 12.5px var(--font);
   text-decoration: none;
   cursor: var(--cursor-pointer);
   transition: color 0.15s ease, background 0.15s ease;
@@ -127,7 +128,12 @@ body:has(.landing-overlay) {
 .lp-nav-links button:hover,
 .lp-nav-links a:hover { color: var(--text-bright); background: rgba(255, 255, 255, 0.05); }
 .lp-nav-links button.active { color: var(--text-bright); background: rgba(255, 255, 255, 0.07); }
-.lp-nav-actions { display: flex; align-items: center; gap: 8px; }
+.lp-nav-actions, .lp-nav-account { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.lp-nav-links a { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.lp-brand { flex-shrink: 0; padding: 0; }
+.lp-nav-toggle { display: none; width: 44px; height: 44px; place-items: center; padding: 0; border: 1px solid rgba(255, 255, 255, .12); border-radius: 10px; background: rgba(255, 255, 255, .04); color: var(--text-bright); cursor: var(--cursor-pointer); }
+.lp-nav-toggle:hover, .lp-nav-toggle[aria-expanded="true"] { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.lp-nav :is(button, a, select):focus-visible, .lp-footer :is(button, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .lp-account-chip {
   display: inline-flex;
   align-items: center;
@@ -279,7 +285,6 @@ body:has(.landing-overlay) {
 }
 @media (max-width: 520px) {
   .admin-filters.compact { grid-template-columns: 1fr; }
-  .lp-account-chip span, .lp-auth-logout span { display: none; }
   .confidentiality-hero h1 { font-size: 22px; }
 }
 
@@ -841,37 +846,39 @@ body:has(.landing-overlay) {
 /* ---- Footer ---- */
 .lp-footer {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  display: grid;
   flex: none;
-  gap: 12px 20px;
-  padding: 14px 0 20px;
+  gap: 10px;
+  min-width: 0;
+  padding: 18px 0 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   background: #05060a;
-  /* The footer remains aligned with the content column, while its dark surface
-     extends across the viewport at every breakpoint. */
+  /* Extend the surface beyond the content column, including the planet preview. */
   box-shadow: 0 0 0 100vmax #05060a;
   clip-path: inset(0 -100vmax);
 }
 .lp--profile .lp-footer,
-.lp--community .lp-footer {
-  width: min(684px, calc(52vw - 76px));
-}
+.lp--community .lp-footer { width: min(684px, calc(52vw - 76px)); }
+.lp-footer-main { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; min-width: 0; }
+.lp-footer-identity { display: grid; gap: 6px; color: var(--text-dim); font-size: 11.5px; }
+.lp-footer-brand { display: inline-flex; align-items: center; gap: 8px; width: fit-content; padding: 0; border: 0; background: transparent; color: var(--text-bright); font: 600 13px var(--font); cursor: var(--cursor-pointer); }
+.lp-footer-brand:hover { color: var(--accent); }
 .lp-footer-socials { display: flex; align-items: center; gap: 4px; }
 .lp-footer-socials a {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  color: var(--text-dim);
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 10px;
+  color: var(--text-muted);
   text-decoration: none;
 }
 .lp-footer-socials a:hover { color: var(--text-bright); background: rgba(255, 255, 255, 0.05); }
 .lp-footer-socials a:hover svg, .lp-footer-socials a:focus-visible svg { animation: lp-footer-icon-wobble .5s ease-out; }
-.lp-footer-meta { display: flex; align-items: center; gap: 14px; color: var(--text-dim); font-size: 11.5px; }
+.lp-footer-links { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.lp-footer-links a, .lp-footer-links button { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-muted); font: 500 12px var(--font); text-decoration: none; cursor: var(--cursor-pointer); }
+.lp-footer-links a:hover, .lp-footer-links button:hover { color: var(--text-bright); }
 
 @keyframes lp-footer-icon-wobble {
   0% { transform: rotate(0deg) translateY(0); }
@@ -958,16 +965,11 @@ body:has(.landing-overlay) {
   .lp-content-scroll { gap: 36px; padding: 28px 0; }
   .lp-footer { padding-bottom: 36px; }
   .lp-nav { padding: 0 16px; }
-  .lp-nav-links { display: none; }
 }
 
 @media (max-width: 560px) {
   .lp-nav { height: 56px; gap: 10px; }
   .lp-brand { gap: 8px; font-size: 13.5px; }
-  .lp-nav-credits, .lp-auth-register { display: none; }
-  .lp-account-chip { width: 34px; padding: 0; justify-content: center; }
-  .lp-account-chip span, .lp-auth-logout span { display: none; }
-  .lp-auth-logout { width: 34px; padding: 0; }
   .lp-open-app { height: 34px; padding: 0 12px; font-size: 12.5px; }
   .lp-content { padding: 0 16px; }
   .lp-content-scroll { gap: 32px; padding: 22px 0; }
@@ -979,7 +981,6 @@ body:has(.landing-overlay) {
   .lp-hero-actions .lp-secondary { flex: 1; min-width: 150px; }
   .lp-version-pill { gap: 8px; font-size: 11.5px; }
   .lp-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .lp-footer { flex-direction: column; align-items: flex-start; gap: 10px; }
   .lp-head-actions .lp-secondary.sm span { display: none; }
   .lp-template-create { width: 100%; }
   .profile-grid { grid-template-columns: 1fr; }
@@ -1000,7 +1001,6 @@ body:has(.landing-overlay) {
 }
 
 @media (max-width: 380px) {
-  .lp-brand strong { display: none; }
   .lp-card-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .lp-version-text { white-space: normal; }
 }
@@ -1275,14 +1275,12 @@ body:has(.landing-overlay) {
 /* One mobile scroll area includes the footer, even on short browser viewports. */
 @media (max-width: 920px) {
   .lp { min-height: 0; height: 100dvh; }
-  .lp-nav { height: auto; min-height: calc(56px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); flex-wrap: wrap; }
+  .lp-nav { height: auto; min-height: calc(56px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); flex-wrap: nowrap; }
   .lp-scroll { overflow-y: auto; overscroll-behavior: contain; }
   .lp-content { height: auto; min-height: 100%; }
   .lp-content-scroll { flex: none; overflow: visible; }
   .lp-content-scroll > * { flex-shrink: 0; min-width: 0; }
   .lp-footer { flex-shrink: 0; margin-top: auto; padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
-  .lp-footer-meta { flex-wrap: wrap; }
-  .lp-footer-meta > span { flex-basis: 100%; }
   .landing-credits-backdrop {
     height: 100dvh;
     min-height: 0;
@@ -1300,7 +1298,60 @@ body:has(.landing-overlay) {
   .landing-create-options > button { min-height: 150px; padding: 14px; }
   .landing-create-icon { width: 36px; height: 36px; margin-bottom: 10px; }
   .landing-create-action { padding-top: 12px; }
-  .lp-nav-actions { flex-wrap: wrap; }
   .lp-section-head, .lp-head-actions { flex-wrap: wrap; }
   .lp input, .lp select, .lp textarea, .landing-credits-dialog input { font-size: 16px; }
+}
+
+/* Keep every header action available through a disclosure menu on smaller screens. */
+@media (max-width: 1399px) {
+  .lp-nav-toggle { display: grid; }
+  .lp-nav .language-switcher { --language-button-size: 44px; }
+  .lp-nav-actions { margin-left: auto; }
+  .lp-nav > .lp-brand, .lp-nav-actions { position: relative; z-index: 1; }
+  .lp-nav-panel {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    height: 100dvh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: calc(84px + env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+    background: #0b0e15;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-16px);
+    transition: opacity .24s ease, transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+  }
+  .lp-nav-panel.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); transition-delay: 0s; }
+  .lp:has(.lp-nav.is-open) .lp-scroll { overflow: hidden; }
+  .lp-nav-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; margin: 0; }
+  .lp-nav-links button, .lp-nav-links a { display: flex; align-items: center; justify-content: flex-start; min-height: 44px; padding: 10px 12px; text-align: left; white-space: normal; }
+  .lp-nav-links a:last-child { grid-column: 1 / -1; }
+  .lp-nav-account { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: auto; gap: 8px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .08); }
+  .lp-nav-account > button { min-height: 44px; }
+  .lp-nav-account .lp-nav-credits { width: 44px; margin-right: auto; }
+  .lp-nav-account .lp-account-chip { max-width: 100%; }
+}
+
+@media (max-width: 560px) {
+  .lp-nav { gap: 8px; padding-inline: 12px; }
+  .lp-nav-actions { gap: 6px; }
+  .lp-footer-main { align-items: flex-start; }
+  .lp-footer-identity { flex-basis: 100%; }
+  .lp-footer-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+}
+
+@media (max-width: 380px) {
+  .lp-brand { gap: 6px; font-size: 12px; }
+  .lp-brand .landing-logo { width: 20px; height: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-nav-panel { transition: none; transform: none; }
 }

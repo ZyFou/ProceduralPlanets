@@ -127,10 +127,10 @@ export function desiredBodies(systems, player, target = null) {
 export function clearanceRadius(body) {
   return body.radius * (body.type === 'terrestrial' ? 1 + body.params.heightScale / 2000 : 1) + 0.01;
 }
-export function formatDistance(km) {
-  if (km >= LIGHT_YEAR * 0.01) return `${(km / LIGHT_YEAR).toFixed(2)} ly`;
-  if (km >= AU * 0.01) return `${(km / AU).toFixed(3)} AU`;
-  if (km >= 1) return `${km.toLocaleString('en-US', { maximumFractionDigits: km < 100 ? 2 : 0 })} km`;
-  return `${(km * 1000).toFixed(1)} m`;
+export function formatDistance(km, locale = 'en-US') {
+  if (km >= LIGHT_YEAR * 0.01) return `${(km / LIGHT_YEAR).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${locale.startsWith('fr') ? 'al' : 'ly'}`;
+  if (km >= AU * 0.01) return `${(km / AU).toLocaleString(locale, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} ${locale.startsWith('fr') ? 'UA' : 'AU'}`;
+  if (km >= 1) return `${km.toLocaleString(locale, { maximumFractionDigits: km < 100 ? 2 : 0 })} km`;
+  return `${(km * 1000).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
 }
-export function formatSpeed(km) { return `${formatDistance(km)}/s`; }
+export function formatSpeed(km, locale = 'en-US') { return `${formatDistance(km, locale)}/s`; }

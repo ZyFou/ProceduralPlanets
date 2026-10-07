@@ -1,8 +1,11 @@
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useRef } from 'react';
 
 export const DEFAULT_PANEL_SHARE = 1.4 / 2.4;
 
 export default function PanelResizeHandle({ share, onChange, onResizing }) {
+  useLocale();
   const drag = useRef(null);
   useEffect(() => () => onResizing(false), [onResizing]);
   const limits = (element) => {
@@ -23,14 +26,14 @@ export default function PanelResizeHandle({ share, onChange, onResizing }) {
     <div
       className="panel-resize-handle"
       role="separator"
-      aria-label="Resize settings height"
+      aria-label={translate("Resize settings height")}
       aria-orientation="horizontal"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(share * 100)}
-      aria-valuetext={`${Math.round(share * 100)}% of the workspace`}
+      aria-valuetext={translate("{0}% of the workspace", { 0: Math.round(share * 100) })}
       tabIndex={0}
-      title="Drag to resize settings · Double-click to reset"
+      title={translate("Drag to resize settings · Double-click to reset")}
       onPointerDown={(event) => {
         if (!event.isPrimary || event.button !== 0) return;
         const bounds = limits(event.currentTarget);

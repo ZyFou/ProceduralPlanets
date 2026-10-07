@@ -1,3 +1,4 @@
+import { translate, getLocale } from '../i18n/locale.js';
 // Ctrl+K quick-search index — mirrors the ThreeTerrain settings search but
 // mapped onto this app's PANELS ids (see panels.jsx).
 
@@ -191,18 +192,21 @@ const normalizeText = (value) => String(value ?? '')
 
 function scoreEntry(entry, q, tokens) {
   const haystack = normalizeText([
+    translate(entry.label),
     entry.label,
+    translate(entry.sectionLabel),
     entry.sectionLabel,
     entry.panelId,
+    entry.settingId,
     entry.keywords,
   ].filter(Boolean).join(' '));
   if (!haystack || !haystack.includes(q)) {
     if (!tokens.every((token) => haystack.includes(token))) return 0;
   }
 
-  let score = 0;
-  const label = normalizeText(entry.label);
-  const section = normalizeText(entry.sectionLabel);
+  let score = 1;
+  const label = normalizeText(translate(entry.label));
+  const section = normalizeText(translate(entry.sectionLabel));
 
   if (label === q) score += 1200;
   if (label.startsWith(q)) score += 600;
@@ -229,10 +233,10 @@ export function searchSettings(query, isPanelAvailable = () => true) {
       if (!isPanelAvailable(entry.panelId)) return null;
       const score = scoreEntry(entry, q, tokens);
       if (!score) return null;
-      return { ...entry, score };
+      return { ...entry, label: translate(entry.label), sectionLabel: translate(entry.sectionLabel), score };
     })
     .filter(Boolean)
-    .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+    .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, getLocale()));
 }
 
 export { SETTINGS_INDEX };

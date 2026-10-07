@@ -1,3 +1,4 @@
+import { translate } from '../i18n/locale.js';
 // Same-origin by default: Vite proxies /api to the local API in development,
 // and production builds receive VITE_API_URL (the API host) at build time.
 const browserDefault = '/api/v1';
@@ -41,7 +42,7 @@ export async function apiRequest(path, { method = 'GET', body, signal } = {}) {
     });
   } catch (error) {
     if (error?.name === 'AbortError') throw error;
-    throw new AuthApiError('The account server is unavailable. Try again later.', {
+    throw new AuthApiError(translate('The account server is unavailable. Try again later.'), {
       code: 'API_UNAVAILABLE',
     });
   }
@@ -49,7 +50,7 @@ export async function apiRequest(path, { method = 'GET', body, signal } = {}) {
   if (response.status === 204) return null;
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new AuthApiError(payload?.error?.message ?? 'The request could not be completed.', {
+    throw new AuthApiError(payload?.error?.message ?? translate('The request could not be completed.'), {
       code: payload?.error?.code,
       status: response.status,
       fields: payload?.error?.fields,

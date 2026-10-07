@@ -1,3 +1,5 @@
+import { translate } from '../i18n/locale.js';
+import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useMemo, useRef } from 'react';
 import { SEARCH_SETTINGS_SHORTCUT } from '../keyboardShortcuts.js';
 import ShortcutHint from './ui/ShortcutHint.jsx';
@@ -6,6 +8,7 @@ import { SHORTCUT_GROUPS } from './ShortcutsHelp.jsx';
 const HEX_VALUE = /^#[0-9A-F]{6}$/;
 
 function SearchIcon() {
+  useLocale();
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden>
       <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.2" />
@@ -26,6 +29,7 @@ export default function SettingsSearchOverlay({
   onConfirmPanel,
   onClose,
 }) {
+  const locale = useLocale();
   const inputRef = useRef(null);
   const resultsRef = useRef(null);
 
@@ -43,10 +47,10 @@ export default function SettingsSearchOverlay({
   const totalResults = flatResults.length;
   const hasResults = totalResults > 0;
   const hint = useMemo(() => {
-    if (!query.trim()) return 'Search terrain, biomes, water, clouds, gas, star, export...';
-    if (!hasResults) return 'No matching settings. Try a broader keyword.';
-    return 'Enter jumps to the selected setting. Click a category to open its panel. Esc closes.';
-  }, [hasResults, query]);
+    if (!query.trim()) return translate('Search terrain, biomes, water, clouds, gas, star, export...');
+    if (!hasResults) return translate('No matching settings. Try a broader keyword.');
+    return translate('Enter jumps to the selected setting. Click a category to open its panel. Esc closes.');
+  }, [hasResults, query, locale]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
@@ -69,17 +73,17 @@ export default function SettingsSearchOverlay({
       <button
         type="button"
         className="settings-search-backdrop"
-        aria-label="Close settings search"
+        aria-label={translate("Close settings search")}
         onClick={onClose}
       />
-      <div className="settings-search-shell" role="dialog" aria-modal="false" aria-label="Search settings">
+      <div className="settings-search-shell" role="dialog" aria-modal="false" aria-label={translate("Search settings")}>
         <div className="settings-search-wrap settings-search-wrap-global">
           <SearchIcon />
           <input
             ref={inputRef}
             type="search"
             className="settings-search-input"
-            placeholder="Search settings..."
+            placeholder={translate("Search settings...")}
             value={query}
             onChange={(e) => onChangeQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -89,7 +93,7 @@ export default function SettingsSearchOverlay({
               type="button"
               className="settings-search-clear"
               onClick={() => onChangeQuery('')}
-              aria-label="Clear search"
+              aria-label={translate("Clear search")}
             >
               x
             </button>
@@ -103,15 +107,15 @@ export default function SettingsSearchOverlay({
           </div>
 
           {!query.trim() ? (
-            <div className="settings-search-results settings-search-shortcuts" aria-label="Keyboard shortcuts">
+            <div className="settings-search-results settings-search-shortcuts" aria-label={translate("Keyboard shortcuts")}>
               {SHORTCUT_GROUPS.map((group) => (
                 <section className="settings-search-group" key={group.title}>
-                  <div className="settings-search-group-title"><span>{group.title}</span></div>
+                  <div className="settings-search-group-title"><span>{translate(group.title)}</span></div>
                   <div className="settings-search-group-body">
                     {group.items.map(({ label, shortcut, keys }) => (
                       <div className="settings-search-shortcut-row" key={label}>
-                        <span>{label}</span>
-                        {shortcut ? <ShortcutHint shortcut={shortcut} className="settings-search-shortcut" /> : <span className="settings-search-shortcut">{keys}</span>}
+                        <span>{translate(label)}</span>
+                        {shortcut ? <ShortcutHint shortcut={shortcut} className="settings-search-shortcut" /> : <span className="settings-search-shortcut">{translate(keys)}</span>}
                       </div>
                     ))}
                   </div>
@@ -127,7 +131,7 @@ export default function SettingsSearchOverlay({
                     className="settings-search-group-title settings-search-group-title-btn"
                     onClick={() => onConfirmPanel?.(group.panelId)}
                   >
-                    <span>{group.panelLabel}</span>
+                    <span>{translate(group.panelLabel)}</span>
                     <span>{group.items.length}</span>
                   </button>
                   <div className="settings-search-group-body">
@@ -143,10 +147,10 @@ export default function SettingsSearchOverlay({
                         >
                           <div className="settings-search-item-row">
                             <div className="settings-search-item-copy">
-                              <div className="settings-search-item-label">{item.label}</div>
+                              <div className="settings-search-item-label">{translate(item.label)}</div>
                               <div className="settings-search-item-meta">
-                                <span>{group.panelLabel}</span>
-                                {item.sectionLabel && <span>{item.sectionLabel}</span>}
+                                <span>{translate(group.panelLabel)}</span>
+                                {item.sectionLabel && <span>{translate(item.sectionLabel)}</span>}
                               </div>
                             </div>
                             <span className="settings-search-item-value">
@@ -162,7 +166,7 @@ export default function SettingsSearchOverlay({
               ))}
             </div>
           ) : (
-            <div className="settings-search-empty">No settings match this search.</div>
+            <div className="settings-search-empty">{translate("No settings match this search.")}</div>
           )}
         </div>
       </div>
