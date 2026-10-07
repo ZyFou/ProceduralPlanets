@@ -52,19 +52,19 @@ describe('real Solar System catalogue', () => {
 describe('persistent render settings', () => {
   it('validates corrupt storage, finite bounds and supported keyboard layouts', () => {
     expect(readSettings({ getItem:()=>'{bad' })).toEqual(DEFAULT_SETTINGS);
-    expect(normalizeSettings({renderScale:NaN,cloudSteps:999,maxDepth:-20,layout:'unknown'})).toMatchObject({renderScale:1,cloudSteps:96,maxDepth:6,layout:'wasd'});
+    expect(normalizeSettings({renderScale:NaN,cloudSteps:999,maxDepth:-20,cloudDetailScale:999,showTargetMarker:'false',layout:'unknown'})).toMatchObject({renderScale:1,cloudSteps:96,maxDepth:6,cloudDetailScale:3,showTargetMarker:true,layout:'wasd'});
     const storage={getItem:vi.fn(),setItem:vi.fn()};
-    expect(writeSettings(storage,{...DEFAULT_SETTINGS,layout:'azerty'})).toBe(true);
+    expect(writeSettings(storage,{...DEFAULT_SETTINGS,layout:'azerty',cloudDetailScale:1.75,showTargetMarker:false})).toBe(true);
     const [key,value]=storage.setItem.mock.calls[0]; expect(key).toBe(SETTINGS_KEY);
-    storage.getItem.mockReturnValue(value); expect(readSettings(storage).layout).toBe('azerty');
+    storage.getItem.mockReturnValue(value); expect(readSettings(storage)).toMatchObject({layout:'azerty',cloudDetailScale:1.75,showTargetMarker:false});
     expect(writeSettings({setItem:()=>{throw new Error('denied')}},DEFAULT_SETTINGS)).toBe(false);
   });
   it('maps actual package parameters without adding air or clouds to airless bodies', () => {
     const intrinsic={cloudsEnabled:false,atmoEnabled:false,gasAtmoStrength:1,starBloom:.25};
-    const params=bodySettings({...DEFAULT_SETTINGS,clouds:false,atmosphere:false,bloom:false,cloudSteps:48,maxDepth:10},intrinsic);
+    const params=bodySettings({...DEFAULT_SETTINGS,clouds:false,atmosphere:false,bloom:false,cloudSteps:48,cloudDetailScale:1.75,maxDepth:10},intrinsic);
     expect(params).toMatchObject({cloudsEnabled:false,atmoEnabled:false,gasAtmoStrength:0,starBloom:0,cloudQuality:48,maxDepth:10});
     const p=new Planet({preset:'moon',radius:2000}); p.set(params);
-    expect(p.world.opts.maxDepth).toBe(10); expect(p.params.cloudQuality).toBe(48);
+    expect(p.world.opts.maxDepth).toBe(10); expect(p.params.cloudQuality).toBe(48); expect(p.params.cloudDetailScale).toBe(1.75);
     p.dispose();
   });
 });

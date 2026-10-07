@@ -2,6 +2,7 @@ import { translateExternalMessage } from './i18n/externalMessages.js';
 import { translate } from './i18n/locale.js';
 import { useLocale } from './i18n/useLocale.js';
 import PaintToolbar from './components/paint/PaintToolbar.jsx';
+import SurfaceWalkControls from './components/SurfaceWalkControls.jsx';
 import PaintPanel from './components/paint/PaintPanel.jsx';
 import { DEFAULT_PAINT_STATE } from './paint/PlanetPaintModeManager.js';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -219,7 +220,8 @@ export default function App({
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !booted) return;
-    engine.controls.enabled = !suspended;
+    if (suspended) engine.walker.exit();
+    engine.controls.enabled = !suspended && !engine.walker.active;
     if (suspended) engine.stop();
     else engine.start();
   }, [suspended, booted]);
@@ -238,6 +240,7 @@ export default function App({
     skipPersistRef.current = true;
     skipHistoryRef.current = true;
     engine.paintMode.disable();
+    engine.walker.exit();
     resetHistory();
     engine.planet.cancelTerrainCompilation();
     const nextDesign = JSON.parse(JSON.stringify({ terrain: project.terrain ?? { mode: 'procedural', graph: null }, editor: project.editor ?? {}, paint: project.paint ?? null }));
@@ -391,7 +394,7 @@ export default function App({
     const mode = engineRef.current?.paintMode;
     if (!booted || landingMode || project?.preview || paramsRef.current.mode !== 'planet' || invalidImportedTerrain) return;
     if (mode.state.enabled) mode.disable();
-    else { setNodesOpen(false); setActivePanel(null); mode.enable(); }
+    else { engineRef.current.walker.exit(); setNodesOpen(false); setActivePanel(null); mode.enable(); }
   }, [booted, landingMode, project?.preview, invalidImportedTerrain]);
 
   useEffect(() => {
@@ -409,6 +412,7 @@ export default function App({
 
   useEffect(() => {
     if (params.mode !== 'planet' || uiHidden || landingMode) engineRef.current?.paintMode.disable();
+    if (landingMode) engineRef.current?.walker.exit();
   }, [params.mode, uiHidden, landingMode]);
 
   const selectPaintTool = (id) => {
@@ -818,6 +822,7 @@ export default function App({
 
         <div className="viewport-wrap viewport-area" style={viewportStyle}>
           <canvas id="viewport" ref={canvasRef} />
+          {!uiHidden && !landingMode && booted && <SurfaceWalkControls available={params.mode === 'planet'} getWalker={() => engineRef.current?.walker} onToggle={() => engineRef.current?.toggleWalk()} />}
           {invalidImportedTerrain && <div className="terrain-render-error" role="alert">{translate("This project's terrain graph cannot be rendered.")}<br />{translateExternalMessage(graphStatus.diagnostics[0]?.message)}<br />{translate("The document is preserved for recovery.")}</div>}
         </div>
 

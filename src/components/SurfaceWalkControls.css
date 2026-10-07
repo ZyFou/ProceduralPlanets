@@ -1,0 +1,22 @@
+.surface-walk-ui { position: absolute; inset: 0; pointer-events: none; z-index: 12; }
+.surface-walk-button { position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); right: max(18px, env(safe-area-inset-right)); display: flex; align-items: center; gap: 8px; padding: 12px 16px; border: 1px solid #ffffff40; border-radius: 28px; background: #101923e6; color: #fff; cursor: pointer; pointer-events: auto; min-height: 44px; }
+.surface-walk-button[aria-pressed="true"] { border-color: #81c9aa; }
+.walk-notice, .walk-help { position: absolute; bottom: 76px; right: 20px; max-width: calc(100% - 40px); padding: 6px 10px; border-radius: 8px; background: #101923de; color: #dce6ef; font-size: 12px; }
+@media (min-width: 761px) {
+  #app.side-drawer-open:not(.nodes-open) .surface-walk-ui { right: min(340px, 92vw); }
+  .exploration-view:has(.exploration-panel) .surface-walk-ui { right: 342px; }
+}
+.walk-touch-controls { display: none; }
+.exploration .surface-walk-button { border-radius: 28px; padding: 12px 16px; }
+.exploration-view:has(.surface-walk-ui) .exploration-telemetry { bottom: 120px; }
+@media (pointer: coarse), (max-width: 760px) {
+  .walk-touch-controls { display: flex; position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); left: 24px; right: 24px; justify-content: space-between; }
+  .walk-circle { position: relative; width: 100px; height: 100px; border: 1px solid #ffffff60; border-radius: 50%; background: #101923b8; pointer-events: auto; touch-action: none; user-select: none; }
+  .walk-circle-thumb { position: absolute; width: 36px; height: 36px; top: 31px; left: 31px; border-radius: 50%; background: #dce6ef90; border: 1px solid #ffffff90; }
+  .walk-circle-label { position: absolute; width: 100%; text-align: center; bottom: -20px; color: #fff; font-size: 12px; }
+  .is-walking .surface-walk-button { bottom: 156px; }
+  .walk-help { display: none; }
+  .is-walking .walk-notice { bottom: 210px; }
+  .exploration-view:has(.is-walking) .exploration-telemetry { top: 64px; bottom: auto; left: 8px; font-size: 11px; padding: 8px; }
+  .exploration-view:has(.is-walking) .exploration-telemetry > strong, .exploration-view:has(.is-walking) .exploration-telemetry > span:not(:first-child) { display: none; }
+}

@@ -1,5 +1,7 @@
 // French UI messages. English source strings are the stable message keys.
 export default {
+  "SURFACE WALK": "MARCHE EN SURFACE",
+  "Show target marker": "Afficher le repère de cible",
   "Open navigation": "Ouvrir le menu de navigation",
   "Close navigation": "Fermer le menu de navigation",
   "Footer navigation": "Navigation de bas de page",

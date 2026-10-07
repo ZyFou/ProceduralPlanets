@@ -5,6 +5,7 @@ import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Camera, Crosshair, Download, Navigation, Orbit, Settings2, X } from 'lucide-react';
 import { Explorer } from './Explorer.js';
+import SurfaceWalkControls from '../components/SurfaceWalkControls.jsx';
 import { AU, LIGHT_YEAR, MIN_SPEED, formatDistance as distance, formatSpeed as speedText, length, relative } from './world.js';
 import { clampSpeed } from './flight.js';
 import { DEFAULT_SETTINGS, QUALITY_PRESETS, normalizeSettings, readSettings, writeSettings } from './settings.js';
@@ -91,17 +92,18 @@ export default function Exploration({ onExit }) {
     </header>
     <div className="exploration-view">
       <canvas key={seed} ref={canvasRef} aria-label={translate("Free flight view. Click to capture the mouse. Double-click a planet to teleport.")} />
+      {!photo && <SurfaceWalkControls getWalker={() => explorerRef.current?.walker} onToggle={() => { const ok = explorerRef.current?.toggleWalk(); if (ok) setPanel(null); return ok; }} />}
       {!photo && <>
         <div className="exploration-reticle" aria-hidden>+</div>
-        {hud?.marker && <div className="exploration-marker" style={{ left: `${hud.marker.x}%`, top: `${hud.marker.y}%` }}><Crosshair size={22} /><span>{translate(hud.target.name)}</span></div>}
+        {settings.showTargetMarker && hud?.marker && <div className="exploration-marker" style={{ left: `${hud.marker.x}%`, top: `${hud.marker.y}%` }}><Crosshair size={22} /><span>{translate(hud.target.name)}</span></div>}
         <section className="exploration-telemetry" aria-label={translate("Flight instruments")}>
-          <span className="exploration-eyebrow">{translate("FREE FLIGHT")}</span><strong>{formatSpeed(hud?.speed ?? 0)}</strong>
+          <span className="exploration-eyebrow">{translate(hud?.walking ? "SURFACE WALK" : "FREE FLIGHT")}</span><strong>{formatSpeed(hud?.speed ?? 0)}</strong>
           <span>{translate("Selected")} {formatSpeed(speed)} {hud?.limited && translate('· proximity brake')} {hud?.blocked && translate('· obstacle')} {hud?.coordinateLimited && translate('· coordinate boundary')}</span>
           {hud?.target && <p>{translate(hud.target.name)}<br /><b>{formatDistance(hud.distance)}</b> {translate("to surface")}{hud.approaching && ` ${translate('· approaching')}`}</p>}
           <small>{loading ? translate('Preparing nearby worlds…') : translate('Ready to explore')} {translate("· P photo")}</small>
         </section>
       </>}
-      {!locked && !error && !photo && <button className="exploration-fly" type="button" onClick={capture}><Navigation size={16} /> {translate("Click to fly")} <span>{translate("Esc releases the mouse")}</span></button>}
+      {!locked && !error && !photo && !hud?.walking && <button className="exploration-fly" type="button" onClick={capture}><Navigation size={16} /> {translate("Click to fly")} <span>{translate("Esc releases the mouse")}</span></button>}
       {error && <div className="exploration-error" role="alert">{translateExternalMessage(error)}<button type="button" onClick={() => setError('')} aria-label={translate("Dismiss error")}><X size={16} /></button></div>}
       {photo && <section className="exploration-photo-bar" aria-label={translate("Photo controls")}>
         <span><Camera size={16} /> {translate("Photo")} <small>{translate("Time frozen · click view to reframe · H hides controls · Esc exits")}</small></span>
@@ -145,8 +147,9 @@ export default function Exploration({ onExit }) {
         {panel === 'settings' && <>
           <p className="exploration-help">{translate("Saved on this device and applied to loaded and future worlds.")}</p>
           <div className="exploration-presets">{Object.entries(QUALITY_PRESETS).map(([name, patch]) => <button key={name} type="button" onClick={() => update(patch)}>{translate(name[0].toUpperCase() + name.slice(1))}</button>)}<button type="button" onClick={() => setSettings({ ...DEFAULT_SETTINGS })}>{translate("Reset")}</button></div>
-          {[['renderScale', translate('Render scale'), .5, 2, .25], ['maxDepth', translate('Terrain detail'), 6, 11, 1], ['cloudSteps', translate('Cloud samples'), 8, 96, 8], ['cloudResolution', translate('Cloud resolution'), .25, 1, .25], ['fov', translate('Field of view'), 30, 110, 1], ['exposure', translate('Exposure'), .25, 4, .05]].map(([key, label, min, max, step]) => <div className="exploration-setting" key={key}><label htmlFor={`exploration-${key}`}>{translate(label)}<b>{settings[key]}</b></label><input id={`exploration-${key}`} type="range" min={min} max={max} step={step} value={settings[key]} onChange={e => update({ [key]: Number(e.target.value) })} /></div>)}
+          {[['renderScale', translate('Render scale'), .5, 2, .25], ['maxDepth', translate('Terrain detail'), 6, 11, 1], ['cloudSteps', translate('Cloud samples'), 8, 96, 8], ['cloudResolution', translate('Cloud resolution'), .25, 1, .25], ['cloudDetailScale', translate('Billow size'), .3, 3, .05], ['fov', translate('Field of view'), 30, 110, 1], ['exposure', translate('Exposure'), .25, 4, .05]].map(([key, label, min, max, step]) => <div className="exploration-setting" key={key}><label htmlFor={`exploration-${key}`}>{translate(label)}<b>{settings[key]}</b></label><input id={`exploration-${key}`} type="range" min={min} max={max} step={step} value={settings[key]} onChange={e => update({ [key]: Number(e.target.value) })} /></div>)}
           {['clouds', 'atmosphere', 'bloom'].map(key => <label className="exploration-toggle" key={key}><input type="checkbox" checked={settings[key]} onChange={e => update({ [key]: e.target.checked })} />{translate(key[0].toUpperCase() + key.slice(1))}</label>)}
+          <label className="exploration-toggle"><input type="checkbox" checked={settings.showTargetMarker} onChange={e => update({ showTargetMarker: e.target.checked })} />{translate("Show target marker")}</label>
           <small className="exploration-help">{hud?.loaded ?? 0} {translate("loaded bodies ·")} {hud?.systems.length ?? 0} {translate("systems ·")} {hud?.queued ?? 0} {translate("waiting")}<br />{translate("Sector")} {hud ? Object.values(hud.position.sector).join(' / ') : '0 / 0 / 0'}<br />{translate("Higher settings use more GPU memory and time. Planet-specific atmosphere and cloud limits still apply.")}</small>
           {notice && <small role="status">{notice}</small>}
         </>}

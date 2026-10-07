@@ -65,11 +65,17 @@ vec3 srgbToLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
 // ray / sphere at the origin: (tNear, tFar); tNear > tFar means miss
 vec2 raySphere(vec3 ro, vec3 rd, float r) {
   float b = dot(ro, rd);
-  float c = dot(ro, ro) - r * r;
+  // Factor the radial difference and recover the smaller root by division.
+  // Squared-radius subtraction loses metre-scale clearance on large planets;
+  // subtracting the roots also loses nearby water hits at grazing angles.
+  float eyeRadius = length(ro);
+  float c = (eyeRadius - r) * (eyeRadius + r);
   float h = b * b - c;
   if (h < 0.0) return vec2(1e20, -1e20);
   h = sqrt(h);
-  return vec2(-b - h, -b + h);
+  float q = -b - (b < 0.0 ? -h : h);
+  float other = abs(q) > 1e-20 ? c / q : -b;
+  return vec2(min(q, other), max(q, other));
 }
 
 float ozoneDensity(float h) {

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ocean depth regression checks</title>
+<style>body{background:#101720;color:#e6edf5;font:16px system-ui;padding:24px}pre{white-space:pre-wrap}canvas{width:160px;height:120px;image-rendering:pixelated}</style>
+<h1>Ocean depth regression checks</h1>
+<pre id="result" role="status">Running GPU checks…</pre>
+<canvas id="view"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { Planet } from '../../src/engine/Planet.js';
+import { PlanetPipeline } from '../../src/engine/PlanetPipeline.js';
+import { ATMOSPHERE_GLSL } from '../../src/engine/surfaceGLSL.js';
+import { createNode, GRAPH_FORMAT, GRAPH_VERSION } from '../../src/engine/graph/index.js';
+
+const result = document.querySelector('#result');
+const errors = [];
+const originalError = console.error;
+console.error = (...args) => { errors.push(args.map(String).join(' ')); originalError(...args); };
+try {
+  const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#view'), antialias: false });
+  renderer.setSize(1, 1, false);
+  const planet = new Planet({ radius: 2000, heightScale: 100, seaLevel: .42, waterClarity: .9,
+    cloudsEnabled: false, atmoEnabled: false, polarCaps: 0, foamAmount: 1, whitecaps: 0, waterSpec: 0 });
+  const pipeline = new PlanetPipeline(renderer);
+  const passes = planet._getPasses(pipeline);
+  const uniforms = passes.compositeUniforms;
+  const seaRadius = planet.uniforms.uSeaRadius.value;
+  const camera = new THREE.PerspectiveCamera(55, 1, .01, 10000);
+  camera.position.set(0, 0, seaRadius + 1.7); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+  uniforms.uInvProj.value.copy(camera.projectionMatrixInverse);
+  uniforms.uCamWorld.value.copy(camera.matrixWorld);
+  uniforms.uCamPos.value.copy(camera.position);
+  uniforms.uWaterOn.value = 1; uniforms.uCloudsOn.value = 0;
+  uniforms.uAtmoOn.value = 0; uniforms.uCloudShadowStr.value = 0;
+  uniforms.uSunDir.value.set(0, 0, 1);
+  const texture = (data, format = THREE.RGBAFormat, type = THREE.UnsignedByteType) => {
+    const t = new THREE.DataTexture(data, 1, 1, format, type);
+    t.needsUpdate = true; return t;
+  };
+  uniforms.tScene.value = texture(new Uint8Array([255, 0, 0, 255]));
+  uniforms.uTransmittanceLUT.value = texture(new Uint8Array([255, 255, 255, 255]));
+  const target = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  const pixels = new Uint8Array(4);
+  const sample = depth => {
+    const depthTexture = texture(new Float32Array([depth]), THREE.RedFormat, THREE.FloatType);
+    uniforms.tDepth.value = depthTexture;
+    pipeline.quad.material = passes.compositeMats.planet;
+    renderer.setRenderTarget(target); renderer.render(pipeline.quadScene, pipeline.quadCamera);
+    renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+    depthTexture.dispose(); return Array.from(pixels);
+  };
+  const depthAt = distance => new THREE.Vector3(0, 0, -distance).applyMatrix4(camera.projectionMatrix).z * .5 + .5;
+  const openWater = sample(1);
+  const terrainBeyondOcean = sample(depthAt(5000));
+  const shallowSeabed = sample(depthAt(3));
+  const difference = (a, b) => Math.max(...a.slice(0, 3).map((v, i) => Math.abs(v - b[i])));
+  if (difference(openWater, terrainBeyondOcean) > 2) throw new Error('Terrain beyond the ocean still contributes seabed colour or shoreline foam.');
+  if (difference(openWater, shallowSeabed) < 5) throw new Error('Real shallow seabed must remain visible through clear water.');
+
+  // A submerged shore along a grazing view ray must not make the deep
+  // water directly below the ray's entry point foamy.
+  const setHeight = async value => {
+    const graph = { format: GRAPH_FORMAT, version: GRAPH_VERSION,
+      nodes: [createNode('constant', 'source', { value }), createNode('heightOutput', 'output')],
+      edges: [{ id: 'height', source: 'source', sourcePort: 'height', target: 'output', targetPort: 'height' }], outputId: 'output' };
+    const applied = await planet.setTerrain({ mode: 'nodes', graph });
+    if (!applied.ok) throw new Error('Failed to apply regression terrain.');
+    planet._getPasses(pipeline);
+  };
+  await setHeight(.1);
+  const direction = new THREE.Vector3(1, 0, -.12).normalize();
+  camera.lookAt(camera.position.clone().add(direction)); camera.updateMatrixWorld();
+  uniforms.uCamWorld.value.copy(camera.matrixWorld);
+  const b = camera.position.dot(direction);
+  const c = camera.position.lengthSq() - seaRadius * seaRadius;
+  const waterExit = -b + Math.sqrt(b * b - c);
+  const distantShoreDepth = depthAt(waterExit - 2);
+  uniforms.uFoamAmount.value = 0;
+  const deepWithoutFoam = sample(distantShoreDepth);
+  uniforms.uFoamAmount.value = 1;
+  const deepWithDistantShore = sample(distantShoreDepth);
+  if (difference(deepWithoutFoam, deepWithDistantShore) > 2) throw new Error('Distant shallow shore projects foam onto deep foreground water.');
+  await setHeight(.419);
+  uniforms.uFoamAmount.value = 0;
+  const shallowWithoutFoam = sample(distantShoreDepth);
+  uniforms.uFoamAmount.value = 1;
+  const shallowWithFoam = sample(distantShoreDepth);
+  if (difference(shallowWithoutFoam, shallowWithFoam) < 5) throw new Error('Real local shoreline lost its foam.');
+  await setHeight(.1);
+  const waterEntry = -b - Math.sqrt(b * b - c);
+  const localWaterDirection = camera.position.clone().addScaledVector(direction, waterEntry).normalize();
+  planet.paintLayers.stamp({ direction: localWaterDirection, radius: 200, planetRadius: 2000,
+    strength: 1, falloff: .75, amount: 31.9 });
+  planet.paintLayers.flushUploads(renderer);
+  uniforms.uFoamAmount.value = 0;
+  const paintedWithoutFoam = sample(distantShoreDepth);
+  uniforms.uFoamAmount.value = 1;
+  const paintedWithFoam = sample(distantShoreDepth);
+  if (difference(paintedWithoutFoam, paintedWithFoam) < 5) throw new Error('Painted local shoreline lost its foam.');
+
+  // Compile and execute the production intersection helper in float32 on GPU.
+  const raySphere = ATMOSPHERE_GLSL.match(/vec2 raySphere\([\s\S]*?\n\}/)[0];
+  const rootMaterial = new THREE.ShaderMaterial({
+    vertexShader: 'void main(){gl_Position=vec4(position.xy,0.0,1.0);}',
+    fragmentShader: `precision highp float; ${raySphere}
+      void main(){vec2 t=raySphere(vec3(0.,0.,2000.0005),vec3(0.,0.,-1.),2000.);
+      float valid=step(.0001,t.x)*step(t.x,.001);gl_FragColor=vec4(0.,valid,0.,1.);}`,
+    depthTest: false, depthWrite: false,
+  });
+  pipeline.quad.material = rootMaterial;
+  renderer.render(pipeline.quadScene, pipeline.quadCamera);
+  renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels);
+  if (pixels[1] < 250) throw new Error('Near-surface sphere hit lost its positive clearance.');
+  if (errors.length) throw new Error(errors.join('\n'));
+  renderer.setRenderTarget(null); renderer.render(pipeline.quadScene, pipeline.quadCamera);
+  result.textContent = 'PASSED: distant terrain is occluded by water; shallow seabed remains visible; grazing views do not project distant shore foam onto deep water; local and painted shore foam is preserved; near-surface sphere intersections retain clearance.\n' + JSON.stringify({ openWater, terrainBeyondOcean, shallowSeabed, deepWithoutFoam, deepWithDistantShore, shallowWithoutFoam, shallowWithFoam, paintedWithoutFoam, paintedWithFoam });
+  document.body.dataset.result = 'passed';
+} catch (error) {
+  document.body.dataset.result = 'failed'; result.textContent = 'FAILED: ' + error.stack;
+}
+</script>
+</html>

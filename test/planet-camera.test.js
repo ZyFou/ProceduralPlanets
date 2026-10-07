@@ -19,6 +19,18 @@ function setup(scale, altitude, yaw = 0) {
 }
 
 describe('shared renderer cameras at real-world scales', () => {
+  it('preserves metre-scale walking near planes on kilometre-scale planets', () => {
+    const { planet, camera, proxy } = setup(3.1855, 2);
+    camera.near = .00017;
+    camera.userData.surfaceWalk = true;
+    fitPlanetCamera(planet, camera, proxy);
+    expect(proxy.near).toBeCloseTo(camera.near / 3.1855, 10);
+    expect(proxy.near).toBeLessThan(.001);
+    delete camera.userData.surfaceWalk;
+    fitPlanetCamera(planet, camera, proxy);
+    expect(proxy.near).toBeGreaterThanOrEqual(.05);
+    planet.dispose();
+  });
   it.each([.0031, 1, 3.1855042, 349.85, 10000])('keeps a rigid local view, local clip distances and aligned projections at scale %s', scale => {
     const { planet, camera, proxy, localEye } = setup(scale, 100, .6);
     expect(new THREE.Vector3().setFromMatrixPosition(proxy.matrixWorld).distanceTo(localEye)).toBeLessThan(1e-6);
