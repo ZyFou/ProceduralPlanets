@@ -1,6 +1,14 @@
 {
   "name": "procedural-planets",
-  "version": "0.4.0",
+  "version": "0.5.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZyFou/ProceduralPlanets.git"
+  },
+  "homepage": "https://github.com/ZyFou/ProceduralPlanets#readme",
+  "bugs": {
+    "url": "https://github.com/ZyFou/ProceduralPlanets/issues"
+  },
   "description": "Procedural planets, gas giants and stars for three.js: GPU terrain with quadtree LOD, volumetric clouds, analytic oceans, physically based atmospheres — as objects you add to your own scene.",
   "keywords": [
     "three",

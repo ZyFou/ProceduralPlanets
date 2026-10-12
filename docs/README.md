@@ -9,3 +9,4 @@
 - [Baking and export](baking.md): `bakePlanet`, glTF / ZIP export
 - [Studio interop](studio-interop.md): from the studio to code
 - [Examples](../examples/)
+- [Publishing releases](releasing.md): automatic npm and GitHub Packages publication

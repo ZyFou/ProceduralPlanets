@@ -1,5 +1,8 @@
 # procedural-planets
 
+[![npm version](https://img.shields.io/npm/v/procedural-planets)](https://www.npmjs.com/package/procedural-planets)
+[GitHub Packages](https://github.com/ZyFou/ProceduralPlanets/pkgs/npm/procedural-planets)
+
 Procedural planets, gas giants and stars for **three.js**, created from code
 and dropped into your own scene.
 
@@ -42,6 +45,19 @@ used to design planets. Anything made there can be loaded back in code (see
 ```sh
 npm install procedural-planets three
 ```
+
+The same library is also published to [GitHub Packages](https://github.com/ZyFou/ProceduralPlanets/pkgs/npm/procedural-planets)
+as `@zyfou/procedural-planets`. To use that registry, follow
+[GitHub's authentication instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages),
+then add `@zyfou:registry=https://npm.pkg.github.com` to your project's `.npmrc` and install:
+
+```sh
+npm install procedural-planets@npm:@zyfou/procedural-planets three
+```
+
+This npm alias keeps the `procedural-planets` imports in the examples below working.
+GitHub Packages requires authentication for installation; the npmjs package can
+be installed without signing in.
 
 The package requires **WebGL2** and **three.js ≥ 0.160** (a peer dependency).
 It is ESM-only and ships TypeScript declarations. For type checking, also
