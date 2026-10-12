@@ -1,0 +1,51 @@
+name: Publish to GitHub Packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'ZyFou/ProceduralPlanets'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: '@zyfou'
+      - run: npm ci
+      - name: Validate release version
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { VERSION } from './src/lib/index.js';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (pkg.version !== VERSION) throw new Error('Package and runtime versions differ');
+          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${pkg.version}`) {
+            throw new Error('Release tag does not match package.json');
+          }
+          NODE
+      - run: npm run prepublishOnly
+      - name: Prepare GitHub package metadata
+        run: |
+          npm pkg set 'name=@zyfou/procedural-planets'
+          npm pkg set 'publishConfig.registry=https://npm.pkg.github.com'
+      - name: Publish
+        run: npm publish --ignore-scripts --registry=https://npm.pkg.github.com --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
