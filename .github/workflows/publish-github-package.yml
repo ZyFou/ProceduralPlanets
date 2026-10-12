@@ -1,15 +1,20 @@
-name: Publish to GitHub Packages
+name: Publish release packages
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish (for example v0.6.0)
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: github-package-${{ github.ref }}
+  group: release-packages-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -20,32 +25,53 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: npm
+          - target: github
+    name: Publish to ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: '@zyfou'
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm install --global npm@11.21.0
       - run: npm ci
       - name: Validate release version
-        run: |
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import { VERSION } from './src/lib/index.js';
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          if (pkg.version !== VERSION) throw new Error('Package and runtime versions differ');
-          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${pkg.version}`) {
-            throw new Error('Release tag does not match package.json');
-          }
-          NODE
+        run: node scripts/publish-release.mjs validate
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease || false }}
       - run: npm run prepublishOnly
+      - name: Configure GitHub registry authentication
+        if: matrix.target == 'github'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+          registry-url: https://npm.pkg.github.com
+          scope: '@zyfou'
       - name: Prepare GitHub package metadata
+        if: matrix.target == 'github'
         run: |
           npm pkg set 'name=@zyfou/procedural-planets'
           npm pkg set 'publishConfig.registry=https://npm.pkg.github.com'
-      - name: Publish
-        run: npm publish --ignore-scripts --registry=https://npm.pkg.github.com --tag latest
+      - name: Publish to npm with trusted publishing
+        if: matrix.target == 'npm'
+        run: node scripts/publish-release.mjs publish npm
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease || false }}
+      - name: Publish to GitHub Packages
+        if: matrix.target == 'github'
+        run: node scripts/publish-release.mjs publish github
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease || false }}
