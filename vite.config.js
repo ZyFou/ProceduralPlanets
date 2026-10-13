@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -45,5 +46,16 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist/studio',
+    // top-level await in the examples; every WebGL2 browser supports it
+    target: 'es2022',
+    // the examples ship with the studio: the docs link to them live
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        ...Object.fromEntries(readdirSync(resolve(__dirname, 'examples'))
+          .filter((file) => file.endsWith('.html'))
+          .map((file) => [`examples/${file.replace(/\.html$/, '')}`, resolve(__dirname, 'examples', file)])),
+      },
+    },
   },
 });

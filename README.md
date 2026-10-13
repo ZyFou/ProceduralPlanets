@@ -184,6 +184,9 @@ floating coordinates and existing terrain/impostor LOD. See the
 
 ## Documentation
 
+The studio also serves these pages under **Docs** (`/#/docs`), with live
+previews, an interactive parameter reference and a preset gallery.
+
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | Install, the three usage tiers, first scene |

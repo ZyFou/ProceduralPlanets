@@ -1,7 +1,7 @@
 import LanguageSwitcher from '../i18n/LanguageSwitcher.jsx';
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   CircleHelp,
@@ -50,13 +50,16 @@ import { projectMode, projectSyncStore } from '../project/ProjectStore.js';
 import { buildUnifiedProjectIndex } from '../project/projectSync.js';
 import { usePopup } from '../components/ui/PopupProvider.jsx';
 
+const DocsPage = lazy(() => import('../docs/DocsPage.jsx'));
+
 const AUTH_VIEWS = new Set(['login', 'register']);
-const HASH_VIEWS = new Set(['login', 'register', 'profile', 'community', 'admin', 'confidentiality']);
+const HASH_VIEWS = new Set(['login', 'register', 'profile', 'community', 'admin', 'confidentiality', 'docs']);
 const VISIBILITY_ICONS = { private: Lock, unlisted: Eye, public: Globe2 };
 const BODY_LABELS = { planet: 'Planet', gas: 'Gas', star: 'Star' };
 
 function viewFromHash() {
-  const value = window.location.hash.replace(/^#\/?/, '').split('?')[0].toLowerCase();
+  // #/docs/<page>/<anchor> keeps its sub-path for the docs page
+  const value = window.location.hash.replace(/^#\/?/, '').split('?')[0].split('/')[0].toLowerCase();
   return HASH_VIEWS.has(value) ? value : null;
 }
 
@@ -85,6 +88,8 @@ export default function Landing({
   onRename,
   onDuplicate,
   onDelete,
+  onOpenParams,
+  onViewChange,
 }) {
   const locale = useLocale();
   const { user, status: authStatus, logout } = useAuth();
@@ -138,6 +143,7 @@ export default function Landing({
   }, [view, authStatus, user]);
 
   useEffect(() => { setNavigationOpen(false); }, [view, exiting]);
+  useEffect(() => { onViewChange?.(view); }, [view, onViewChange]);
 
   useEffect(() => {
     if (!navigationOpen) return undefined;
@@ -347,7 +353,8 @@ export default function Landing({
     : view === 'profile' ? ' lp--profile'
       : view === 'community' ? ' lp--community'
         : view === 'admin' ? ' lp--admin'
-          : view === 'confidentiality' ? ' lp--legal' : '';
+          : view === 'confidentiality' ? ' lp--legal'
+            : view === 'docs' ? ' lp--docs' : '';
 
   return (
     <div className={`landing landing-overlay lp${viewClass}${exiting ? ' exiting' : ''}`} {...dragHandlers}>
@@ -377,7 +384,7 @@ export default function Landing({
             <button type="button" className={view === 'projects' ? 'active' : ''} onClick={() => showView('projects')}>{translate("Projects")}</button>
             <button type="button" className={view === 'templates' ? 'active' : ''} onClick={() => openTemplates('Planet')}>{translate("Templates")}</button>
             <button type="button" className={view === 'community' ? 'active' : ''} onClick={() => showView('community')}>{translate("Community")}</button>
-            <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Docs")}</a>
+            <button type="button" className={view === 'docs' ? 'active' : ''} onClick={() => showView('docs')}>{translate("Docs")}</button>
             <a href="https://www.npmjs.com/package/procedural-planets" target="_blank" rel="noopener noreferrer">{translate("Package")}</a>
             <a href={PROCEDURAL_TERRAINS_URL} target="_blank" rel="noopener noreferrer">Procedural Terrains <ExternalLink size={12} aria-hidden="true" /></a>
           </nav>
@@ -419,6 +426,11 @@ export default function Landing({
             {view === 'community' && <CommunityPage onBack={() => showView('projects')} onOpen={onOpen} ready={!exiting} />}
             {view === 'admin' && user?.role === 'admin' && <AdminDashboard user={user} onBack={goHome} />}
             {view === 'confidentiality' && <ConfidentialityPage onBack={goHome} />}
+            {view === 'docs' && (
+              <Suspense fallback={<div className="lp-docs-loading" role="status">{translate("Loading documentation…")}</div>}>
+                <DocsPage onOpenInStudio={onOpenParams} />
+              </Suspense>
+            )}
 
             {view === 'home' && (
               <>
@@ -512,7 +524,7 @@ export default function Landing({
               </div>
             </div>
             <nav className="lp-footer-links" aria-label={translate("Footer navigation")}>
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Docs")}</a>
+              <button type="button" onClick={() => showView('docs')}>{translate("Docs")}</button>
               <a href="https://www.npmjs.com/package/procedural-planets" target="_blank" rel="noopener noreferrer">{translate("Package")}</a>
               <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">{translate("Source")} <ExternalLink size={12} aria-hidden="true" /></a>
               <button type="button" onClick={() => showView('confidentiality')}>{translate("Confidentiality")}</button>
