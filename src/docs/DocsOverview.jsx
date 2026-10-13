@@ -1,11 +1,13 @@
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
 import { useMemo, useState } from 'react';
-import { ArrowRight, Box, CloudLightning, Dices, ExternalLink, Fingerprint, Globe2, Layers3, MonitorPlay, Orbit, Sun, Waves } from 'lucide-react';
+import { ArrowRight, Box, CloudLightning, Code2, Dices, ExternalLink, Fingerprint, Globe2, Layers3, MonitorPlay, Orbit, Sun, Waves } from 'lucide-react';
 import { VERSION } from '../lib/index.js';
 import CodeBlock from './CodeBlock.jsx';
 import LivePlanet from './LivePlanet.jsx';
 import { docsHref } from './docsPages.js';
+import { playgroundHref } from './playground/runner.js';
+import { viewerProgram } from './playground/templates.js';
 
 const INSTALL_TABS = [
   { label: 'npm', lang: 'sh', code: 'npm install procedural-planets three' },
@@ -133,6 +135,7 @@ const viewer = new PlanetViewer({
             <CodeBlock code={snippet} lang="js" />
             <div className="docs-preview-actions">
               <button type="button" className="docs-btn ghost" onClick={() => setSeed((Math.random() * 1e5) | 0)}><Dices size={13} aria-hidden /> {translate('Random seed')}</button>
+              <a className="docs-btn ghost" href={playgroundHref(viewerProgram([['preset', `'${preset}'`], ['seed', String(seed)]]))}><Code2 size={13} aria-hidden /> {translate('Edit in Playground')}</a>
               {onOpenInStudio && (
                 <button type="button" className="docs-btn" onClick={() => onOpenInStudio(translate(label), planetOptions)}>
                   <ExternalLink size={13} aria-hidden /> {translate('Open in Studio')}

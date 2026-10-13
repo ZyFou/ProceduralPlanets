@@ -184,8 +184,9 @@ floating coordinates and existing terrain/impostor LOD. See the
 
 ## Documentation
 
-The studio also serves these pages under **Docs** (`/#/docs`), with live
-previews, an interactive parameter reference and a preset gallery.
+The studio also serves these pages under **Docs** (`/#/docs`), in English and
+French, with live previews, an interactive parameter reference, a preset
+gallery and a playground that runs your code against the published package.
 
 | | |
 |---|---|

@@ -1,7 +1,7 @@
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Dices, ExternalLink, Orbit, Sun, Waves } from 'lucide-react';
+import { Code2, Dices, ExternalLink, Orbit, Sun, Waves } from 'lucide-react';
 import { GAS_PRESETS, PLANET_PRESETS, STAR_PRESETS } from '../engine/presets.js';
 import { PlanetViewer } from '../engine/PlanetViewer.js';
 import { PARAM_DOCS } from '../lib/paramDocs.js';
@@ -9,6 +9,8 @@ import CodeBlock from './CodeBlock.jsx';
 import LivePlanet from './LivePlanet.jsx';
 import Markdown from './Markdown.jsx';
 import { formatValue, planetSnippet } from './planetCode.js';
+import { playgroundHref } from './playground/runner.js';
+import { viewerProgram } from './playground/templates.js';
 
 // ============================================================================
 // Presets as a gallery: thumbnails rendered by the package itself (one small
@@ -125,6 +127,7 @@ export default function PresetGallery({ source, ctx, anchor, onOpenInStudio }) {
           <CodeBlock lang="js" code={planetSnippet([['preset', `'${preset.name}'`], ['seed', String(seed)]])} />
           <div className="docs-preview-actions">
             <button type="button" className="docs-btn ghost" onClick={() => setSeed((Math.random() * 1e5) | 0)}><Dices size={13} aria-hidden /> {translate('Random seed')}</button>
+            <a className="docs-btn ghost" href={playgroundHref(viewerProgram([['preset', `'${preset.name}'`], ['seed', String(seed)]]))}><Code2 size={13} aria-hidden /> {translate('Edit in Playground')}</a>
             {onOpenInStudio && (
               <button type="button" className="docs-btn" onClick={() => onOpenInStudio(translate(preset.label), { preset: preset.name, seed })}>
                 <ExternalLink size={13} aria-hidden /> {translate('Open in Studio')}

@@ -43,20 +43,28 @@ export function createSlugger() {
   };
 }
 
-/** Tokens plus the heading outline of a markdown source (memoised). */
-export function parseMarkdown(source) {
-  if (parsed.has(source)) return parsed.get(source);
+const headingTokens = (tokens) => tokens.filter((token) => token.type === 'heading');
+
+/**
+ * Tokens plus the heading outline of a markdown source (memoised). With a
+ * `reference` (the English page of a translation) whose headings have the
+ * same depths in the same order, the translation reuses its ids.
+ */
+export function parseMarkdown(source, reference = null) {
+  const key = reference ? `${reference.length}:${reference}${source}` : source;
+  if (parsed.has(key)) return parsed.get(key);
   const tokens = marked.lexer(source, { gfm: true });
+  const own = headingTokens(tokens);
+  const base = reference ? parseMarkdown(reference).headings : null;
+  const aligned = base && base.length === own.length && base.every((heading, i) => heading.depth === own[i].depth);
   const slug = createSlugger();
-  const headings = [];
-  for (const token of tokens) {
-    if (token.type !== 'heading') continue;
+  const headings = own.map((token, i) => {
     const text = plainText(token.tokens);
-    token.id = slug(text);
-    headings.push({ depth: token.depth, text, id: token.id });
-  }
-  const result = { tokens, headings };
-  parsed.set(source, result);
+    token.id = aligned ? base[i].id : slug(text);
+    return { depth: token.depth, text, id: token.id };
+  });
+  const result = { tokens, headings, aligned: !reference || !!aligned };
+  parsed.set(key, result);
   return result;
 }
 
@@ -199,12 +207,12 @@ function Blocks({ tokens = [], ctx, tight = false }) {
 }
 
 /**
- * Render a markdown document. ctx: { resolveHref(href) → { href, internal },
+ * Render a markdown document (`reference`: see parseMarkdown). ctx: { resolveHref(href) → { href, internal },
  * resolveImage(src) → url }. `skipTitle` drops the leading # heading when the
  * page draws its own header.
  */
-export default function Markdown({ source, ctx, skipTitle = false }) {
-  const { tokens } = parseMarkdown(source);
+export default function Markdown({ source, reference = null, ctx, skipTitle = false }) {
+  const { tokens } = parseMarkdown(source, reference);
   const title = skipTitle ? tokens.find((token) => token.type === 'heading' && token.depth === 1) : null;
   const visible = title ? tokens.filter((token) => token !== title) : tokens;
   return <div className="docs-markdown"><Blocks tokens={visible} ctx={ctx} /></div>;

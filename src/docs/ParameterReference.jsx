@@ -1,11 +1,13 @@
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Orbit, RotateCcw, Search, Sun, Waves } from 'lucide-react';
+import { Code2, ExternalLink, Orbit, RotateCcw, Search, Sun, Waves } from 'lucide-react';
 import { PARAM_DOCS } from '../lib/paramDocs.js';
 import CodeBlock from './CodeBlock.jsx';
 import LivePlanet from './LivePlanet.jsx';
 import { formatValue, planetSnippet, toHex } from './planetCode.js';
+import { playgroundHref } from './playground/runner.js';
+import { viewerProgram } from './playground/templates.js';
 
 // ============================================================================
 // Parameter reference generated from PARAM_DOCS (the same metadata as
@@ -204,6 +206,7 @@ export default function ParameterReference({ anchor, onOpenInStudio }) {
             <span>{editedCount ? translate('{0} changed', { 0: editedCount }) : translate('Defaults')}</span>
             <div>
               <button type="button" className="docs-btn ghost" onClick={resetAll} disabled={!editedCount}><RotateCcw size={13} aria-hidden /> {translate('Reset all')}</button>
+              <a className="docs-btn ghost" href={playgroundHref(viewerProgram(codeEntries))}><Code2 size={13} aria-hidden /> {translate('Playground')}</a>
               {onOpenInStudio && (
                 <button type="button" className="docs-btn" onClick={() => onOpenInStudio(translate(current.label), { ...current.options, seed: 42, ...edits })}>
                   <ExternalLink size={13} aria-hidden /> {translate('Open in Studio')}

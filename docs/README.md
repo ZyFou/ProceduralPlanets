@@ -10,3 +10,7 @@
 - [Studio interop](studio-interop.md): from the studio to code
 - [Examples](../examples/)
 - [Publishing releases](releasing.md): automatic npm and GitHub Packages publication
+
+French translations of the guides live in [fr/](fr/). A translation keeps the
+English page's headings in the same order and at the same depth (anchors are
+shared between languages) and the same code; `npm test` checks both.

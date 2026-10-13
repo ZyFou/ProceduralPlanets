@@ -7,6 +7,12 @@ import presets from '../../docs/presets.md?raw';
 import weather from '../../docs/weather.md?raw';
 import baking from '../../docs/baking.md?raw';
 import studioInterop from '../../docs/studio-interop.md?raw';
+import gettingStartedFr from '../../docs/fr/getting-started.md?raw';
+import embeddingFr from '../../docs/fr/embedding.md?raw';
+import apiFr from '../../docs/fr/api.md?raw';
+import weatherFr from '../../docs/fr/weather.md?raw';
+import bakingFr from '../../docs/fr/baking.md?raw';
+import studioInteropFr from '../../docs/fr/studio-interop.md?raw';
 
 // ============================================================================
 // The documentation's pages. Markdown pages render the repository's
@@ -22,6 +28,7 @@ export const DOCS_GROUPS = [
 
 export const DOCS_PAGES = [
   { id: 'overview', group: 'start', title: 'Overview', component: 'overview', summary: 'What the package does and a live quick start' },
+  { id: 'playground', group: 'start', title: 'Playground', component: 'playground', summary: 'Edit and run code in your browser' },
   { id: 'getting-started', group: 'start', title: 'Getting started', file: 'getting-started', source: gettingStarted, summary: 'Install, the three usage tiers, your first planet' },
   { id: 'examples', group: 'start', title: 'Examples', component: 'examples', summary: 'Runnable pages that use the package' },
   { id: 'embedding', group: 'guides', title: 'Embedding guide', file: 'embedding', source: embedding, summary: 'Render order, depth, tone mapping, EffectComposer, scale, performance' },
@@ -34,6 +41,31 @@ export const DOCS_PAGES = [
 ];
 
 export const DEFAULT_PAGE = 'overview';
+
+// docs/<lang>/<file>.md: same headings in the same order as the English page
+const TRANSLATIONS = {
+  fr: {
+    'getting-started': gettingStartedFr,
+    embedding: embeddingFr,
+    api: apiFr,
+    weather: weatherFr,
+    baking: bakingFr,
+    'studio-interop': studioInteropFr,
+  },
+};
+
+/**
+ * The markdown to show for `page` in `locale`: { source, reference, file,
+ * translated }. `reference` is the English source whose heading ids a
+ * translation reuses, so anchors are the same in every language.
+ */
+export function pageSource(page, locale) {
+  const translated = page.file ? TRANSLATIONS[locale]?.[page.file] : null;
+  if (translated) return { source: translated, reference: page.source, file: `${locale}/${page.file}`, translated: true };
+  return { source: page.source, reference: null, file: page.file, translated: locale === 'en' };
+}
+
+export const translationsOf = (locale) => TRANSLATIONS[locale] ?? {};
 
 const PAGE_BY_FILE = new Map(DOCS_PAGES.filter((page) => page.file).map((page) => [page.file, page.id]));
 const IMAGES = import.meta.glob('../../docs/images/*', { eager: true, query: '?url', import: 'default' });
@@ -60,7 +92,9 @@ export function createLinkContext(pageId) {
     resolveHref(href = '') {
       if (/^(https?:|mailto:)/i.test(href)) return { href, internal: false };
       if (href.startsWith('#')) return { href: docsHref(pageId, href.slice(1)), internal: true };
-      const doc = /^(?:\.\/)?([\w-]+)\.md(?:#(.*))?$/.exec(href);
+      // relative to docs/ or to a translation in docs/<lang>/
+      const path = href.replace(/^(\.\.?\/)+/, '');
+      const doc = /^([\w-]+)\.md(?:#(.*))?$/.exec(path);
       if (doc) {
         const target = PAGE_BY_FILE.get(doc[1]);
         return target
@@ -68,12 +102,12 @@ export function createLinkContext(pageId) {
           : { href: githubSourceUrl(doc[1]) + (doc[2] ? `#${doc[2]}` : ''), internal: false };
       }
       // the runnable examples are deployed next to the studio
-      const example = /^\.\.\/examples\/(.*)$/.exec(href);
+      const example = /^examples\/(.*)$/.exec(path);
       if (example) return { href: `/examples/${example[1]}`, internal: false };
-      return { href: `${GITHUB_REPO_URL}/blob/main/${href.replace(/^(\.\.\/)+/, '')}`, internal: false };
+      return { href: `${GITHUB_REPO_URL}/blob/main/${path}`, internal: false };
     },
     resolveImage(src = '') {
-      const name = src.replace(/^\.?\/?/, '');
+      const name = src.replace(/^(\.\.?\/)+/, '');
       return IMAGES[`../../docs/${name}`] ?? src;
     },
   };

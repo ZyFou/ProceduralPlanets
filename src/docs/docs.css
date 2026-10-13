@@ -354,6 +354,51 @@
 .docs-preset-card code { margin: 0 12px; width: fit-content; font-size: 11px !important; }
 .docs-preset-table .docs-markdown { max-width: none; }
 
+/* ---- playground ---- */
+.pg-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.pg-toolbar-spacer { flex: 1; }
+.pg-template-desc { color: var(--text-dim); font-size: 12px; }
+.pg-toolbar .docs-btn kbd { margin-left: 2px; border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .12); color: #fff; }
+.pg-select { display: inline-flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; }
+.pg-select select { height: 34px; padding: 0 10px; border: 1px solid var(--docs-line); border-radius: 8px; background: var(--docs-panel); color: var(--text-main); font: 600 12.5px var(--font); cursor: var(--cursor-pointer); }
+.pg-select select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; }
+.pg-editor { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); height: 620px; overflow: hidden; border: 1px solid var(--docs-line); border-radius: 10px; background: #0a0d13; font: 12.5px/1.65 var(--mono); tab-size: 2; }
+.pg-editor:focus-within { border-color: rgba(37, 99, 235, .7); }
+.pg-gutter { overflow: hidden; padding: 14px 0; border-right: 1px solid var(--docs-line); color: #3f4859; text-align: right; user-select: none; }
+.pg-gutter span { display: block; padding: 0 10px 0 14px; }
+.pg-gutter span.error { background: rgba(239, 68, 68, .18); color: #f2a7ab; }
+.pg-code { position: relative; overflow: hidden; }
+.pg-code pre, .pg-code textarea { position: absolute; inset: 0; box-sizing: border-box; margin: 0; padding: 14px 16px; border: 0; font: inherit; letter-spacing: 0; white-space: pre; tab-size: 2; }
+.pg-code pre { color: #c9d1e0; pointer-events: none; will-change: transform; }
+.pg-code pre code { font: inherit; }
+.pg-code textarea { width: 100%; height: 100%; overflow: auto; outline: 0; resize: none; background: transparent; color: transparent; caret-color: #e6ebf5; }
+.pg-code textarea::selection { background: rgba(37, 99, 235, .35); color: transparent; }
+.pg-output { display: grid; grid-template-rows: auto 1fr auto; gap: 10px; min-width: 0; height: 620px; }
+.pg-frame { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border: 1px solid var(--docs-line); border-radius: 10px; background: #000; }
+.pg-frame iframe { display: block; width: 100%; height: 100%; border: 0; background: #000; }
+.pg-console { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--docs-line); border-radius: 10px; background: #0a0d13; }
+.pg-console > header { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--docs-line); color: var(--text-dim); font: 600 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.pg-console > header > span { display: inline-flex; align-items: center; gap: 6px; }
+.pg-logs { flex: 1; min-height: 0; overflow: auto; padding: 6px 0; }
+.pg-log { margin: 0; padding: 3px 12px; border-left: 2px solid transparent; color: #c9d1e0; font: 12px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pg-log.warn { border-left-color: var(--warning); background: rgba(245, 158, 11, .06); color: #f2c879; }
+.pg-log.error { border-left-color: var(--danger); background: rgba(239, 68, 68, .07); color: #f2a7ab; }
+.pg-log.info { color: #9fc1ff; }
+.pg-log-empty { margin: 0; padding: 8px 12px; color: var(--text-dim); font: 12px var(--mono); }
+.pg-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-dim); font-size: 11.5px; }
+.pg-note svg { flex: none; color: var(--success); }
+@media (max-width: 1080px) {
+  .pg-layout { grid-template-columns: 1fr; }
+  .pg-editor { height: 420px; }
+  .pg-output { height: auto; grid-template-rows: auto 220px auto; }
+}
+@media (max-width: 620px) {
+  .pg-toolbar-spacer, .pg-template-desc { display: none; }
+  .pg-toolbar .docs-btn kbd { display: none; }
+  .pg-editor { height: 360px; font-size: 12px; }
+}
+
 /* ---- responsive ---- */
 @media (max-width: 1280px) {
   .docs { grid-template-columns: 228px minmax(0, 1fr); gap: 0 36px; }

@@ -8,7 +8,8 @@ import DocsOverview from './DocsOverview.jsx';
 import DocsExamples from './DocsExamples.jsx';
 import ParameterReference from './ParameterReference.jsx';
 import PresetGallery from './PresetGallery.jsx';
-import { DOCS_GROUPS, DOCS_PAGES, createLinkContext, docsHref, getPage, githubSourceUrl, parseDocsHash } from './docsPages.js';
+import Playground from './playground/Playground.jsx';
+import { DOCS_GROUPS, DOCS_PAGES, createLinkContext, docsHref, getPage, githubSourceUrl, pageSource, parseDocsHash } from './docsPages.js';
 import './docs.css';
 
 // ============================================================================
@@ -18,12 +19,13 @@ import './docs.css';
 
 const MAX_RESULTS = 12;
 
-function buildSearchIndex() {
+function buildSearchIndex(locale) {
   const items = [];
   for (const page of DOCS_PAGES) {
     items.push({ kind: 'page', title: page.title, context: page.summary, href: docsHref(page.id), terms: `${page.title} ${page.summary}` });
     if (!page.source || page.component === 'parameters') continue;
-    for (const heading of parseMarkdown(page.source).headings) {
+    const { source, reference } = pageSource(page, locale);
+    for (const heading of parseMarkdown(source, reference).headings) {
       if (heading.depth < 2 || heading.depth > 3) continue;
       items.push({ kind: 'heading', title: heading.text, context: page.title, href: docsHref(page.id, heading.id), terms: heading.text });
     }
@@ -56,7 +58,7 @@ function Sidebar({ page, open, onToggle }) {
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef(null);
-  const index = useMemo(buildSearchIndex, []);
+  const index = useMemo(() => buildSearchIndex(locale), [locale]);
   const results = useMemo(() => search(index, query), [index, query, locale]);
   const current = getPage(page);
 
@@ -168,7 +170,8 @@ export default function DocsPage({ onOpenInStudio }) {
   const [activeHeading, setActiveHeading] = useState('');
   const page = getPage(route.page);
   const isMarkdown = page.source && !page.component;
-  const headings = useMemo(() => (isMarkdown ? parseMarkdown(page.source).headings : []), [page, isMarkdown]);
+  const doc = pageSource(page, locale);
+  const headings = useMemo(() => (isMarkdown ? parseMarkdown(doc.source, doc.reference).headings : []), [isMarkdown, doc.source, doc.reference]);
   const ctx = useMemo(() => createLinkContext(page.id), [page.id]);
   const scroller = useCallback(() => rootRef.current?.closest('.lp-content-scroll') ?? null, []);
 
@@ -228,21 +231,22 @@ export default function DocsPage({ onOpenInStudio }) {
   let content;
   if (page.component === 'overview') content = <DocsOverview onOpenInStudio={onOpenInStudio} />;
   else if (page.component === 'examples') content = <DocsExamples />;
+  else if (page.component === 'playground') content = <Playground />;
   else if (page.component === 'parameters') content = <ParameterReference anchor={route.anchor} onOpenInStudio={onOpenInStudio} />;
   else if (page.component === 'presets') content = <PresetGallery source={page.source} ctx={ctx} anchor={route.anchor} onOpenInStudio={onOpenInStudio} />;
-  else content = <Markdown source={page.source} ctx={ctx} />;
+  else content = <Markdown source={doc.source} reference={doc.reference} ctx={ctx} />;
 
   return (
     <div className={`docs${hasOutline ? '' : ' docs--wide'}`} ref={rootRef} onClick={onClick}>
       <Sidebar page={page.id} open={sidebarOpen} onToggle={setSidebarOpen} />
-      <article className="docs-article" key={page.id} lang={isMarkdown ? 'en' : undefined}>
-        {isMarkdown && locale === 'fr' && (
+      <article className="docs-article" key={page.id} lang={isMarkdown && !doc.translated ? 'en' : undefined}>
+        {isMarkdown && !doc.translated && (
           <p className="docs-translation-note" lang="fr"><Languages size={14} aria-hidden /> {translate('This page is only available in English for now.')}</p>
         )}
         {content}
         <footer className="docs-article-footer">
           {page.file && (
-            <a className="docs-edit" href={githubSourceUrl(page.file)} target="_blank" rel="noopener noreferrer">
+            <a className="docs-edit" href={githubSourceUrl(isMarkdown ? doc.file : page.file)} target="_blank" rel="noopener noreferrer">
               <Github size={14} aria-hidden /> {translate('Edit this page on GitHub')}
             </a>
           )}
