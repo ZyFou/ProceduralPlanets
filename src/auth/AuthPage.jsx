@@ -74,7 +74,7 @@ export default function AuthPage({ mode, onBack, onSwitch, onSuccess }) {
       <button type="button" className="auth-back" onClick={onBack}><ArrowLeft size={14} /> {translate("Back to projects")}</button>
       <div className="auth-card">
         <header>
-          <span className="auth-mark"><Logo size={25} /></span>
+          <span className="auth-mark"><Logo size={32} /></span>
           <div>
             <small>{APP_NAME}</small>
             <h1 id="auth-title">{isRegister ? translate('Create your account') : translate('Welcome back')}</h1>

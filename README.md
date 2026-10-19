@@ -1,3 +1,5 @@
+<p align="center"><img src="public/branding/procedural-planets-logo.png" alt="Procedural Planets logo" width="180"></p>
+
 # procedural-planets
 
 [![npm version](https://img.shields.io/npm/v/procedural-planets)](https://www.npmjs.com/package/procedural-planets)

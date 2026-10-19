@@ -1208,7 +1208,7 @@ input {
   cursor: var(--cursor-pointer);
 }
 .tb-brand-button:hover .app-name { color: var(--accent); }
-.logo { width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; }
+.logo { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
 .app-name { color: var(--text-bright); font-size: 12px; font-weight: 700; letter-spacing: 1.15px; white-space: nowrap; }
 .tb-left { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .tb-center {

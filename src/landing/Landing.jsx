@@ -372,7 +372,7 @@ export default function Landing({
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setNavigationOpen(false);
       }}>
         <button type="button" className="lp-brand" onClick={goHome} title={translate("Return to home")}>
-          <Logo size={24} /><strong>{APP_NAME}</strong>
+          <Logo size={32} /><strong>{APP_NAME}</strong>
         </button>
         <div id="landing-navigation" className={`lp-nav-panel${navigationOpen ? ' is-open' : ''}`} onClick={(event) => {
           if (!event.target.closest('button, a')) return;
@@ -513,7 +513,7 @@ export default function Landing({
             <div className="lp-footer-main">
               <div className="lp-footer-identity">
                 <button type="button" className="lp-footer-brand" onClick={goHome} title={translate("Return to home")}>
-                  <Logo size={20} /><strong>{APP_NAME}</strong>
+                  <Logo size={26} /><strong>{APP_NAME}</strong>
                 </button>
                 <span>© {new Date().getFullYear()} {translate("Open source software.")}</span>
               </div>
