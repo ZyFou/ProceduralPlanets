@@ -10,6 +10,7 @@ import { pushBoundProject } from './project/cloudSync.js';
 import { adminApi } from './admin/adminApi.js';
 import { useAuth } from './auth/AuthContext.jsx';
 import { usePopup } from './components/ui/PopupProvider.jsx';
+import { resolvePlanetParams } from './engine/Planet.js';
 import './landing/landing.css';
 
 const Exploration = lazy(() => import('./exploration/Exploration.jsx'));
@@ -25,6 +26,7 @@ export default function Root() {
   const [landingVisible, setLandingVisible] = useState(true);
   const [landingExiting, setLandingExiting] = useState(false);
   const [landingCreateOpen, setLandingCreateOpen] = useState(false);
+  const [landingView, setLandingView] = useState(null);
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null);
   const [templateThumbs, setTemplateThumbs] = useState({});
@@ -118,6 +120,16 @@ export default function Root() {
     }));
     openEditor(project);
   }, [openEditor, templateThumbs]);
+
+  /** "Open in Studio" from the docs: a new project from Planet constructor options. */
+  const openParams = useCallback(async (name, options) => {
+    const project = await projectStore.save(normalizeProject({
+      metadata: { name, description: '', thumbnail: null },
+      params: resolvePlanetParams(options),
+    }));
+    window.history.replaceState(null, '', window.location.pathname);
+    openEditor(project);
+  }, [openEditor]);
 
   const previewTemplate = useCallback((templateId) => {
     const template = getProjectTemplate(templateId);
@@ -288,7 +300,12 @@ export default function Root() {
     onRename: renameProject,
     onDuplicate: duplicateProject,
     onDelete: deleteProject,
-  }), [projects, templateThumbs, landingExiting, landingCreateOpen, openEditor, createProject, previewTemplate, importFile, renameProject, duplicateProject, deleteProject]);
+    onOpenParams: openParams,
+    onViewChange: setLandingView,
+  }), [projects, templateThumbs, landingExiting, landingCreateOpen, openEditor, createProject, previewTemplate, importFile, renameProject, duplicateProject, deleteProject, openParams]);
+
+  // the docs cover the showcase render and run their own previews
+  const docsOpen = landingVisible && !landingExiting && landingView === 'docs';
 
   return (
     <>
@@ -296,7 +313,7 @@ export default function Root() {
         <App
           project={currentProject}
           landingMode={landingVisible || exploring}
-          suspended={exploring}
+          suspended={exploring || docsOpen}
           onExplore={() => setExploring(true)}
           documentState={documentState}
           onHome={showLanding}

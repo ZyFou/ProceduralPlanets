@@ -1,3 +1,4 @@
+import { Logo } from './Logo.jsx';
 import LanguageSwitcher from '../i18n/LanguageSwitcher.jsx';
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
@@ -168,7 +169,7 @@ export default function TopBar({
     <header id="topbar" className={openMenu ? 'file-menu-open' : ''}>
       <div className="tb-group tb-brand">
         <button type="button" className="tb-brand-button" onClick={onHome} title={translate("Back to projects")}>
-          <Orbit className="logo" aria-hidden />
+          <Logo className="logo" size={28} />
           <span className="app-name">{APP_NAME}</span>
         </button>
       </div>

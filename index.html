@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#05060a">
+<link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%branding/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%branding/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%branding/apple-touch-icon.png">
 <title>Procedural Planets - Stylized Planet Studio</title>
 <style>
   html, body { margin: 0; height: 100%; background: #05060a; }
@@ -47,6 +50,7 @@
   #pp-loader.zooming .ppl-ui { opacity: 0; transform: translateY(14px); }
   @keyframes ppl-in { from { opacity: 0; transform: translateY(8px); } }
 
+  .ppl-logo { width: 48px; height: 32px; object-fit: contain; margin-bottom: 12px; }
   .ppl-title { font-size: 11px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #aab2c2; margin-left: .3em; }
   .ppl-progress { width: 240px; margin-top: 22px; }
   .ppl-track { position: relative; height: 2px; border-radius: 2px; background: #161b27; overflow: hidden; }
@@ -83,6 +87,7 @@
     <div class="ppl-center">
       <div class="ppl-mark" aria-hidden="true"></div>
       <div class="ppl-ui">
+        <img class="ppl-logo" src="%BASE_URL%branding/procedural-planets-logo.png" width="48" height="32" alt="" aria-hidden="true">
         <div class="ppl-title">Procedural Planets</div>
         <div class="ppl-progress">
           <div class="ppl-track"><div class="ppl-fill"></div><div class="ppl-shine"></div></div>

@@ -1,3 +1,5 @@
+<p align="center"><img src="public/branding/procedural-planets-logo.png" alt="Procedural Planets logo" width="180"></p>
+
 # procedural-planets
 
 [![npm version](https://img.shields.io/npm/v/procedural-planets)](https://www.npmjs.com/package/procedural-planets)
@@ -183,6 +185,10 @@ floating coordinates and existing terrain/impostor LOD. See the
 [exploration guide](docs/exploration.md) for controls, architecture and checks.
 
 ## Documentation
+
+The studio also serves these pages under **Docs** (`/#/docs`), in English and
+French, with live previews, an interactive parameter reference, a preset
+gallery and a playground that runs your code against the published package.
 
 | | |
 |---|---|
