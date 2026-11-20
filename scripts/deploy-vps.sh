@@ -19,10 +19,12 @@ npm ci --omit=dev
 npm run migrate
 pm2 startOrRestart ecosystem.config.cjs --env production --update-env
 
+# Navigation uses #/ fragments; missing files/paths must remain 404.
+# Override the SPA flag saved by earlier deployments on restart too.
 if pm2 describe procedural-planets-web >/dev/null 2>&1; then
-  pm2 restart procedural-planets-web
+  PM2_SERVE_SPA=false pm2 restart procedural-planets-web --update-env
 else
-  pm2 serve "$DEPLOY_ROOT/web" 7071 --name procedural-planets-web --spa
+  PM2_SERVE_SPA=false pm2 serve "$DEPLOY_ROOT/web" 7071 --name procedural-planets-web
 fi
 
 check_health() {
