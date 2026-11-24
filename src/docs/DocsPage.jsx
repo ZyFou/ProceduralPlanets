@@ -128,7 +128,7 @@ function Sidebar({ page, open, onToggle }) {
           <nav className="docs-nav" aria-label={translate('Documentation')}>
             {DOCS_GROUPS.map((group) => (
               <div key={group.id} className="docs-nav-group">
-                <h2>{translate(group.title)}</h2>
+                <h2 className="docs-nav-label">{translate(group.title)}</h2>
                 {DOCS_PAGES.filter((item) => item.group === group.id).map((item) => (
                   <a key={item.id} href={docsHref(item.id)} className={item.id === page ? 'active' : ''} aria-current={item.id === page ? 'page' : undefined}
                     onClick={() => onToggle(false)}>
@@ -150,7 +150,7 @@ function Outline({ items, active, page }) {
   useLocale();
   return (
     <aside className="docs-outline">
-      <h2>{translate('On this page')}</h2>
+      <h2 className="docs-outline-title">{translate('On this page')}</h2>
       <nav aria-label={translate('On this page')}>
         {items.map((heading) => (
           <a key={heading.id} href={docsHref(page, heading.id)} className={`depth-${heading.depth}${heading.id === active ? ' active' : ''}`}>

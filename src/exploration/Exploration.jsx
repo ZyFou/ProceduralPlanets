@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Camera, Crosshair, Download, Navigation, Orbit, Settings2, X } from 'lucide-react';
 import { Explorer } from './Explorer.js';
 import SurfaceWalkControls from '../components/SurfaceWalkControls.jsx';
+import SlidingIndicator from '../components/ui/SlidingIndicator.jsx';
 import { AU, LIGHT_YEAR, MIN_SPEED, formatDistance as distance, formatSpeed as speedText, length, relative } from './world.js';
 import { clampSpeed } from './flight.js';
 import { DEFAULT_SETTINGS, QUALITY_PRESETS, normalizeSettings, readSettings, writeSettings } from './settings.js';
@@ -115,7 +116,7 @@ export default function Exploration({ onExit }) {
       </section>}
       {panel && <aside className="exploration-panel" aria-label={translate("Exploration navigation")}>
         <div className="exploration-panel-heading"><h2>{panel === 'settings' ? translate('Render settings') : panel === 'destinations' ? translate('Destinations') : translate('Flight')}</h2><button type="button" onClick={() => setPanel(null)} aria-label={translate("Close panel")}><X size={16} /></button></div>
-        <div className="exploration-tabs" role="group" aria-label={translate("Explore panel")}><button type="button" aria-pressed={panel === 'flight'} onClick={() => setPanel('flight')}>{translate("Flight")}</button><button type="button" aria-pressed={panel === 'destinations'} onClick={() => setPanel('destinations')}>{translate("Destinations")}</button><button type="button" aria-pressed={panel === 'settings'} onClick={() => setPanel('settings')}>{translate("Settings")}</button></div>
+        <div className="exploration-tabs has-slider" role="group" aria-label={translate("Explore panel")}><SlidingIndicator selector='[aria-pressed="true"]' /><button type="button" aria-pressed={panel === 'flight'} onClick={() => setPanel('flight')}>{translate("Flight")}</button><button type="button" aria-pressed={panel === 'destinations'} onClick={() => setPanel('destinations')}>{translate("Destinations")}</button><button type="button" aria-pressed={panel === 'settings'} onClick={() => setPanel('settings')}>{translate("Settings")}</button></div>
         {panel === 'flight' && <>
           <label htmlFor="flight-speed">{translate("Travel speed")} <b>{formatSpeed(speed)}</b></label>
           <input id="flight-speed" type="range" min={Math.log10(MIN_SPEED)} max={sliderMax} step="0.05" value={Math.log10(speed)} onChange={e => changeSpeed(10 ** Number(e.target.value))} />

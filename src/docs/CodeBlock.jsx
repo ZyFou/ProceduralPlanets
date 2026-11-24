@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { copyText } from '../utils/clipboard.js';
 import { highlight, languageLabel } from './highlight.js';
+import SlidingIndicator from '../components/ui/SlidingIndicator.jsx';
 
 function Highlighted({ code, lang }) {
   const tokens = useMemo(() => highlight(code, lang), [code, lang]);
@@ -48,7 +49,8 @@ export default function CodeBlock({ code, lang, tabs, caption }) {
     <figure className="docs-code">
       <div className="docs-code-head">
         {items.length > 1 ? (
-          <div className="docs-code-tabs" role="tablist">
+          <div className="docs-code-tabs has-slider" role="tablist">
+            <SlidingIndicator />
             {items.map((item, index) => (
               <button key={item.label} type="button" role="tab" aria-selected={index === active}
                 className={index === active ? 'active' : ''} onClick={() => setActive(index)}>{item.label}</button>

@@ -1,20 +1,24 @@
+/* Language chip — UI v3: neutral outline, mono code, zinc hover. */
 .language-switcher {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   box-sizing: border-box;
-  width: var(--language-button-size, 34px);
+  min-width: var(--language-button-size, 34px);
   height: var(--language-button-size, 34px);
-  padding: 0;
-  border: 1px solid rgba(160, 178, 198, .22);
-  border-radius: 8px;
-  color: inherit;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  background: rgba(12, 18, 30, .7);
+  padding: 0 8px;
+  border: 1px solid var(--border-subtle, #1f2026);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-muted, #a1a1aa);
+  background: transparent;
+  font: 500 11px var(--mono, monospace);
+  letter-spacing: 0.08em;
   cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-.language-switcher:hover { background: rgba(30, 42, 62, .9); }
-.language-switcher:focus-visible { outline: 2px solid #79aaff; outline-offset: 2px; }
+.language-switcher:hover { background: var(--bg-hover, #1c1d22); border-color: var(--border-strong, #2d2e35); color: var(--text-bright, #fff); }
+.language-switcher:focus-visible { outline: 2px solid rgba(59, 130, 246, 0.6); outline-offset: 2px; }
+/* In the editor top bar it matches the 28px toolbar buttons. */
+.tb-right .language-switcher { --language-button-size: 28px; }
+@media (max-width: 820px) { .tb-right .language-switcher { --language-button-size: 44px; } }

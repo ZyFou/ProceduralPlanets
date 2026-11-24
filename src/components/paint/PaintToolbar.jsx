@@ -1,6 +1,7 @@
 import { translate } from '../../i18n/locale.js';
 import { useLocale } from '../../i18n/useLocale.js';
 import { Mountain, Waves, Minus, Palette, Eraser, SlidersHorizontal } from 'lucide-react';
+import SlidingIndicator from '../ui/SlidingIndicator.jsx';
 
 export const PAINT_TOOLS = [
   { id: 'sculpt', label: 'Sculpt', icon: Mountain, description: 'Raise or lower the surface along its spherical normal.' },
@@ -13,7 +14,8 @@ export const PAINT_TOOLS = [
 
 export default function PaintToolbar({ activeTool, onSelect }) {
   useLocale();
-  return <nav className="paint-toolbar left-toolbar" aria-label={translate("Paint Tools")}>
+  return <nav className="paint-toolbar left-toolbar has-slider" aria-label={translate("Paint Tools")}>
+    <SlidingIndicator selector=".toolbar-btn.active" />
     {PAINT_TOOLS.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`toolbar-btn${activeTool === id ? ' active' : ''}`} title={translate(label)} aria-label={translate(label)} aria-pressed={activeTool === id} onClick={() => onSelect(id)}>
       <Icon size={19} strokeWidth={1.75} aria-hidden /><span className="toolbar-btn-label">{translate(label)}</span>
     </button>)}

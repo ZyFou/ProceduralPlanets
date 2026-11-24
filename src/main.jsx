@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import Root from './Root.jsx';
 import { AuthProvider } from './auth/AuthContext.jsx';
 import { PopupProvider } from './components/ui/PopupProvider.jsx';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
 import './cursors.css';
 import './styles.css';
 
