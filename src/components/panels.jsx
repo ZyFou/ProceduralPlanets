@@ -8,6 +8,7 @@ import { PLANET_PRESETS, STAR_PRESETS, GAS_PRESETS } from '../engine/presets.js'
 import { DEFAULT_STAR_BODY } from '../engine/star.js';
 import { planetCodeSnippet } from '../project/codeSnippet.js';
 import { normalizeWeatherSystem } from '../engine/weather.js';
+import SlidingIndicator from './ui/SlidingIndicator.jsx';
 
 // One component per side-panel tab. Each receives (params, onParam) and, for
 // the style panel, onPreset. Pure declarative mappings — no engine access.
@@ -17,7 +18,8 @@ export function TerrainPanel({ params: p, onParam, terrain = { mode: 'procedural
   return (
     <>
       <Section title={translate("Terrain source")}>
-        <div className="terrain-source-switch" role="group" aria-label={translate("Terrain source")}>
+        <div className="terrain-source-switch has-slider" role="group" aria-label={translate("Terrain source")}>
+          <SlidingIndicator selector="button.active" />
           <button type="button" className={terrain.mode === 'procedural' ? 'active' : ''} onClick={() => onTerrainMode?.('procedural')}>{translate("Procedural")}</button>
           <button type="button" className={terrain.mode === 'nodes' ? 'active' : ''} onClick={() => terrain.mode === 'nodes' ? onOpenNodes?.() : onTerrainMode?.('nodes')}>{translate("Nodes")}</button>
         </div>

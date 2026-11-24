@@ -8,6 +8,7 @@ import { PARAM_DOCS } from '../lib/paramDocs.js';
 import CodeBlock from './CodeBlock.jsx';
 import LivePlanet from './LivePlanet.jsx';
 import Markdown from './Markdown.jsx';
+import SlidingIndicator from '../components/ui/SlidingIndicator.jsx';
 import { formatValue, planetSnippet } from './planetCode.js';
 import { playgroundHref } from './playground/runner.js';
 import { viewerProgram } from './playground/templates.js';
@@ -137,7 +138,8 @@ export default function PresetGallery({ source, ctx, anchor, onOpenInStudio }) {
         </div>
       </div>
 
-      <div className="docs-segmented" role="tablist" aria-label={translate('Body type')}>
+      <div className="docs-segmented has-slider" role="tablist" aria-label={translate('Body type')}>
+        <SlidingIndicator />
         {KINDS.map(({ id, label, icon: Icon }) => (
           <button key={id} type="button" role="tab" aria-selected={kind === id} className={kind === id ? 'active' : ''} onClick={() => setKind(id)}>
             <Icon size={13} aria-hidden /> {translate(label)}

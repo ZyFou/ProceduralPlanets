@@ -46,6 +46,7 @@ const NodeWorkspace = lazy(() => import('./components/nodes/NodeWorkspace.jsx'))
 import { createInitialGraph, compileGraph } from './engine/graph/index.js';
 import { applyTerrainDraft, canEditGraph, terrainDraftState } from './project/terrainDraft.js';
 import { canEditWorkspaceEditor } from './components/nodes/workspaceDocument.js';
+import SlidingIndicator from './components/ui/SlidingIndicator.jsx';
 
 const toHex = (rgb) => `#${rgb.map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('')}`;
 
@@ -803,7 +804,8 @@ export default function App({
       )}
 
       <div id="main" className={`main app-shell${panelResizing ? ' panel-resizing' : ''}`} style={{ '--panel-weight': `${panelShare / (1 - panelShare)}fr` }}>
-        {!paintState.enabled && <nav className="left-toolbar" aria-label={translate("Planet tools")}>
+        {!paintState.enabled && <nav className="left-toolbar has-slider" aria-label={translate("Planet tools")}>
+          <SlidingIndicator selector=".toolbar-btn.active" />
           {visiblePanels.map((panel) => {
             const Icon = ICONS[panel.id] ?? Orbit;
             return (
@@ -830,7 +832,8 @@ export default function App({
           <div className="viewport-compiling" role="status"><span className="viewport-compiling-dot" aria-hidden />{translate("Compiling shaders")}</div>
         )}
 
-        <div className="viewport-mode-bar" role="tablist" aria-label={translate("Editor mode")} onPointerEnter={precompileTypes} onFocus={precompileTypes}>
+        <div className="viewport-mode-bar has-slider" role="tablist" aria-label={translate("Editor mode")} onPointerEnter={precompileTypes} onFocus={precompileTypes}>
+          <SlidingIndicator selector="button.active" />
           <button type="button" role="tab" aria-label={translate("Planet")} title={translate("Planet")} aria-selected={params.mode === 'planet'} className={params.mode === 'planet' ? 'active' : ''} onClick={() => onMode('planet')}><Orbit size={14} /><span>{translate("Planet")}</span></button>
           <button type="button" role="tab" aria-label={translate("Gas")} title={translate("Gas")} aria-selected={params.mode === 'gas'} className={params.mode === 'gas' ? 'active' : ''} onClick={() => onMode('gas')}><Waves size={14} /><span>{translate("Gas")}</span></button>
           <button type="button" role="tab" aria-label={translate("Star")} title={translate("Star")} aria-selected={params.mode === 'star'} className={params.mode === 'star' ? 'active' : ''} onClick={() => onMode('star')}><Sun size={14} /><span>{translate("Star")}</span></button>

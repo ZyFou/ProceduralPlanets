@@ -261,10 +261,12 @@ export default function ProjectLibrary({
       {empty ? (
         query.trim() ? <p className="lp-no-results">{translate("No project matches “{0}”.", { 0: query.trim() })}</p> : (
           <div className="lp-empty project-library-empty">
-            <FolderOpen size={24} />
-            <strong>{translate("No projects yet")}</strong>
-            <span>{translate("Create a planet, import a .ppplanet file, or download a project from the cloud.")}</span>
-            <button type="button" className="lp-primary" onClick={onCreate} disabled={!bootReady || exiting}><Plus size={15} /> {translate("Create planet")}</button>
+            <span className="lp-empty-icon"><FolderOpen size={18} aria-hidden /></span>
+            <div className="lp-empty-copy">
+              <strong>{translate("No projects yet")}</strong>
+              <span>{translate("Create a planet, import a .ppplanet file, or download a project from the cloud.")}</span>
+            </div>
+            <button type="button" className="lp-secondary sm" onClick={onCreate} disabled={!bootReady || exiting}><Plus size={14} /> {translate("Create planet")}</button>
           </div>
         )
       ) : (

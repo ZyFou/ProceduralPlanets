@@ -26,7 +26,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
   Sun,
   Trash2,
   Upload,
@@ -49,6 +48,8 @@ import { projectApi } from '../project/projectApi.js';
 import { projectMode, projectSyncStore } from '../project/ProjectStore.js';
 import { buildUnifiedProjectIndex } from '../project/projectSync.js';
 import { usePopup } from '../components/ui/PopupProvider.jsx';
+import SlidingIndicator from '../components/ui/SlidingIndicator.jsx';
+import MatrixButton from '../components/matrix/MatrixButton.jsx';
 
 const DocsPage = lazy(() => import('../docs/DocsPage.jsx'));
 
@@ -342,10 +343,12 @@ export default function Landing({
 
   const emptyProjects = (
     <div className="lp-empty">
-      <FolderOpen size={24} />
-      <strong>{translate("No projects yet")}</strong>
-      <span>{translate("Create a world from a template, or drop a .ppplanet file anywhere on this page.")}</span>
-      <button type="button" className="lp-primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> {translate("Create planet")}</button>
+      <span className="lp-empty-icon"><FolderOpen size={18} aria-hidden /></span>
+      <div className="lp-empty-copy">
+        <strong>{translate("No projects yet")}</strong>
+        <span>{translate("Create a world from a template, or drop a .ppplanet file anywhere on this page.")}</span>
+      </div>
+      <button type="button" className="lp-secondary sm" onClick={() => setCreateOpen(true)}><Plus size={14} /> {translate("Create planet")}</button>
     </div>
   );
 
@@ -436,11 +439,23 @@ export default function Landing({
               <>
                 <section className="lp-hero">
                   <div className="lp-version-pill">v{APP_VERSION}</div>
-                  <h1>{translate("Craft")} <em>{translate("stunning worlds")}</em> {translate("with procedural power")}</h1>
+                  <h1>
+                    {translate("Craft")} {translate("stunning worlds")}
+                    <br />
+                    <span className="lp-hero-muted">{translate("with procedural power")}.</span>
+                  </h1>
                   <p>{APP_NAME} {translate("helps you generate, shape, and style planets, then drop them into any three.js project.")}</p>
                   <div className="lp-hero-actions">
-                    <button type="button" className="lp-primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> {translate("Create planet")}</button>
-                    <button type="button" className="lp-secondary" onClick={() => openTemplates('Planet')}><Layers3 size={14} /> {translate("Browse templates")}</button>
+                    <MatrixButton
+                      theme="light"
+                      size="sm"
+                      className="lp-hero-cta"
+                      style={{ '--mb-radius': '10px' }}
+                      onClick={() => setCreateOpen(true)}
+                    >
+                      {translate("Create planet")}
+                    </MatrixButton>
+                    <button type="button" className="lp-secondary" onClick={() => openTemplates('Planet')}><Layers3 size={15} /> {translate("Browse templates")}</button>
                   </div>
                 </section>
 
@@ -477,7 +492,8 @@ export default function Landing({
               <section className="lp-section lp-view">
                 <div className="lp-section-head lp-template-section-head">
                   <div><h2>{translate("Planet templates")}</h2><p>{translate("Choose a starting world, then keep shaping it in the editor.")}</p></div>
-                  <div className="lp-template-kind-switch" role="tablist" aria-label={translate("Template type")}>
+                  <div className="lp-template-kind-switch has-slider" role="tablist" aria-label={translate("Template type")}>
+                    <SlidingIndicator />
                     <button type="button" role="tab" aria-selected={templateKind === 'Planet'} className={templateKind === 'Planet' ? 'active' : ''} onClick={() => openTemplates('Planet')}><Orbit size={13} /> {translate("Planet")}</button>
                     <button type="button" role="tab" aria-selected={templateKind === 'Gas'} className={templateKind === 'Gas' ? 'active' : ''} onClick={() => openTemplates('Gas')}><Waves size={13} /> {translate("Gas")}</button>
                     <button type="button" role="tab" aria-selected={templateKind === 'Star'} className={templateKind === 'Star' ? 'active' : ''} onClick={() => openTemplates('Star')}><Sun size={13} /> {translate("Star")}</button>
@@ -490,7 +506,7 @@ export default function Landing({
                 {filteredTemplates.length === 0 && <p className="lp-no-results">{translate("No template matches “{0}”.", { 0: query.trim() })}</p>}
                 <div className="lp-card-grid">
                   {filteredTemplates.map((template) => (
-                    <article className={`lp-card${template.id === selectedTemplateId ? ' selected' : ''}`} key={template.id}>
+                    <article className={`lp-card lp-template-card${template.id === selectedTemplateId ? ' selected' : ''}`} key={template.id}>
                       <button type="button" className="lp-card-main" onClick={() => selectTemplate(template)} onDoubleClick={() => onCreate(template.id)}>
                         <span className="lp-card-thumb">
                           {templateThumbs[template.id]
@@ -504,7 +520,15 @@ export default function Landing({
                   ))}
                 </div>
                 <p className="lp-template-hint">{translate("Selecting a template previews it live in the background.")}</p>
-                <button type="button" className="lp-primary lp-template-create" onClick={() => onCreate(selectedTemplateId)}><Sparkles size={15} /> {translate("Create")} {translate(templates.find((template) => template.id === selectedTemplateId)?.name ?? 'planet')}</button>
+                <MatrixButton
+                  theme="light"
+                  size="sm"
+                  className="lp-template-create"
+                  style={{ '--mb-radius': '10px' }}
+                  onClick={() => onCreate(selectedTemplateId)}
+                >
+                  {translate("Create")} {translate(templates.find((template) => template.id === selectedTemplateId)?.name ?? 'planet')}
+                </MatrixButton>
               </section>
             )}
           </div>
@@ -513,14 +537,14 @@ export default function Landing({
             <div className="lp-footer-main">
               <div className="lp-footer-identity">
                 <button type="button" className="lp-footer-brand" onClick={goHome} title={translate("Return to home")}>
-                  <Logo size={26} /><strong>{APP_NAME}</strong>
+                  <Logo size={20} /><strong>{APP_NAME}</strong>
                 </button>
                 <span>© {new Date().getFullYear()} {translate("Open source software.")}</span>
               </div>
               <div className="lp-footer-socials">
-                <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open GitHub repository")} title="GitHub"><Github size={17} aria-hidden="true" /></a>
-                <a href={AUTHOR_PORTFOLIO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open portfolio")} title={translate("Open portfolio")}><Globe2 size={17} aria-hidden="true" /></a>
-                <a href={`mailto:${AUTHOR_EMAIL}`} aria-label={translate("Email {0}", { 0: AUTHOR_EMAIL })} title={translate("Email")}><Mail size={17} aria-hidden="true" /></a>
+                <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open GitHub repository")} title="GitHub"><Github size={16} aria-hidden="true" /></a>
+                <a href={AUTHOR_PORTFOLIO_URL} target="_blank" rel="noopener noreferrer" aria-label={translate("Open portfolio")} title={translate("Open portfolio")}><Globe2 size={16} aria-hidden="true" /></a>
+                <a href={`mailto:${AUTHOR_EMAIL}`} aria-label={translate("Email {0}", { 0: AUTHOR_EMAIL })} title={translate("Email")}><Mail size={16} aria-hidden="true" /></a>
               </div>
             </div>
             <nav className="lp-footer-links" aria-label={translate("Footer navigation")}>
@@ -542,22 +566,22 @@ export default function Landing({
             </header>
             <div className="landing-create-options">
               <button type="button" onClick={() => onCreate('blank')}>
-                <span className="landing-create-icon"><Orbit size={22} /></span>
+                <span className="landing-create-icon"><Orbit size={18} /></span>
                 <strong>{translate("Planet")}</strong>
                 <small>{translate("Build a solid world with procedural terrain, biomes, oceans, clouds, and atmosphere.")}</small>
-                <span className="landing-create-action">{translate("Create planet")} <ArrowRight size={13} /></span>
+                <span className="landing-create-action">{translate("Create planet")} <ArrowRight size={12} /></span>
               </button>
               <button type="button" onClick={() => onCreate('gas-giant')}>
-                <span className="landing-create-icon nodes"><Waves size={22} /></span>
+                <span className="landing-create-icon"><Waves size={18} /></span>
                 <strong>{translate("Gas Giant")}</strong>
                 <small>{translate("Shape flowing bands, storms, lighting, and a deep atmospheric palette.")}</small>
-                <span className="landing-create-action">{translate("Create gas giant")} <ArrowRight size={13} /></span>
+                <span className="landing-create-action">{translate("Create gas giant")} <ArrowRight size={12} /></span>
               </button>
               <button type="button" onClick={() => onCreate('sun')}>
-                <span className="landing-create-icon manual"><Sun size={22} /></span>
+                <span className="landing-create-icon"><Sun size={18} /></span>
                 <strong>{translate("Star")}</strong>
                 <small>{translate("Design a boiling stellar surface with sunspots, color, motion, and corona.")}</small>
-                <span className="landing-create-action">{translate("Create star")} <ArrowRight size={13} /></span>
+                <span className="landing-create-action">{translate("Create star")} <ArrowRight size={12} /></span>
               </button>
             </div>
           </section>

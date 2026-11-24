@@ -5,6 +5,7 @@ import { Code2, ExternalLink, Orbit, RotateCcw, Search, Sun, Waves } from 'lucid
 import { PARAM_DOCS } from '../lib/paramDocs.js';
 import CodeBlock from './CodeBlock.jsx';
 import LivePlanet from './LivePlanet.jsx';
+import SlidingIndicator from '../components/ui/SlidingIndicator.jsx';
 import { formatValue, planetSnippet, toHex } from './planetCode.js';
 import { playgroundHref } from './playground/runner.js';
 import { viewerProgram } from './playground/templates.js';
@@ -52,6 +53,7 @@ function Control({ entry, value, onChange }) {
     return (
       <div className="docs-range">
         <input type="range" min={entry.min} max={entry.max} step={step} value={value}
+          style={{ '--p': `${Math.min(100, Math.max(0, ((value - entry.min) / ((entry.max - entry.min) || 1)) * 100))}%` }}
           onChange={(event) => onChange(Number(event.target.value))} aria-label={entry.key} />
         <output>{Number(value).toFixed(decimals(step))}</output>
       </div>
@@ -141,7 +143,8 @@ export default function ParameterReference({ anchor, onOpenInStudio }) {
       </header>
 
       <div className="docs-params-toolbar">
-        <div className="docs-segmented" role="tablist" aria-label={translate('Body type')}>
+        <div className="docs-segmented has-slider" role="tablist" aria-label={translate('Body type')}>
+          <SlidingIndicator />
           {DOMAINS.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" role="tab" aria-selected={domain === id} className={domain === id ? 'active' : ''} onClick={() => selectDomain(id)}>
               <Icon size={13} aria-hidden /> {translate(label)}

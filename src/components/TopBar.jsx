@@ -28,6 +28,7 @@ import { APP_NAME, APP_VERSION } from '../constants/app.js';
 import { EDITOR_SHORTCUTS, SEARCH_SETTINGS_SHORTCUT, matchesShortcut, shortcutText } from '../keyboardShortcuts.js';
 import { PROJECT_FILE_ACCEPT } from '../project/ProjectDocument.js';
 import NotificationCenter from './ui/Toast.jsx';
+import MatrixButton from './matrix/MatrixButton.jsx';
 import ShortcutHint from './ui/ShortcutHint.jsx';
 
 const Caret = () => (
@@ -295,9 +296,16 @@ export default function TopBar({
           onClear={onClearNotifications}
           onToggleIgnore={onToggleNotificationLogging}
         />
-        <button type="button" className={`tb-btn primary${exportActive ? ' active' : ''}`} onClick={onExport} title={translate("Export the planet")} aria-label={translate("Export the planet")}>
-          <Download size={14} /><span className="tb-text">{translate("Export")}</span>
-        </button>
+        <MatrixButton
+          className="tb-export-matrix"
+          selected={exportActive}
+          color="#ffffff"
+          onClick={onExport}
+          title={translate("Export the planet")}
+          aria-label={translate("Export the planet")}
+        >
+          <Download size={14} strokeWidth={2} aria-hidden /><span className="tb-text">{translate("Export")}</span>
+        </MatrixButton>
         <button type="button" className={`tb-btn tb-icon-btn tb-help-btn${helpOpen ? ' active' : ''}`} onClick={onToggleHelp} title={translate("Keyboard shortcuts and controls")} aria-label={translate("Keyboard shortcuts and controls")} aria-expanded={helpOpen}>
           <HelpCircle size={14} strokeWidth={1.75} aria-hidden />
         </button>

@@ -3,11 +3,12 @@ import { translate } from '../../i18n/locale.js';
 import { useLocale } from '../../i18n/useLocale.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyNodeChanges, Background, BackgroundVariant, ConnectionMode, Controls, Handle, NodeResizer, Position, ReactFlow, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
-import { Boxes, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, FolderPlus, GripVertical, Layers3, LoaderCircle, Maximize2, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles, Trash2, Ungroup, X } from 'lucide-react';
+import { Boxes, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, FolderPlus, GripVertical, Layers3, Maximize2, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles, Trash2, Ungroup, X } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 import { GRAPH_REGISTRY, createNode, createRecipe, connectGraph, validateGraph } from '../../engine/graph/index.js';
 import useNodeWorkspaceLayout from './useNodeWorkspaceLayout.js';
 import { copySelection, groupSelection, movePresentation, newEditorId, nodePosition, pasteSelection, removeSelection } from './workspaceDocument.js';
+import MatrixSpinner from '../matrix/MatrixSpinner.jsx';
 import './NodeWorkspace.css';
 
 const DESCRIPTIONS = {
@@ -39,7 +40,7 @@ function NodeCard({ data, selected }) {
     <div className="terrain-flow-node__header">
       <span className="terrain-flow-node__icon"><Icon definition={d} size={15} /></span>
       <span className="terrain-flow-node__heading"><span className="terrain-flow-node__eyebrow">{translate(d.category)}</span><span className="terrain-flow-node__title">{data.customLabel ? label : translate(label)}</span></span>
-      {compiling && <span className="terrain-flow-node__compile" role="status" aria-label={translate("{0} is compiling", { 0: label })}><LoaderCircle size={12} /></span>}
+      {compiling && <span className="terrain-flow-node__compile" role="status" aria-label={translate("{0} is compiling", { 0: label })}><MatrixSpinner size={14} minimal /></span>}
       <span className="terrain-flow-node__kind">{d.protected ? translate('Output') : translate('Height')}</span>
     </div>
     <div className="terrain-flow-node__ports"><div className="terrain-flow-node__port-column inputs">{d.inputs.map((p, i) => <div className="terrain-flow-port input" key={p.id}><Handle id={p.id} type="target" position={Position.Left} style={{ top: 61 + i * 24 }} className="handle-height" isConnectableStart={false} title={translate("{0} accepts a height cable", { 0: translate(p.label) })} aria-label={translate("{0}: {1} input", { 0: label, 1: translate(p.label) })} /><span>{translate(p.label)}</span></div>)}</div>

@@ -1,6 +1,7 @@
 import { translate } from '../i18n/locale.js';
 import { useLocale } from '../i18n/useLocale.js';
 import { useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 // Small control primitives shared by every panel — same interaction model as
 // the ThreeTerrain studio (drag slider, or type in the value box and Enter).
@@ -101,9 +102,9 @@ export function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className={`section${open ? ' open' : ''}`} data-section={typeof title === 'string' ? title : undefined}>
-      <button type="button" className="section-header" onClick={() => setOpen(!open)}>
-        <span className="section-caret">{open ? '▾' : '▸'}</span>
-        {typeof title === 'string' ? translate(title) : title}
+      <button type="button" className="section-header" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="section-title">{typeof title === 'string' ? translate(title) : title}</span>
+        <ChevronDown className={`section-chevron${open ? ' open' : ''}`} size={15} strokeWidth={1.75} aria-hidden />
       </button>
       {open && <div className="section-body">{children}</div>}
     </div>

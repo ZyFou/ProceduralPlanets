@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#05060a">
+<meta name="theme-color" content="#07080a">
 <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%branding/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%branding/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%branding/apple-touch-icon.png">
 <title>Procedural Planets - Stylized Planet Studio</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #05060a; }
+  html, body { margin: 0; height: 100%; background: #07080a; }
 
   /* ---- the one loading screen: up from the first paint until the planet's
      first final frame is on the canvas. The planet is a cube-sphere mosaic
@@ -19,8 +19,8 @@
      comes in behind. */
   #pp-loader {
     position: fixed; inset: 0; z-index: 100000;
-    color: #8b93a3;
-    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    color: #8b8b94;
+    font-family: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     transition: opacity .35s cubic-bezier(.4, 0, .2, 1);
   }
@@ -29,8 +29,8 @@
   .ppl-bg {
     position: absolute; inset: 0;
     background:
-      radial-gradient(60vmax 60vmax at 50% 44%, rgba(37, 99, 235, 0.08), transparent 62%),
-      linear-gradient(180deg, #05060a 0%, #070910 100%);
+      radial-gradient(60vmax 60vmax at 50% 44%, rgba(59, 130, 246, 0.06), transparent 62%),
+      linear-gradient(180deg, #07080a 0%, #09090b 100%);
     transition: opacity .7s cubic-bezier(.4, 0, .2, 1) .3s;
   }
   #pp-loader.zooming .ppl-bg { opacity: 0; }
@@ -51,13 +51,13 @@
   @keyframes ppl-in { from { opacity: 0; transform: translateY(8px); } }
 
   .ppl-logo { width: 48px; height: 32px; object-fit: contain; margin-bottom: 12px; }
-  .ppl-title { font-size: 11px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase; color: #aab2c2; margin-left: .3em; }
+  .ppl-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: #f4f4f5; }
   .ppl-progress { width: 240px; margin-top: 22px; }
-  .ppl-track { position: relative; height: 2px; border-radius: 2px; background: #161b27; overflow: hidden; }
+  .ppl-track { position: relative; height: 3px; border-radius: 999px; background: #1f2026; overflow: hidden; }
   .ppl-fill {
     position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0);
-    background: linear-gradient(90deg, #1d4ed8, #2563eb 55%, #7aa2ff);
-    border-radius: 2px;
+    background: linear-gradient(90deg, #2563eb, #3b82f6 60%, #60a5fa);
+    border-radius: 999px;
   }
   .ppl-shine {
     position: absolute; top: 0; bottom: 0; left: 0; width: 60px;
@@ -66,9 +66,9 @@
     mix-blend-mode: overlay;
   }
   @keyframes ppl-shine { from { transform: translateX(-60px); } to { transform: translateX(240px); } }
-  .ppl-status { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; line-height: 1; }
-  .ppl-stage { color: #6d7587; }
-  .ppl-pct { color: #9aa3b5; font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+  .ppl-status { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; line-height: 1; }
+  .ppl-stage { color: #8b8b94; }
+  .ppl-pct { color: #a1a1aa; font-family: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 11px; }
 
   /* the menu waits small and blurred under the loader, and grows into place
      as the camera flies through the planet (landing.css transitions it) */
