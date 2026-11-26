@@ -71,6 +71,7 @@ const SETTINGS_INDEX = [
 
   // Clouds
   { panelId: 'clouds', sectionLabel: 'Clouds', settingId: 'clouds.cloudsEnabled', label: 'Clouds enabled', keywords: 'cloud enable disable sky volumetric' },
+  { panelId: 'clouds', sectionLabel: 'Clouds', settingId: 'clouds.cloudModel', label: 'Model', keywords: 'cloud model v2 realistic cumulus classic renderer' },
   { panelId: 'clouds', sectionLabel: 'Clouds', settingId: 'clouds.cloudCoverage', label: 'Coverage', keywords: 'cloud coverage amount sky' },
   { panelId: 'clouds', sectionLabel: 'Clouds', settingId: 'clouds.cloudDensity', label: 'Density', keywords: 'cloud density thickness opacity optical' },
   { panelId: 'clouds', sectionLabel: 'Clouds', settingId: 'clouds.cloudSoftness', label: 'Softness', keywords: 'cloud edge softness falloff broken' },
@@ -78,6 +79,7 @@ const SETTINGS_INDEX = [
   { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudScale', label: 'System scale', keywords: 'cloud scale size frequency weather systems' },
   { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudDetail', label: 'Erosion', keywords: 'cloud detail erosion wispy billow' },
   { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudDetailScale', label: 'Billow size', keywords: 'cloud billow size cumulus detail scale' },
+  { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudCellSize', label: 'Cell size', keywords: 'cloud v2 cell size cumulus formation' },
   { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudAltitude', label: 'Altitude', keywords: 'cloud altitude height base' },
   { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudThickness', label: 'Thickness', keywords: 'cloud thickness layer depth' },
   { panelId: 'clouds', sectionLabel: 'Shape & motion', settingId: 'clouds.cloudSpeed', label: 'Speed', keywords: 'cloud speed motion animation wind' },

@@ -146,6 +146,7 @@ export const DEFAULT_PARAMS = {
 
   // clouds (volumetric)
   cloudsEnabled: true,
+  cloudModel: 'classic',   // cloud renderer: 'classic' or 'v2' (billowy weather-map cumulus)
   cloudCoverage: 0.45,
   cloudSoftness: 0.18,     // width of the coverage falloff (wispy edges)
   cloudDensity: 0.8,       // optical thickness
@@ -163,6 +164,7 @@ export const DEFAULT_PARAMS = {
   cloudTowering: 0.55,     // vertical development: low flat decks .. tall towering cumulonimbus
   cloudShear: 0.25,        // wind shear: towers lean downwind
   cloudSilverLining: 1.0,  // forward-scattering glow on cloud edges toward the sun
+  cloudCellSize: 1.0,      // V2: size of the cumulus cells / formations (higher = larger)
 
   // weather (regional, timed systems + rain + lightning; see docs/weather.md)
   weatherEnabled: true,

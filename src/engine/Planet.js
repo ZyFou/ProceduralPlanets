@@ -16,6 +16,7 @@ import { createGasSurfaceMaterial, createRingMaterial, createRingGeometry, GasJe
 import { PlanetWorld } from './PlanetWorld.js';
 import { PlanetHeightSampler } from './PlanetHeightSampler.js';
 import { PlanetWeather, normalizeWeatherSystems } from './weather.js';
+import { applyCloudV2Uniforms } from './cloudsV2.js';
 
 // ============================================================================
 // Planet — one procedural body (terrestrial planet, gas giant or star) as a
@@ -41,7 +42,7 @@ const WEATHER_KEYS = new Set(['seed', 'cloudScale']);
 // params transition() sets at once instead of gliding (rebuilds, re-bakes,
 // counts, non-numeric)
 const NO_TRANSITION = new Set([...REBUILD_KEYS, ...WEATHER_KEYS, 'stormCount', 'hurricaneCount',
-  'cloudQuality', 'renderVersion']);
+  'cloudQuality', 'renderVersion', 'cloudModel']);
 
 const srgbToLinear = (c) => Math.pow(Math.max(c, 0), 2.2);
 
@@ -136,6 +137,9 @@ export function normalizeParam(key, value) {
   }
   if (key === 'upscaler') {
     return ['bilinear', 'spatial'].includes(value) ? { ok: true, value } : { ok: false, reason: 'invalid' };
+  }
+  if (key === 'cloudModel') {
+    return ['classic', 'v2'].includes(value) ? { ok: true, value } : { ok: false, reason: 'invalid' };
   }
   if (key === 'weatherSystems') {
     const list = normalizeWeatherSystems(value);
@@ -693,7 +697,7 @@ export class Planet extends THREE.Object3D {
     // the star and gas domains, mode and viewer performance settings alone
     const base = { ...DEFAULT_PARAMS, seed: this.params.seed };
     for (const [k, v] of Object.entries(base)) {
-      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode' || k === 'renderResolution' || k === 'upscaler') continue;
+      if (STAR_KEYS.has(k) || GAS_KEYS.has(k) || k === 'mode' || k === 'renderResolution' || k === 'upscaler' || k === 'cloudModel') continue;
       if (!(k in patch)) patch[k] = v;
     }
     let structural = false;
@@ -950,6 +954,7 @@ export class Planet extends THREE.Object3D {
     u.uCloudWind.value.set(wind, wind * 0.3, -wind * 0.6);
     // shear: how far the shell top is carried downstream (direction units)
     u.uCloudShear.value = p.cloudShear * Math.max(p.cloudThickness, 0.0005) * 2.2;
+    applyCloudV2Uniforms(u, p, thick, ct);
     this.weather._writeUniforms(u, { lightning: !impostor });
     return {
       mode: p.mode,
@@ -957,6 +962,7 @@ export class Planet extends THREE.Object3D {
       water: !!p.waterEnabled,
       clouds: !!p.cloudsEnabled,
       cloudSteps: p.cloudQuality,
+      cloudModel: p.cloudModel === 'v2' ? 'v2' : 'classic',
       weatherTime: ct * 0.0035,
     };
   }

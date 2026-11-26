@@ -156,6 +156,10 @@ export function CloudsPanel({ params: p, onParam }) {
     <>
       <Section title={translate("Clouds")}>
         <Toggle param="cloudsEnabled" label={translate("Enabled")} value={p.cloudsEnabled} onChange={(v) => onParam('cloudsEnabled', v)} />
+        <SelectRow param="cloudModel" label={translate("Model")} value={p.cloudModel} options={[
+          { value: 'classic', label: 'Classic' },
+          { value: 'v2', label: 'Clouds V2' },
+        ]} onChange={(v) => onParam('cloudModel', v)} title={translate("Cloud renderer: Classic, or V2 billowy weather-map cumulus (realistic cells, domed tops, eroded edges)")} />
         <Slider param="cloudCoverage" label={translate("Coverage")} value={p.cloudCoverage} min={0} max={1} step={0.02} onChange={(v) => onParam('cloudCoverage', v)} />
         <Slider param="cloudDensity" label={translate("Density")} value={p.cloudDensity} min={0.1} max={2} step={0.05} onChange={(v) => onParam('cloudDensity', v)} title={translate("Optical thickness of the volume")} />
         <Slider param="cloudSoftness" label={translate("Softness")} value={p.cloudSoftness} min={0.01} max={0.5} step={0.01} onChange={(v) => onParam('cloudSoftness', v)} title={translate("How gradually systems thin out into broken fields")} />
@@ -165,6 +169,7 @@ export function CloudsPanel({ params: p, onParam }) {
         <Slider param="cloudScale" label={translate("System scale")} value={p.cloudScale} min={1} max={10} step={0.1} digits={1} onChange={(v) => onParam('cloudScale', v)} title={translate("Frequency of weather systems")} />
         <Slider param="cloudDetail" label={translate("Erosion")} value={p.cloudDetail} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudDetail', v)} title={translate("Wispy bottoms / billowy tops")} />
         <Slider param="cloudDetailScale" label={translate("Billow size")} value={p.cloudDetailScale} min={0.3} max={3} step={0.05} onChange={(v) => onParam('cloudDetailScale', v)} />
+        {p.cloudModel === 'v2' && <Slider param="cloudCellSize" label={translate("Cell size")} value={p.cloudCellSize} min={0.3} max={4} step={0.05} onChange={(v) => onParam('cloudCellSize', v)} title={translate("V2: size of the cumulus cells and formations")} />}
         <Slider param="cloudAltitude" label={translate("Altitude")} value={p.cloudAltitude} min={0} max={0.03} step={0.001} digits={3} onChange={(v) => onParam('cloudAltitude', v)} title={translate("Cloud base above sea level (fraction of radius)")} />
         <Slider param="cloudThickness" label={translate("Thickness")} value={p.cloudThickness} min={0.002} max={0.03} step={0.001} digits={3} onChange={(v) => onParam('cloudThickness', v)} title={translate("Depth of the cloud layer (fraction of radius)")} />
         <Slider param="cloudTowering" label={translate("Towering")} value={p.cloudTowering} min={0} max={1} step={0.05} onChange={(v) => onParam('cloudTowering', v)} title={translate("Vertical development: low flat decks to tall towering cumulonimbus")} />

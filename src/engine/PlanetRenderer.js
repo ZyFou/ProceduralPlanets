@@ -279,11 +279,16 @@ export class PlanetRenderer {
       if (mode !== 'star') add(passes.lutMat, true);
       if (mode === 'planet') {
         const clouds = all || frame.clouds;
+        const v2 = all || frame.cloudModel === 'v2';
         if (clouds || planet.uniforms.uCloudShadowStr.value > 0) {
           add(passes.weatherMat, true);
           if (!pipe._noiseBaked) add(pipe.noiseMat, true);
+          if (v2 && !pipe._noiseV2Baked) { add(pipe.noiseV2Mat, true); add(pipe.weatherV2Mat, true); }
         }
-        if (clouds) add(passes.cloudMat, true);
+        if (clouds) {
+          if (all || !v2) add(passes.cloudMat, true);
+          if (v2) add(passes.cloudV2Mat, true);
+        }
       }
     }
     const bloom = all || frame.bloom > 0.001;
@@ -732,6 +737,16 @@ export class PlanetRenderer {
         const total = pipe.noiseRT.depth + pipe.erosionRT.depth;
         while (!gpu(() => pipe.bakeNoiseSlice(32))) {
           report('noise', pipe._noiseVol * pipe.noiseRT.depth + pipe._noiseLayer, total);
+          await nextFrame();
+        }
+      }
+      // Clouds V2 volumes, only when a planet uses them
+      const needsV2 = items.some(({ planet }) => planet.params.mode === 'planet' && planet.params.cloudModel === 'v2'
+        && (planet.params.cloudsEnabled || planet.uniforms.uCloudShadowStr.value > 0));
+      if (needsV2) {
+        const total = pipe.noiseV2RT.depth + pipe.weatherV2RT.depth;
+        while (!gpu(() => pipe.bakeNoiseV2Slice(8))) {
+          report('noise', pipe._noiseV2Vol * pipe.noiseV2RT.depth + pipe._noiseV2Layer, total);
           await nextFrame();
         }
       }

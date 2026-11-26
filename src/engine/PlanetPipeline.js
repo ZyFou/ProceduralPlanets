@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { NOISE_UNIFORMS_GLSL, NOISE_FUNCTIONS_GLSL } from './noiseGLSL.js';
 import { TOON_GLSL, ATMOSPHERE_GLSL, CLOUD_FIELD_GLSL, SURFACE_GLSL, LIGHTNING_GLSL } from './surfaceGLSL.js';
 import { STAR_CORONA_GLSL } from './star.js';
+import {
+  NOISE_V2_FRAGMENT, WEATHER_V2_FRAGMENT, NOISE_V2_SIZE, WEATHER_V2_SIZE, createVolumeV2Target, generateMipmapsV2,
+} from './cloudsV2.js';
 import { PLANET_PAINT_GLSL } from '../paint/planetPaintGLSL.js';
 
 // ============================================================================
@@ -281,6 +284,86 @@ void main() {
 `;
 
 // ---------------------------------------------------------------------------
+// Shared by both cloud programs (classic / V2)
+// ---------------------------------------------------------------------------
+const CLOUD_PASS_GLSL = /* glsl */ `
+float ign(vec2 p) {
+  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+
+// 1 when a segment (in the rain layer) crosses the cap of a raining system:
+// its endpoints and midpoint against each cap, widened by the segment's span
+float rainCapsOnSegment(vec3 a, vec3 b) {
+  vec3 da = normalize(a), db = normalize(b), dm = normalize(a + b);
+  float span = 1.0 - dot(da, db);
+  for (int i = 0; i < MAX_WX; i++) {
+    if (i >= uWxCount) break;
+    if (uWxC[i].y <= 0.0 || uWxB[i].z > 2.5) continue;
+    vec3 c = uWxA[i].xyz;
+    float lim = uWxA[i].w - span;
+    if (max(dot(da, c), max(dot(db, c), dot(dm, c))) > lim) return 1.0;
+  }
+  return 0.0;
+}
+
+// ---- precipitation shafts between the cloud base and the ground: grey
+// curtains under raining clouds. Only marched where the clouds above (or the
+// air around a low camera) actually rain. Composited into (L, T).
+void cloudRainShafts(vec3 ro, vec3 rd, vec2 px, float sceneT, float camR, float thick, vec2 tIn,
+                     float rainSeen, inout vec3 L, inout float T) {
+  if (uRainOn > 0.5 && T > 0.02) {
+    if (camR < uCloudBottom) rainSeen = max(rainSeen, uRainCam);
+    vec2 tb = tIn;
+    float a0 = max(tb.x, 0.0), a1 = min(tb.y, sceneT);
+    vec2 tg = raySphere(ro, rd, uAtmoGround);
+    if (tg.x < tg.y && tg.x > 0.0) a1 = min(a1, tg.x);
+    // a ray that passes UNDER raining clouds never met them above: test the
+    // segment against the raining systems' caps (analytic, no lookups)
+    if (rainSeen <= 0.01 && a1 > a0) rainSeen = rainCapsOnSegment(ro + rd * a0, ro + rd * a1);
+    float layer = max(uCloudBottom - uAtmoGround, thick * 0.1);
+    if (rainSeen > 0.01 && tb.x < tb.y && a1 > a0) {
+      const int RN = 6;
+      float rs = (a1 - a0) / float(RN);
+      float s = a0 + rs * ign(px + 37.0);
+      float Tr = 1.0;
+      vec3 Lr = vec3(0.0);
+      float sigR = 2.4 / layer;
+      vec3 rainTint = uRainColor;
+      for (int k = 0; k < RN; k++) {
+        vec3 q = ro + rd * s;
+        float rq = length(q);
+        vec3 dq = q / rq;
+        float hr = sat((rq - uAtmoGround) / layer);   // 0 ground .. 1 cloud base
+        float pr = cloudRainAt(dq);
+        if (pr > 0.01) {
+          // shafts: billow noise at the cloud base above, so it runs down
+          // the column, slanted by the wind toward the ground
+          vec3 dq2 = cloudRotate(dq + shearOffset(dq, (1.0 - hr) * 0.6));
+          float n = textureLod(uCloudNoise, dq2 * uCloudBottom * uCloudShapeFreq * 1.6 + uCloudWind * 0.35, 0.0).g;
+          float shaft = smoothstep(0.25, 0.65, n + pr * 0.35);
+          // light rain evaporates before it lands (virga)
+          float reach = smoothstep(0.0, 0.25 + (1.0 - pr) * 0.6, hr);
+          float dens = pr * shaft * reach;
+          vec3 Sr = (sunIrradiance(q) * (0.06 + 0.2 * (1.0 - pr)) * phaseHG(dot(rd, uSunDir), 0.5) * 4.0
+                   + skyIrradiance(q, dq) / PI * 0.55) * rainTint;
+          if (uFlashCount > 0) Sr += flashLight(q) * 0.5;
+          float st = exp(-dens * sigR * rs);
+          Lr += Tr * Sr * (1.0 - st);
+          Tr *= st;
+        }
+        s += rs;
+      }
+      // composite: the rain is in front of the clouds when the camera is
+      // below them, behind them otherwise
+      if (camR < uCloudBottom) L = Lr + Tr * L;
+      else L += T * Lr;
+      T *= Tr;
+    }
+  }
+}
+`;
+
+// ---------------------------------------------------------------------------
 // Volumetric clouds
 // ---------------------------------------------------------------------------
 const CLOUD_FRAGMENT = /* glsl */ `
@@ -307,12 +390,10 @@ uniform float uCloudDetail;
 uniform vec3 uCloudColor;
 uniform vec3 uCloudShadow;
 
+${CLOUD_PASS_GLSL}
+
 float remap(float v, float a, float b, float c, float d) {
   return c + (v - a) / max(b - a, 1e-5) * (d - c);
-}
-
-float ign(vec2 p) {
-  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
 // The vertical shape of one column, from its weather sample w (cloudWeather:
@@ -356,21 +437,6 @@ float cloudShape(float r, vec3 dr, CloudCol c, bool detail, out float hf) {
   float hfb = textureLod(uCloudErosion, pr * uCloudDetailFreq + uCloudWind, 0.0).r;
   float m = mix(hfb, 1.0 - hfb, sat(hf * 4.0));
   return sat(remap(dens, m * 0.8 * uCloudDetail, 1.0, 0.0, 1.0));
-}
-
-// 1 when a segment (in the rain layer) crosses the cap of a raining system:
-// its endpoints and midpoint against each cap, widened by the segment's span
-float rainCapsOnSegment(vec3 a, vec3 b) {
-  vec3 da = normalize(a), db = normalize(b), dm = normalize(a + b);
-  float span = 1.0 - dot(da, db);
-  for (int i = 0; i < MAX_WX; i++) {
-    if (i >= uWxCount) break;
-    if (uWxC[i].y <= 0.0 || uWxB[i].z > 2.5) continue;
-    vec3 c = uWxA[i].xyz;
-    float lim = uWxA[i].w - span;
-    if (max(dot(da, c), max(dot(db, c), dot(dm, c))) > lim) return 1.0;
-  }
-  return 0.0;
 }
 
 void main() {
@@ -505,58 +571,171 @@ void main() {
     }
   }
 
-  // ---- precipitation shafts between the cloud base and the ground: grey
-  // curtains under raining clouds. Only marched where the clouds above (or
-  // the air around a low camera) actually rain.
-  if (uRainOn > 0.5 && T > 0.02) {
-    if (camR < uCloudBottom) rainSeen = max(rainSeen, uRainCam);
-    vec2 tb = tIn;
-    float a0 = max(tb.x, 0.0), a1 = min(tb.y, sceneT);
-    vec2 tg = raySphere(ro, rd, uAtmoGround);
-    if (tg.x < tg.y && tg.x > 0.0) a1 = min(a1, tg.x);
-    // a ray that passes UNDER raining clouds never met them above: test the
-    // segment against the raining systems' caps (analytic, no lookups)
-    if (rainSeen <= 0.01 && a1 > a0) rainSeen = rainCapsOnSegment(ro + rd * a0, ro + rd * a1);
-    float layer = max(uCloudBottom - uAtmoGround, thick * 0.1);
-    if (rainSeen > 0.01 && tb.x < tb.y && a1 > a0) {
-      const int RN = 6;
-      float rs = (a1 - a0) / float(RN);
-      float s = a0 + rs * ign(px + 37.0);
-      float Tr = 1.0;
-      vec3 Lr = vec3(0.0);
-      float sigR = 2.4 / layer;
-      vec3 rainTint = uRainColor;
-      for (int k = 0; k < RN; k++) {
-        vec3 q = ro + rd * s;
-        float rq = length(q);
-        vec3 dq = q / rq;
-        float hr = sat((rq - uAtmoGround) / layer);   // 0 ground .. 1 cloud base
-        float pr = cloudRainAt(dq);
-        if (pr > 0.01) {
-          // shafts: billow noise at the cloud base above, so it runs down
-          // the column, slanted by the wind toward the ground
-          vec3 dq2 = cloudRotate(dq + shearOffset(dq, (1.0 - hr) * 0.6));
-          float n = textureLod(uCloudNoise, dq2 * uCloudBottom * uCloudShapeFreq * 1.6 + uCloudWind * 0.35, 0.0).g;
-          float shaft = smoothstep(0.25, 0.65, n + pr * 0.35);
-          // light rain evaporates before it lands (virga)
-          float reach = smoothstep(0.0, 0.25 + (1.0 - pr) * 0.6, hr);
-          float dens = pr * shaft * reach;
-          vec3 Sr = (sunIrradiance(q) * (0.06 + 0.2 * (1.0 - pr)) * phaseHG(dot(rd, uSunDir), 0.5) * 4.0
-                   + skyIrradiance(q, dq) / PI * 0.55) * rainTint;
-          if (uFlashCount > 0) Sr += flashLight(q) * 0.5;
-          float st = exp(-dens * sigR * rs);
-          Lr += Tr * Sr * (1.0 - st);
-          Tr *= st;
+  cloudRainShafts(ro, rd, px, sceneT, camR, thick, tIn, rainSeen, L, T);
+  gl_FragColor = vec4(L, T);
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Volumetric clouds, V2 model (cloudModel 'v2'): billowy weather-map cumulus
+// from the mip-mapped V2 volumes (cloudsV2.js / cloudV2Density). Same shell,
+// occlusion, rain and output (radiance, transmittance) as the classic pass.
+// Lighting is the V2 recipe — a short growing march toward the sun with a
+// three-term multiple-scattering fit — fed by the planet's physical sun
+// (atmospheric transmittance, planet shadow) and sky light.
+// Every noise tap is an explicit-LOD lookup whose level follows the march
+// step and the pixel footprint, so an orbital view reads pre-filtered noise
+// instead of aliasing.
+// ---------------------------------------------------------------------------
+const CLOUD_V2_FRAGMENT = /* glsl */ `
+precision highp float;
+precision highp sampler3D;
+${NOISE_UNIFORMS_GLSL}
+${TOON_GLSL}
+${ATMOSPHERE_GLSL}
+${CLOUD_FIELD_GLSL}
+${LIGHTNING_GLSL}
+
+uniform sampler2D tDepth;
+uniform mat4 uInvProj;
+uniform mat4 uCamWorld;
+uniform vec3 uCamPos;
+uniform vec2 uViewScale;
+uniform float uCloudSilver;
+uniform vec2 uCloudRes;
+uniform float uWaterOn;
+uniform float uSeaRadius;
+uniform vec2 uCloudOffset;
+uniform float uCloudSteps;
+uniform float uCloudPixelAngle;   // radians per pixel of the cloud grid
+uniform vec3 uCloudColor;
+uniform vec3 uCloudShadow;
+
+${CLOUD_PASS_GLSL}
+
+// Henyey-Greenstein normalised to 1 for isotropic scattering
+float cv2Phase(float mu, float g) {
+  float g2 = g * g;
+  return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * mu, 1e-4), 1.5);
+}
+
+void main() {
+  vec2 px = gl_FragCoord.xy + uCloudOffset;
+  vec2 uv = px / uCloudRes;
+  float depth = textureLod(tDepth, uv * uViewScale, 0.0).x;
+  vec4 vp = uInvProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+  vp /= vp.w;
+  vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
+  vec3 ro = uCamPos;
+  vec3 rd = normalize(wp - ro);
+  float sceneT = depth >= 1.0 ? 1e20 : length(wp - ro);
+  float camR = length(ro);
+  float thick = uCloudTop - uCloudBottom;
+
+  if (uWaterOn > 0.5) {
+    vec2 water = raySphere(ro, rd, uSeaRadius);
+    if (water.x < water.y && water.y > 0.0) sceneT = min(sceneT, max(water.x, 0.0));
+  }
+
+  vec2 tOut = raySphere(ro, rd, uCloudTop);
+  vec2 tIn = raySphere(ro, rd, uCloudBottom);
+  bool hitsIn = tIn.x < tIn.y && tIn.x > 0.0;
+  float t0 = 0.0, t1 = -1.0;
+  if (tOut.x < tOut.y && tOut.y > 0.0) {
+    if (camR > uCloudTop)          { t0 = tOut.x; t1 = hitsIn ? tIn.x : tOut.y; }
+    else if (camR > uCloudBottom)  { t0 = 0.0;    t1 = hitsIn ? tIn.x : tOut.y; }
+    else                           { t0 = tIn.y;  t1 = tOut.y; }
+  }
+
+  float T = 1.0;
+  vec3 L = vec3(0.0);
+  float rainSeen = 0.0;
+  // the unclipped crossing sets the sample spacing; the opaque scene only
+  // shortens the march (respacing per pixel would make the field jump at
+  // terrain silhouettes)
+  float tEnd = min(t1, sceneT);
+  if (t1 > t0 && tEnd > t0) {
+    float len = t1 - t0;
+    // equal slices of the crossing, at least ~24 across the layer's depth;
+    // a camera inside the layer starts fine and grows its steps with distance
+    float steps = clamp(len / (thick / 24.0), 16.0, uCloudSteps);
+    float dtSlice = len / steps;
+    float dtMin = thick / (steps * 0.383);
+    float lodScale = uV2NoiseFreq * 86.0;
+    float wlodScale = uV2WeatherFreq * float(${WEATHER_V2_SIZE});
+
+    float mu = dot(rd, uSunDir);
+    float ph = mix(cv2Phase(mu, 0.72), cv2Phase(mu, -0.22), 0.38);
+    // Silver Lining scales only the forward peak (1 = physical lobe)
+    ph = min(ph, 1.2) + max(ph - 1.2, 0.0) * clamp(uCloudSilver, 0.0, 2.0);
+    float phSoft = mix(ph, 1.0, 0.65);
+    vec3 tint = srgbToLinear(uCloudColor);
+    vec3 ambTint = srgbToLinear(uCloudShadow) * 1.35;
+    float lightStep = thick * 0.0281;
+    float sigma = uV2Sigma;
+    float lightning = float(uFlashCount > 0);
+
+    // camera inside the layer: fine near the eye, coarse toward the horizon
+    bool inLayer = camR <= uCloudTop && camR >= uCloudBottom;
+    float t = t0 + (inLayer ? min(dtSlice, max(dtMin, t0 * 0.032)) : dtSlice) * ign(px);
+    vec3 lit = vec3(0.0);
+    for (int i = 0; i < ${MAX_CLOUD_STEPS}; i++) {
+      if (float(i) >= steps || t >= tEnd || T < 0.012) break;
+      float stride = inLayer ? min(dtSlice, max(dtMin, t * 0.032)) : dtSlice;
+      float dt = min(stride, tEnd - t);
+      vec3 p = ro + rd * (t + dt * 0.5);
+      float r = length(p);
+      float hf = (r - uCloudBottom) / thick;
+      if (hf > 0.0 && hf < 1.0) {
+        vec3 d = p / r;
+        // the planet weather, once per sample (reused by the light march)
+        vec4 gw = cloudWeather(d, hf);
+        float foot = t * uCloudPixelAngle;
+        float lod = clamp(log2(max(stride, foot) * lodScale), 0.0, 5.0);
+        float wlod = clamp(log2(foot * wlodScale * 0.7), 0.0, 5.0);
+        float dn = cloudV2Density(p, r, hf, gw, lod, wlod, true);
+        if (dn > 0.0) {
+          rainSeen = max(rainSeen, gw.z);
+          // rain clouds are heavier and greyer
+          float heavy = 1.0 + gw.z * 0.9;
+          // The sun march is the expensive part. Once most of the pixel is
+          // resolved the remaining samples weigh little: they reuse the last
+          // lighting, dimmed as they sit deeper in the cloud.
+          if (T > 0.22 || lit == vec3(0.0)) {
+            float od = 0.0;
+            float ls = lightStep;
+            vec3 lp = p;
+            for (int j = 0; j < 6; j++) {
+              lp += uSunDir * ls;
+              float rl = length(lp);
+              float hj = (rl - uCloudBottom) / thick;
+              od += cloudV2Density(lp, rl, hj, gw, max(lod, 1.0 + float(j) * 0.5), wlod, j < 2) * ls;
+              ls *= 1.6;
+            }
+            od *= sigma * heavy;
+            // direct + two wider, deeper-reaching scattering orders
+            float lum = exp(-od) * ph + 0.34 * exp(-od * 0.26) * phSoft + 0.11 * exp(-od * 0.06);
+            vec3 sunC = sunIrradiance(p);
+            vec3 amb = skyIrradiance(p, d) / PI * mix(0.55, 1.35, hf) * ambTint * exp(-dn * 0.6)
+                     * mix(1.0, 0.45, gw.z);
+            // light bounced off the sunlit ground below the bases
+            vec3 bounce = sunC * (max(dot(d, uSunDir), 0.0) * 0.05 * (1.0 - hf));
+            lit = (sunC * lum * 0.3 + amb + bounce) * tint
+                * mix(vec3(1.0), uRainColor * 0.55, gw.z * 0.85 * (1.0 - hf * 0.75));
+            if (lightning > 0.5) lit += flashLight(p) * tint;
+          } else {
+            lit *= 0.86;
+          }
+          float Tr = exp(-dn * sigma * heavy * dt);
+          L += T * (1.0 - Tr) * lit;
+          T *= Tr;
         }
-        s += rs;
       }
-      // composite: the rain is in front of the clouds when the camera is
-      // below them, behind them otherwise
-      if (camR < uCloudBottom) L = Lr + Tr * L;
-      else L += T * Lr;
-      T *= Tr;
+      t += stride;
     }
   }
+
+  cloudRainShafts(ro, rd, px, sceneT, camR, thick, tIn, rainSeen, L, T);
   gl_FragColor = vec4(L, T);
 }
 `;
@@ -1337,6 +1516,16 @@ export class PlanetPasses {
       uWaterOn: { value: 0 },
     });
     this.cloudMat.name = 'pp.clouds';
+    this.cloudV2Mat = screenMaterial(CLOUD_V2_FRAGMENT, {
+      ...uniforms,
+      ...pipeline.view,
+      uCloudRes: { value: new THREE.Vector2(1, 1) },
+      uCloudOffset: { value: new THREE.Vector2(0, 0) },
+      uCloudSteps: { value: 64 },
+      uCloudPixelAngle: { value: 0.001 },
+      uWaterOn: { value: 0 },
+    });
+    this.cloudV2Mat.name = 'pp.clouds.v2';
     // two composite programs over one uniform set: planets / gas giants
     // (ocean, clouds, atmosphere) and stars (chromosphere, corona) — each
     // compiles faster than one shader holding both, and a planet never
@@ -1371,6 +1560,11 @@ export class PlanetPasses {
     this.compositeMats.weather.name = 'pp.composite.weather';
     this.compositeMats.star.name = 'pp.composite.star';
     this.compositeUniforms = compositeUniforms;
+  }
+
+  /** The cloud pass program of a cloud model ('classic' | 'v2'). */
+  cloudMatFor(model) {
+    return model === 'v2' ? this.cloudV2Mat : this.cloudMat;
   }
 
   /** The composite material for a body type (weatherFx: with lightning / near rain). */
@@ -1526,7 +1720,7 @@ export class PlanetPasses {
 
   /** Screen-pass materials, for shader pre-compilation. */
   get materials() {
-    return [this.lutMat, this.weatherMat, this.cloudMat, this.compositeMats.planet, this.compositeMats.weather,
+    return [this.lutMat, this.weatherMat, this.cloudMat, this.cloudV2Mat, this.compositeMats.planet, this.compositeMats.weather,
       this.compositeMats.star];
   }
 
@@ -1581,6 +1775,12 @@ export class PlanetPipeline {
     };
     this.noiseRT = volume(THREE.RGFormat, NOISE_VOLUME_SIZE);
     this.erosionRT = volume(THREE.RedFormat, EROSION_VOLUME_SIZE);
+    // Clouds V2 volumes: no GPU memory until a V2 planet bakes them
+    this.noiseV2RT = createVolumeV2Target(NOISE_V2_SIZE);
+    this.weatherV2RT = createVolumeV2Target(WEATHER_V2_SIZE);
+    this._noiseV2Baked = false;
+    this._noiseV2Vol = 0;
+    this._noiseV2Layer = 0;
 
     // ---- passes
     this.quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -1591,6 +1791,12 @@ export class PlanetPipeline {
 
     this.noiseMat = screenMaterial(NOISE_VOLUME_FRAGMENT, { uLayer: { value: 0 }, uSize: { value: 1 } });
     this.noiseMat.name = 'pp.noise';
+    const v2Uniforms = () => ({ uLoopGuard: { value: 0 }, uLayer: { value: 0 }, uSize: { value: 1 } });
+    this.noiseV2Mat = screenMaterial(NOISE_V2_FRAGMENT, v2Uniforms());
+    this.noiseV2Mat.name = 'pp.noise.v2';
+    this.weatherV2Mat = screenMaterial(WEATHER_V2_FRAGMENT, v2Uniforms());
+    this.weatherV2Mat.name = 'pp.weather.v2';
+    this.noiseV2Mat.blending = this.weatherV2Mat.blending = THREE.NoBlending;
 
     // camera + embed uniforms: shared value objects, set before each planet
     this.view = {
@@ -1797,6 +2003,33 @@ export class PlanetPipeline {
     this.bakeNoiseSlice(Infinity);
   }
 
+  /** Bake up to `layers` more layers of the Clouds V2 volumes; true once complete. */
+  bakeNoiseV2Slice(layers = Infinity) {
+    if (this._noiseV2Baked) return true;
+    const jobs = [[this.noiseV2RT, this.noiseV2Mat], [this.weatherV2RT, this.weatherV2Mat]];
+    for (let n = 0; n < layers; n++) {
+      const [rt, mat] = jobs[this._noiseV2Vol];
+      mat.uniforms.uSize.value = rt.depth;
+      mat.uniforms.uLayer.value = this._noiseV2Layer;
+      this._blit(mat, rt, this._noiseV2Layer);
+      if (++this._noiseV2Layer < rt.depth) continue;
+      // one mip build per volume, after its last layer
+      generateMipmapsV2(this.renderer, rt);
+      this._noiseV2Layer = 0;
+      if (++this._noiseV2Vol === jobs.length) {
+        this._noiseV2Baked = true;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Bind the (baked) V2 volumes to a planet's uniforms. */
+  bindNoiseV2(u) {
+    u.uNoiseV2.value = this.noiseV2RT.texture;
+    u.uWeatherV2.value = this.weatherV2RT.texture;
+  }
+
   /**
    * Render one planet. `camera` is the planet-local (proxy) camera; `scene`
    * the planet's internal scene. The output target must already be sized
@@ -1824,9 +2057,14 @@ export class PlanetPipeline {
       this._blit(passes.lutMat, passes.lutRT);
       passes.lutDirty = false;
     }
+    const v2 = opts.cloudModel === 'v2';
     if (planet) {
       if (clouds || u.uCloudShadowStr.value > 0) {
         if (!this._noiseBaked) this._bakeNoise();
+        if (v2) {
+          if (!this._noiseV2Baked) this.bakeNoiseV2Slice(Infinity);
+          this.bindNoiseV2(u);
+        }
         // weather evolves through crossfaded keyframes; drift is a free rotation
         passes.updateWeather(opts.weatherTime);
       }
@@ -1886,7 +2124,9 @@ export class PlanetPipeline {
       const cap = this._cloudCap;
       this.cloudRT.viewport.set(0, 0, rw, rh);
       this.cloudRT.scissorTest = false;
-      const cm = passes.cloudMat.uniforms;
+      const cloudMat = passes.cloudMatFor(opts.cloudModel);
+      const cm = cloudMat.uniforms;
+      if (cm.uCloudPixelAngle) cm.uCloudPixelAngle.value = (2 * Math.tan(fovRad / 2)) / (camera.zoom * ch);
       cm.uWaterOn.value = opts.water ? 1 : 0;
       cm.uCloudSteps.value = opts.cloudSteps;
       cm.uCloudRes.value.set(cw, ch);
@@ -1895,7 +2135,7 @@ export class PlanetPipeline {
       cu.uCloudUV.value.set(cw / cap.x, ch / cap.y);
       cu.uCloudOffset.value.set(x0 / cap.x, y0 / cap.y);
       cu.uCloudMax.value.set((rw - 0.5) / cap.x, (rh - 0.5) / cap.y);
-      this._blit(passes.cloudMat, this.cloudRT);
+      this._blit(cloudMat, this.cloudRT);
     }
 
     // 3. composite
@@ -1944,10 +2184,10 @@ export class PlanetPipeline {
   }
 
   dispose() {
-    for (const rt of [this.sceneRT, this.cloudRT, this.noiseRT, this.erosionRT]) rt.dispose();
+    for (const rt of [this.sceneRT, this.cloudRT, this.noiseRT, this.erosionRT, this.noiseV2RT, this.weatherV2RT]) rt.dispose();
     this.sceneRT.depthTexture?.dispose();
     this._disposeBloom();
-    for (const m of [this.noiseMat, this.bloomDownMat, this.bloomUpMat, this.finalMat, this.depthMat]) m.dispose();
+    for (const m of [this.noiseMat, this.noiseV2Mat, this.weatherV2Mat, this.bloomDownMat, this.bloomUpMat, this.finalMat, this.depthMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }

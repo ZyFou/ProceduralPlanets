@@ -1150,6 +1150,14 @@ export const PARAM_DOCS = {
     "default": true,
     "description": "Render the volumetric cloud layer (and its shadows)."
   },
+  "cloudModel": {
+    "domain": "planet",
+    "group": "Clouds",
+    "label": "Model",
+    "type": "string",
+    "default": "classic",
+    "description": "Cloud renderer: 'classic' or 'v2' (billowy weather-map cumulus)"
+  },
   "cloudCoverage": {
     "domain": "planet",
     "group": "Clouds",
@@ -1337,6 +1345,17 @@ export const PARAM_DOCS = {
     "description": "Forward-scattering glow on cloud edges toward the sun",
     "min": 0,
     "max": 2,
+    "step": 0.05
+  },
+  "cloudCellSize": {
+    "domain": "planet",
+    "group": "Shape & motion",
+    "label": "Cell size",
+    "type": "number",
+    "default": 1,
+    "description": "V2: size of the cumulus cells / formations (higher = larger)",
+    "min": 0.3,
+    "max": 4,
     "step": 0.05
   },
   "weatherEnabled": {

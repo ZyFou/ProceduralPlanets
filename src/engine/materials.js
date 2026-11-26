@@ -6,6 +6,7 @@ import {
 } from './surfaceGLSL.js';
 import { seedToOffset } from './presets.js';
 import { createWeatherUniforms } from './weather.js';
+import { createCloudV2Uniforms } from './cloudsV2.js';
 
 // ============================================================================
 // Shared uniforms + the terrain chunk material. Terrain chunk materials are
@@ -105,6 +106,9 @@ export function createSharedUniforms(p) {
     uCloudTowering:   { value: p.cloudTowering },
     uCloudShear:      { value: 0 },      // derived per frame (shell thickness)
     uCloudSilver:     { value: p.cloudSilverLining },
+    // clouds V2 (cloudModel 'v2') — volumes baked by PlanetPipeline,
+    // the rest derived per frame (cloudsV2.applyCloudV2Uniforms)
+    ...createCloudV2Uniforms(),
 
     // weather systems, rain, lightning — packed per frame by PlanetWeather
     ...createWeatherUniforms(p),

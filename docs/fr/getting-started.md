@@ -107,6 +107,25 @@ Presque tous les paramètres sont des uniforms : en changer un ne coûte rien. L
 trois clés *structurelles* (`octaves`, `chunkRes`, `maxDepth`) reconstruisent
 plutôt le monde LOD du terrain.
 
+### Nuages V2
+
+`cloudModel: 'v2'` remplace le rendu classique des nuages par des cumulus en
+volutes guidés par une carte météo : cellules en chou-fleur aux sommets en
+dôme, bases plates et bords érodés, éclairées par une approximation de la
+diffusion multiple. La météo de la planète (couverture, fronts, orages,
+ouragans, pluie, éclairs) décide toujours où le ciel est nuageux ; V2 donne
+leur forme aux nuages, et leurs ombres au sol leur correspondent.
+`cloudCellSize` règle la taille des cellules et des formations,
+`cloudDetailScale` celle des volutes.
+
+```js
+planet.set({ cloudModel: 'v2', cloudCoverage: 0.55, cloudCellSize: 1.5 });
+```
+
+V2 précalcule deux petits volumes de bruit 3D (environ 19 Mo de mémoire GPU,
+partagés par toutes les planètes V2) à la première utilisation, et sa passe
+de nuages coûte environ 1,3 à 3 fois la passe classique à `cloudQuality` égal.
+
 ## Éclairage
 
 Une planète est éclairée par un seul soleil. Réglez sa direction avec `lightSource` :

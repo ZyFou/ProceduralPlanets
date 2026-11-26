@@ -365,6 +365,81 @@ float cloudColumn(vec4 g) {
   return max(0.5 * (g.z + g.w) - 0.5 * (g.x + g.y), 0.0);
 }
 
+// ---- Clouds V2 (cloudModel 'v2', see cloudsV2.js): billowy weather-map
+// cumulus. The planet weather above (gw = cloudWeather) still sets where the
+// sky is cloudy and with what; the V2 volumes shape the clouds themselves.
+uniform float uCloudModel;              // 0 classic, 1 v2
+uniform highp sampler3D uNoiseV2;       // r Perlin-Worley, gba Worley fbm
+uniform highp sampler3D uWeatherV2;     // r Perlin, g Worley cells, b Perlin (3D tile)
+uniform float uV2WeatherFreq;           // weather tiles per world unit
+uniform float uV2NoiseFreq;             // shape-noise tiles per world unit
+uniform float uV2Warp;
+uniform float uV2Edge;
+uniform float uV2Detail;
+uniform float uV2TopMin;
+uniform float uV2Contrast;
+uniform float uV2Sigma;                 // extinction per world unit at density 1
+uniform vec4  uV2Drift;                 // xyz wind drift (world), w evolution (noise tiles)
+uniform vec3  uV2Seed;
+
+float cv2Remap(float v, float a, float b, float c, float d) {
+  return c + (v - a) / max(b - a, 1e-4) * (d - c);
+}
+
+// local coverage from the planet weather: clear between systems (a few fair
+// weather cumulus), overcast inside them
+float cloudV2Cover(vec4 gw) {
+  return sat(gw.x * 1.08 + uCloudCoverage * 0.22 - 0.06);
+}
+
+// V2 density at p (radius r, shell height fraction hf). lod / wlod: mip
+// levels of the noise / weather taps (from the march step and pixel
+// footprint). detail: erosion taps.
+float cloudV2Density(vec3 p, float r, float hf, vec4 gw, float lod, float wlod, bool detail) {
+  if (hf <= 0.0 || hf >= 1.0) return 0.0;
+  vec3 d = p / r;
+  vec3 dr = cloudRotate(d + shearOffset(d, hf));
+  // the weather is a 2D field: looked up at the base radius whatever the height
+  vec3 wq = (dr * uCloudBottom + uV2Drift.xyz) * uV2WeatherFreq + uV2Seed;
+  vec4 w = textureLod(uWeatherV2, wq, wlod);
+  float th = mix(1.02, 0.40, cloudV2Cover(gw)) + (1.0 - smoothstep(0.0, 0.08, uCloudCoverage)) * 0.6;
+  // empty sky: one fetch and out
+  if (w.g * 0.58 + w.r * 0.70 < th - 0.10) return 0.0;
+
+  vec3 nq = (dr * r + uV2Drift.xyz) * uV2NoiseFreq + uV2Seed * 1.37;
+  vec4 n = textureLod(uNoiseV2, nq, lod);
+  // billow the footprint: warp the weather lookup with the shape noise
+  w = textureLod(uWeatherV2, wq + (n.gba - 0.55) * uV2Warp, wlod);
+  float sig = w.g * 0.58 + w.r * 0.70 + (n.a - 0.5) * 0.10;
+  float cov = smoothstep(th, th + uV2Edge, sig);
+  if (cov <= 0.002) return 0.0;
+
+  // dense cores build higher than their fringes: domed tops, flat bases;
+  // stratiform weather keeps them low, convective lets them tower
+  float typeT = sat(gw.y * (0.4 + 1.2 * uCloudTowering));
+  float topH = mix(uV2TopMin, 1.0, sat(cov * 0.85 + (w.b - 0.5) * 0.9)) * mix(0.5, 1.0, typeT);
+  float prof = smoothstep(0.0, 0.07, hf) * (1.0 - smoothstep(topH * 0.45, topH, hf));
+  float lowF = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
+  float base = sat(cv2Remap(n.r, (1.0 - lowF) * uV2Contrast, 1.0, 0.0, 1.0)) * prof;
+  float dd = cv2Remap(base, 1.0 - cov * 0.86, 1.0, 0.0, 1.0) * cov;
+  if (dd <= 0.0) return 0.0;
+
+  if (detail) {
+    // erosion: wispy bases, billowy tops
+    vec3 hn = textureLod(uNoiseV2, nq * 5.658 + vec3(0.0, uV2Drift.w * 8.6, 0.0), lod).gba;
+    float hfb = hn.r * 0.625 + hn.g * 0.25 + hn.b * 0.125;
+    float m = mix(hfb, 1.0 - hfb, sat(hf * 5.0));
+    dd = cv2Remap(dd, m * 0.50 * uV2Detail, 1.0, 0.0, 1.0);
+    if (dd > 0.0 && dd < 0.35) {
+      // finest wisps only where the body thins out
+      vec3 hn2 = textureLod(uNoiseV2, nq * 15.93, lod).gba;
+      dd = cv2Remap(dd, (1.0 - (hn2.r * 0.6 + hn2.g * 0.4)) * 0.16 * uV2Detail * (1.0 - dd / 0.35),
+                    1.0, 0.0, 1.0);
+    }
+  }
+  return sat(dd * 2.6);
+}
+
 // Fraction of sunlight blocked by the clouds above world point p: the sun
 // ray meets the lookup shell (or starts at the receiver inside the layer),
 // and the SAME cover + billow field as the volume
@@ -378,6 +453,23 @@ float cloudShadowRain(vec3 p, out float rain) {
   if (uCloudShadowStr < 0.005 && uRainOn < 0.5) return 0.0;
   float r = length(p);
   if (r >= uCloudTop) return 0.0;
+  if (uCloudModel > 0.5) {
+    // V2: the same cumulus field as the volume, its body sampled at a
+    // third of the shell height (coarse mips: a soft, matching shadow)
+    float thick = uCloudTop - uCloudBottom;
+    float hs = max((r - uCloudBottom) / thick, 0.3);
+    if (hs >= 1.0) return 0.0;
+    float rs = mix(uCloudBottom, uCloudTop, hs);
+    vec3 qs = r < rs ? p + uSunDir * raySphere(p, uSunDir, rs).y : p;
+    float rq = length(qs);
+    vec4 ws = cloudWeather(qs / rq, hs);
+    rain = ws.z * (1.0 - hs);
+    if (uCloudShadowStr < 0.005) return 0.0;
+    float dens = cloudV2Density(qs, rq, hs, ws, 2.0, 1.0, false);
+    float mu = max(dot(qs / rq, uSunDir), 0.12);
+    float od = dens * uV2Sigma * thick * 0.35 * (1.0 - hs) * (1.0 + ws.z) / sqrt(mu);
+    return (1.0 - exp(-od)) * uCloudShadowStr;
+  }
   float rm = mix(uCloudBottom, uCloudTop, 0.25);
   // Below the lookup shell the forward exit is overhead. Inside the layer,
   // start at the receiver instead of projecting back down into buried clouds.

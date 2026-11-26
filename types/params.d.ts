@@ -215,6 +215,8 @@ export interface PlanetParams {
   waterEmissive?: number;
   /** Render the volumetric cloud layer (and its shadows). Default: true. */
   cloudsEnabled?: boolean;
+  /** Cloud renderer: 'classic' or 'v2' (billowy weather-map cumulus) Default: 'classic'. */
+  cloudModel?: string;
   /** Fraction of the sky covered by clouds. Range 0..1. Default: 0.45. */
   cloudCoverage?: number;
   /** Width of the coverage falloff (wispy edges) — How gradually systems thin out into broken fields Range 0.01..0.5. Default: 0.18. */
@@ -249,6 +251,8 @@ export interface PlanetParams {
   cloudShear?: number;
   /** Forward-scattering glow on cloud edges toward the sun Range 0..2. Default: 1. */
   cloudSilverLining?: number;
+  /** V2: size of the cumulus cells / formations (higher = larger) Range 0.3..4. Default: 1. */
+  cloudCellSize?: number;
   /** Render regional weather: storm systems, hurricanes, rain and lightning (needs cloudsEnabled). Default: true. */
   weatherEnabled?: boolean;
   /** Weather clock rate: lifecycles, storm tracks, lightning — Clock of the weather systems: lifecycles, storm tracks, lightning Range 0..5. Default: 1. */
@@ -406,6 +410,7 @@ export interface ResolvedPlanetParams {
   whitecaps: number;
   waterEmissive: number;
   cloudsEnabled: boolean;
+  cloudModel: string;
   cloudCoverage: number;
   cloudSoftness: number;
   cloudDensity: number;
@@ -423,6 +428,7 @@ export interface ResolvedPlanetParams {
   cloudTowering: number;
   cloudShear: number;
   cloudSilverLining: number;
+  cloudCellSize: number;
   weatherEnabled: boolean;
   weatherSpeed: number;
   stormCount: number;

@@ -106,6 +106,24 @@ Almost every parameter is a uniform, so changing one is free. The three
 *structural* keys (`octaves`, `chunkRes`, `maxDepth`) rebuild the terrain LOD
 world instead.
 
+### Clouds V2
+
+`cloudModel: 'v2'` swaps the classic cloud renderer for billowy weather-map
+cumulus: cauliflower cells with domed tops, flat bases and eroded fringes,
+lit with a multiple-scattering fit. The planet's weather (coverage, fronts,
+storms, hurricanes, rain, lightning) still decides where the sky is cloudy;
+V2 shapes the clouds themselves, and their ground shadows match them.
+`cloudCellSize` sets the size of the cells and formations, `cloudDetailScale`
+the billows inside them.
+
+```js
+planet.set({ cloudModel: 'v2', cloudCoverage: 0.55, cloudCellSize: 1.5 });
+```
+
+V2 bakes two small 3D noise volumes (about 19 MB of GPU memory, shared by
+every V2 planet) on first use, and its cloud pass costs roughly 1.3 to 3 times
+the classic one at the same `cloudQuality`.
+
 ## Lighting
 
 A planet is lit by one sun. Set its direction with `lightSource`:

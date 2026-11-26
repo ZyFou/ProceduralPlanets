@@ -154,6 +154,7 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 | Key | Type | Default | Range | Description |
 |---|---|---|---|---|
 | `cloudsEnabled` | boolean | `true` |  | Render the volumetric cloud layer (and its shadows). |
+| `cloudModel` | string | `'classic'` |  | Cloud renderer: 'classic' or 'v2' (billowy weather-map cumulus) |
 | `cloudCoverage` | number | `0.45` | 0 – 1 | Fraction of the sky covered by clouds. |
 | `cloudSoftness` | number | `0.18` | 0.01 – 0.5 | Width of the coverage falloff (wispy edges) — How gradually systems thin out into broken fields |
 | `cloudDensity` | number | `0.8` | 0.1 – 2 | Optical thickness |
@@ -171,6 +172,7 @@ them live with `planet.set({...})`, read them with `planet.get(key)`.
 | `cloudSpeed` | number | `0.6` | 0 – 3 | Cloud drift / evolution speed. |
 | `cloudTowering` | number | `0.55` | 0 – 1 | Vertical development: low flat decks .. tall towering cumulonimbus |
 | `cloudShear` | number | `0.25` | 0 – 1 | Wind shear: towers lean downwind — Upper winds carry cloud tops downstream: towers lean |
+| `cloudCellSize` | number | `1` | 0.3 – 4 | V2: size of the cumulus cells / formations (higher = larger) |
 
 ### Quality
 

@@ -1497,5 +1497,11 @@ export default {
   "Transitions": "Transitions",
   "Glide parameters over time": "Faire glisser les paramètres dans le temps",
   "bakePlanet(): standard meshes lit by your lights": "bakePlanet() : des meshes standard éclairés par vos lumières",
-  "Edit and run code in your browser": "Modifier et exécuter du code dans votre navigateur"
+  "Edit and run code in your browser": "Modifier et exécuter du code dans votre navigateur",
+  "Model": "Modèle",
+  "Classic": "Classique",
+  "Clouds V2": "Nuages V2",
+  "Cloud renderer: Classic, or V2 billowy weather-map cumulus (realistic cells, domed tops, eroded edges)": "Rendu des nuages : Classique, ou V2 avec des cumulus en volutes guidés par une carte météo (cellules réalistes, sommets en dôme, bords érodés)",
+  "Cell size": "Taille des cellules",
+  "V2: size of the cumulus cells and formations": "V2 : taille des cellules de cumulus et des formations"
 };
